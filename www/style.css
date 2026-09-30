@@ -351,6 +351,53 @@ border-radius:8px;}
 .ctxbar-bg{flex:1; height:6px; background:#1a1712; border-radius:3px; overflow:hidden;}
 .ctxbar-fg{height:100%; background:var(--gold-deep); border-radius:3px; transition:width .3s;}
 .ctxbar-fg.hot{background:#c25b4a;}
+/* 编辑器 token 计数条 (P0-1) */
+.tokline{margin-top:6px;}
+.tokbar{height:5px; background:#1a1712; border-radius:3px; overflow:hidden; margin-bottom:3px;}
+.tokbar-fg{height:100%; background:var(--gold-deep); border-radius:3px; transition:width .2s;}
+.tokbar-fg.warn{background:#c9973f;}
+.tokbar-fg.over{background:#c25b4a;}
+.toknum{font-size:11px; color:var(--ink-faint);}
+.toknum.warn{color:#c9973f;}
+.toknum.over{color:#c25b4a; font-weight:bold;}
+/* P0-3 长按消息 action sheet */
+.msscrim{z-index:90;}
+.msgsheet{position:fixed; left:0; right:0; bottom:0; z-index:91; background:#161310;
+border-top:1px solid var(--line); border-radius:16px 16px 0 0;
+padding:6px 8px calc(14px + env(safe-area-inset-bottom));
+transform:translateY(110%); transition:transform .25s ease; max-height:70vh; overflow-y:auto;}
+.msgsheet.on{transform:none;}
+.mshandle{width:40px; height:4px; border-radius:2px; background:#3a332a; margin:4px auto 6px;}
+.msprev{font-size:12px; color:var(--ink-faint); padding:2px 14px 8px;
+white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-bottom:1px solid var(--line-soft); margin-bottom:6px;}
+.msitem{display:flex; align-items:center; gap:12px; width:100%; padding:13px 14px;
+background:none; border:0; color:var(--ink); font-size:15px; text-align:left; border-radius:10px; cursor:pointer;}
+.msitem:active{background:rgba(212,162,78,.08);}
+.msitem.danger{color:var(--red);}
+/* P0-4 新手引导 */
+.onboard{position:fixed; inset:0; z-index:99; background:rgba(0,0,0,.72);
+display:flex; align-items:center; justify-content:center; padding:24px;
+opacity:0; pointer-events:none; transition:opacity .25s;}
+.onboard.on{opacity:1; pointer-events:auto;}
+.obcard{width:min(340px, 92vw); background:#161310; border:1px solid var(--line);
+border-radius:18px; padding:28px 24px 20px; text-align:center;}
+.obdots{display:flex; gap:8px; justify-content:center; margin-bottom:16px;}
+.obdots span{width:24px; height:4px; border-radius:2px; background:#3a332a;}
+.obdots span.on{background:var(--gold);}
+.obcard h2{font-family:var(--serif); font-size:18px; color:var(--gold-soft); margin:0 0 12px;}
+.obcard p{font-size:14px; color:var(--ink-dim); line-height:1.8; margin:0 0 20px;}
+.obcard .btnrow{flex-direction:column; gap:10px;}
+.obcard .btnrow .btn{width:100%;}
+.obskip{background:none; border:0; color:var(--ink-faint); font-size:13px; margin-top:14px; cursor:pointer;}
+/* P0-5 存储用量 */
+.storbar{height:10px; border-radius:5px; background:#2a241c; overflow:hidden; margin:10px 0 6px;}
+.storbar-fg{height:100%; border-radius:5px; background:linear-gradient(90deg,#b98a3e,#e8c477); transition:width .3s;}
+.storbar-fg.warn{background:linear-gradient(90deg,#a33f2e,#e07a5f);}
+.stornum{font-size:13px; color:var(--ink-dim); margin-bottom:8px;}
+.stornum.warn{color:#e07a5f; font-weight:bold;}
+.storow{display:flex; justify-content:space-between; font-size:13px; color:var(--ink-dim);
+padding:6px 0; border-bottom:1px solid var(--line-soft);}
+.storow:last-of-type{border-bottom:0;}
 .ctxnum{white-space:nowrap; color:var(--ink-faint);}
 .ctxlore{margin-top:4px; color:var(--gold-soft); font-size:12px;}
 

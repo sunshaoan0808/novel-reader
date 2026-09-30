@@ -351,11 +351,20 @@ curAudioKey = null;
 }
 
 /* ================= 世界书编辑 ================= */
-/* ============ 编辑器 token 计数器 (对标商业 App 的编辑器用量提示) ============ */
+/* ============ 编辑器 token 计数器 (对标 C.AI/Janitor: 实时用量条, 80%/100% 两档告警) ============ */
 window.tokCount = (inputId, outId)=>{
-const el = document.getElementById(inputId), out = document.getElementById(outId);
-if(!el || !out || !window.RP_PROMPT) return;
-out.textContent = "约 " + RP_PROMPT.estTokens(el.value || "") + " tokens";
+const ids = Array.isArray(inputId) ? inputId : [inputId];
+const out = document.getElementById(outId);
+// 注意: RP_PROMPT 是顶层 const, 不挂 window, 用 typeof 判存在
+if(!out || typeof RP_PROMPT === "undefined") return;
+let txt = "";
+ids.forEach(id=>{ const el = document.getElementById(id); if(el) txt += (el.value || "") + "\n"; });
+const n = RP_PROMPT.estTokens(txt);
+const max = (getRpCfg().maxContext || 8192);
+const pct = Math.min(100, Math.round(n / max * 100));
+const cls = pct >= 100 ? "over" : (pct >= 80 ? "warn" : "");
+out.innerHTML = `<div class="tokbar"><div class="tokbar-fg ${cls}" style="width:${pct}%"></div></div>`
++ `<span class="toknum ${cls}">约 ${n} / ${max} tokens${pct >= 100 ? " · 已超上下文窗口！" : (pct >= 80 ? " · 接近上限" : "")}</span>`;
 };
 const loreKey = (runId)=> `nd_lore_${runId}`;
 const getLore = (runId)=>{ try{return JSON.parse(localStorage.getItem(loreKey(runId)))||[]}catch(e){return[]}} ;
@@ -384,7 +393,7 @@ ${arr.map((e,i)=>`
 <button class="btn ghost" onclick="loreForm('${runId}',${i})">编辑</button>
 <button class="btn ghost" onclick="loreToggle('${runId}',${i})">${e.enabled===false?"启用":"停用"}</button>
 <button class="btn danger" onclick="loreDel('${runId}',${i})">删除</button>
-</div></div>`).join("") || `<div class="empty">还没有自建条目</div>`}`;
+</div></div>`).join("") || `<div class="empty">还没有自建条目<br><button class="btn" style="margin-top:10px" onclick="loreForm('${runId}')">新增第一条</button></div>`}`;
 window.scrollTo(0,0);
 }
 window.loreGoBack = ()=>{ loreBack.to==="chat" ? showChat() : setTab("more"); };
@@ -825,7 +834,7 @@ return charCardHTML({name:c.name, tag:c.novel, sum:charSumFor(c.runId,c.name)||"
 oncard:`chatWith('${c.runId}','${qn}')`,
 ops:`<button class="go" onclick="event.stopPropagation();chatWith('${c.runId}','${qn}')">开聊</button>`
 +`<button onclick="event.stopPropagation();charDetail('${c.runId}','${qn}','picker')">详情</button>`});
-}).join("") + `</div>` : `<div class="empty"><span class="big">🎭</span>还没有角色<br><span style="font-size:12px">去「写卡」创建你的第一个角色</span></div>`);
+}).join("") + `</div>` : `<div class="empty"><span class="big">🎭</span>还没有角色<br><span style="font-size:12px">去「写卡」创建你的第一个角色</span><br><button class="btn" style="margin-top:10px" onclick="setNav('writer')">去写卡</button></div>`);
 }
 window.exitChat = ()=>{ showChatPicker(); };
 window.exitChatTo = (n)=>{ document.body.classList.remove("chatmode"); setNav(n); };
@@ -875,7 +884,119 @@ const h = getHist(k);
 h.splice(idx, 1);
 saveHist(k, h); renderChat();
 };
+/* ============ P0-2 消息编辑: 原地改文本; 改用户消息后自动重生成其后 AI 回复 ============ */
+window.editMsg = (idx)=>{
+if(document.getElementById("live")){ alert("等这条生成完再编辑"); return; }
+const msgs = document.querySelectorAll("#chatlog .msg");
+const el = msgs[idx]; if(!el) return;
+const bub = el.querySelector(".bubble"); if(!bub || bub.querySelector("textarea")) return;
+const h = getHist(chatHistKey());
+const m = h[idx]; if(!m) return;
+bub.dataset.orig = bub.innerHTML;
+bub.innerHTML = `<textarea id="editbox" onclick="event.stopPropagation()" style="width:100%;min-height:80px;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px;font-size:14px">${esc(m.content)}</textarea>`
++ `<div class="btnrow" style="margin-top:6px" onclick="event.stopPropagation()"><button class="btn" onclick="editMsgSave(${idx})">保存${m.role==="user"?"并重生成":""}</button>`
++ `<button class="btn ghost" onclick="editMsgCancel(${idx})">取消</button></div>`;
+const ta = document.getElementById("editbox");
+if(ta){ ta.focus(); try{ ta.setSelectionRange(ta.value.length, ta.value.length); }catch(e){} }
+};
+window.editMsgCancel = (idx)=>{
+const msgs = document.querySelectorAll("#chatlog .msg");
+const el = msgs[idx]; if(!el) return;
+const bub = el.querySelector(".bubble");
+if(bub && ("orig" in bub.dataset)) bub.innerHTML = bub.dataset.orig;
+};
+/* ============ P0-3 长按消息统一操作菜单 (对标 C.AI 长按菜单) ============ */
+window.pinChatMsg = (idx)=>{
+if(CHAT.mode !== "single") return;
+const h = getHist(chatHistKey());
+const m = h[idx]; if(!m) return;
+const who = m.role === "user" ? "我" : (CHAT.name || "TA");
+const st = RP_MEM.get(CHAT.runId, CHAT.name) || {};
+st.short = st.short || [];
+let nid = 1;
+st.short.forEach(x=>{ if(x.id >= nid) nid = x.id + 1; });
+st.short.push({id: nid, time: "手动置顶",
+fact: (who + "：" + String(m.content).replace(/<[^>]*>/g, "").slice(0, 120)),
+view: "", pin: true});
+st.updatedAt = Date.now();
+RP_MEM.save(CHAT.runId, CHAT.name, st);
+msgSheet(false);
+alert("已 Pin 为长期记忆 📌");
+};
+let _pressT = null, _pressFired = false;
+window.msgPressStart = (ev, idx)=>{
+_pressFired = false;
+if(_pressT) clearTimeout(_pressT);
+_pressT = setTimeout(()=>{ _pressFired = true; msgMenu(idx); }, 550);
+};
+window.msgPressEnd = ()=>{ if(_pressT){ clearTimeout(_pressT); _pressT = null; } };
+window.msgMenu = (idx)=>{
+msgPressEnd();
+msgSheet(true, idx);
+};
+window.msgSheet = (on, idx)=>{
+let sh = document.getElementById("msgsheet");
+let sc = document.getElementById("msgscrim");
+if(!on){
+if(sh) sh.classList.remove("on");
+if(sc) sc.classList.remove("on");
+return;
+}
+const h = getHist(chatHistKey());
+const m = h[idx]; if(!m) return;
+if(!sh){
+sc = document.createElement("div");
+sc.id = "msgscrim"; sc.className = "scrim msscrim";
+sc.onclick = ()=>msgSheet(false);
+document.body.appendChild(sc);
+sh = document.createElement("div");
+sh.id = "msgsheet"; sh.className = "msgsheet";
+document.body.appendChild(sh);
+}
+const isAI = m.role === "assistant";
+const canPin = CHAT.mode === "single";
+const prev = String(m.content).replace(/<[^>]*>/g, "").slice(0, 40);
+const item = (fn, ic, label, danger)=>
+`<button class="msitem${danger?" danger":""}" onclick="${fn}">${icon(ic,16)} ${label}</button>`;
+const close = "msgSheet(false);";
+sh.innerHTML = `<div class="mshandle"></div><div class="msprev">${esc(prev)}${m.content.length>40?"…":""}</div>`
++ (canPin ? item(close+`pinChatMsg(${idx})`, "pin", "Pin 为长期记忆") : "")
++ (isAI ? item(close+`rateMsg(${idx},1)`, "thumb-up", m.rating===1?"已赞同":"赞同")
++ item(close+`rateMsg(${idx},-1)`, "thumb-down", m.rating===-1?"已反对":"反对") : "")
++ item(close+`editMsg(${idx})`, "edit", "编辑")
++ item(close+`copyMsg(${idx})`, "copy", "复制")
++ (isAI ? item(close+`ttsMsg(${idx})`, "volume", "TTS 朗读") : "")
++ item(`if(confirm("删除这条消息？")){${close}delMsg(${idx})}`, "trash", "删除", true);
+document.getElementById("msgscrim").classList.add("on");
+sh.classList.add("on");
+};
+window.editMsgSave = async (idx)=>{
+const ta = document.getElementById("editbox");
+const nv = ta ? ta.value : "";
+if(!nv.trim()){ alert("内容不能为空"); return; }
+const k = chatHistKey();
+const h = getHist(k);
+const m = h[idx]; if(!m) return;
+if(m.role !== "user"){
+// AI 消息: 只改文本, 不触发重生成; 保留 swipe 变体数组/评分
+m.content = nv;
+saveHist(k, h); renderChat();
+return;
+}
+// 用户消息: 截掉其后所有消息, 弹出本条, 用现有发送管线重生成
+const cfg0 = getCfg();
+if(!cfg0.key || !cfg0.base || !cfg0.model){ alert("先去「设置」配好 API 地址/Key/模型"); return; }
+const um = h[idx];
+saveHist(k, h.slice(0, idx));
+// 保留原消息的旁白/代发言身份
+const keepNarr = CHAT.narrMode, keepSpk = CHAT.asSpeaker;
+CHAT.narrMode = (um.mtype === "narr");
+CHAT.asSpeaker = um.speaker || null;
+try{ await sendChatText(nv); }
+finally{ CHAT.narrMode = keepNarr; CHAT.asSpeaker = keepSpk; }
+};
 window.toggleTools = (ev, idx)=>{
+if(_pressFired){ _pressFired = false; return; }
 if(ev.target.closest(".msgtools") || ev.target.closest(".swipe")) return;
 const msgs = document.querySelectorAll("#chatlog .msg");
 const el = msgs[idx];
@@ -924,12 +1045,14 @@ extra += `<div class="swipe" onclick="event.stopPropagation()"><button onclick="
 }
 extra += `<div class="msgtools">` + rateBtns
 + `<button onclick="event.stopPropagation();ttsMsg(${idx})">${icon("volume",15)}</button>`
++ `<button onclick="event.stopPropagation();editMsg(${idx})">编辑</button>`
 + `<button onclick="event.stopPropagation();copyMsg(${idx})">复制</button>`
 + `<button onclick="event.stopPropagation();regenMsg()">↻ 重生</button>`
 + `<button onclick="event.stopPropagation();delMsg(${idx})">删除</button></div>`;
 } else {
 extra = `<div class="msgtools">` + rateBtns
 + (m.role==="assistant"?`<button onclick="event.stopPropagation();ttsMsg(${idx})">${icon("volume",15)}</button>`:"")
++ `<button onclick="event.stopPropagation();editMsg(${idx})">编辑</button>`
 + `<button onclick="event.stopPropagation();copyMsg(${idx})">复制</button>`
 + `<button onclick="event.stopPropagation();delMsg(${idx})">删除</button></div>`;
 }
@@ -938,7 +1061,7 @@ if(m.role==="assistant"){
 const oc = parseOptCard(m.content);
 if(oc){ body = m.content.replace(oc.full, "").trim(); cardHTML = optCardHTML(oc, idx===lastAI, idx); }
 }
-return `<div class="msg ${m.role==="user"?"me":""}${mtype==="narr"?" narr":""}${mtype==="npc"?" npc":""}" onclick="toggleTools(event,${idx})">`
+return `<div class="msg ${m.role==="user"?"me":""}${mtype==="narr"?" narr":""}${mtype==="npc"?" npc":""}" onclick="toggleTools(event,${idx})" oncontextmenu="event.preventDefault();msgMenu(${idx});return false;" ontouchstart="msgPressStart(event,${idx})" ontouchend="msgPressEnd()" ontouchmove="msgPressEnd()">`
 + `<div class="avatar sm">${esc((who||"?")[0])}</div>`
 + `<div><div class="who">${esc(who)}</div><div class="bubble">${md(body)}${cardHTML}</div>${extra}${ts}</div>`
 + `</div>`;
@@ -1190,11 +1313,12 @@ const hasBundled = !!bundled;
 titleEl.innerHTML = icon("book-open")+" 剧情线"; subEl.textContent = label + " · 原著剧情大纲，读者可自行编辑";
 view.innerHTML = `<button class="back" onclick="plotGoBack()">${icon("back")} 返回</button>
 <div class="field"><label>原著剧情大纲${hasBundled?"（来自蒸馏管线）":""}</label>
-<textarea id="p_outline" style="width:100%;min-height:300px;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:10px">${esc(cur)}</textarea></div>
+<textarea id="p_outline" oninput="tokCount('p_outline','p_tok')" style="width:100%;min-height:300px;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:10px">${esc(cur)}</textarea><div class="tokline" id="p_tok"></div></div>
 ${hasBundled?"":`<div class="hint">暂无该角色的原著大纲数据，可自行编写。</div>`}
 <div class="btnrow"><button class="btn" onclick="plotSave()">保存大纲</button>
 ${hasBundled&&cur!==bundled?`<button class="btn ghost" onclick="plotRestore()">↺ 恢复原著大纲</button>`:""}
 ${cur?`<button class="btn danger" onclick="plotClearOutline()">清空</button>`:""}</div>`;
+tokCount("p_outline","p_tok");
 window.scrollTo(0,0);
 };
 window.plotGoBack = ()=>{ showChat(); };
@@ -1324,7 +1448,7 @@ view.innerHTML = `<button class="back" onclick="albumBack()">${icon("back")} 返
 + `<h2 class="sec">事件时间线${pinned.length?"（置顶优先）":""}</h2>`
 + `<div class="timeline">` + pinned.concat(rest).map(evCard).join("") + `</div>`
 + (st && st.long ? `<h2 class="sec">长远印象</h2><div class="card"><div class="alb-fact">${esc(st.long)}</div></div>` : "")
-+ (!short.length && !(st && st.long) ? `<div class="empty"><span class="big">${icon("brain",44)}</span>还没有记忆<br><span style="font-size:12px">每 ${(getRpCfg().memCycle||10)} 条消息自动整理一次</span></div>` : "")
++ (!short.length && !(st && st.long) ? `<div class="empty"><span class="big">${icon("brain",44)}</span>还没有记忆<br><span style="font-size:12px">每 ${(getRpCfg().memCycle||10)} 条消息自动整理一次</span><br><button class="btn ghost" style="margin-top:10px" onclick="albumBack()">去聊天产生记忆</button></div>` : "")
 + `<div class="btnrow" style="margin-top:12px"><button class="btn" onclick="memoryNovel()">${icon("book-open")} 转成小说</button></div>
 <div style="height:40px"></div>`;
 window.scrollTo(0,0);
@@ -1470,16 +1594,18 @@ titleEl.innerHTML = icon("user")+" 我的人设";
 subEl.textContent = isOverride ? "仅本次聊天生效（覆盖全局人设）" : "全局生效：以后所有聊天都会告诉 AI 你是谁";
 view.innerHTML = `<button class="back" onclick="__backAction()">${icon("back")} 返回</button>
 <div class="field"><label>称呼 / 名字</label>
-<input id="p_name" placeholder="希望 AI 怎么称呼你" value="${esc(p.name||"")}"></div>
+<input id="p_name" placeholder="希望 AI 怎么称呼你" value="${esc(p.name||"")}" oninput="tokCount(['p_name','p_desc','p_extra'],'p_tok')"></div>
 <div class="field"><label>自我描述</label>
-<textarea id="p_desc" rows="4" placeholder="年龄、职业、性格、说话习惯……">${esc(p.desc||"")}</textarea></div>
+<textarea id="p_desc" rows="4" placeholder="年龄、职业、性格、说话习惯……" oninput="tokCount(['p_name','p_desc','p_extra'],'p_tok')">${esc(p.desc||"")}</textarea></div>
 <div class="field"><label>补充说明（可选）</label>
-<textarea id="p_extra" rows="3" placeholder="希望 AI 记住的偏好、你们的关系设定……">${esc(p.extra||"")}</textarea></div>
+<textarea id="p_extra" rows="3" placeholder="希望 AI 记住的偏好、你们的关系设定……" oninput="tokCount(['p_name','p_desc','p_extra'],'p_tok')">${esc(p.extra||"")}</textarea></div>
+<div class="tokline" id="p_tok"></div>
 <div class="btnrow"><button class="btn" onclick="savePersonaUI(${isOverride?`'${scope}'`:"null"},'${from}')">保存</button>
 ${isOverride && RP_PERSONA.getOverride(scope) ? `<button class="btn ghost" onclick="RP_PERSONA.saveOverride('${scope}',null);__backAction()">清除本次覆盖</button>` : ""}
 </div>
 <div class="hint">保存后，人设会以【玩家人设】段注入每轮 prompt，紧跟在角色身份说明之后。</div>
 <div style="height:40px"></div>`;
+tokCount(['p_name','p_desc','p_extra'],'p_tok');
 window.scrollTo(0,0);
 };
 window.savePersonaUI = (scope, from)=>{
@@ -1568,12 +1694,59 @@ window.scrollTo(0,0);
 };
 
 /* ================= 设置 ================= */
+/* ============ P0-5 本地存储用量可视化 ============ */
+const STORAGE_GROUPS = [
+{label: "单聊历史", prefixes: ["nd_chat_"]},
+{label: "群聊历史", prefixes: ["nd_group_"]},
+{label: "穿越数据", prefixes: ["nd_trav", "nd_travchat_", "nd_travws_", "nd_identity_"]},
+{label: "记忆事件簿", prefixes: ["nd_mem2_"]},
+{label: "世界书", prefixes: ["nd_lore_"]},
+{label: "角色卡", prefixes: ["nd_custom_chars", "nd_imported_cards", "nd_cw_"]},
+{label: "人设与正则", prefixes: ["nd_persona", "nd_regex_"]},
+];
+window.fmtBytes = (b)=>{
+if(b < 1024) return b + " B";
+if(b < 1024*1024) return (b/1024).toFixed(1) + " KB";
+return (b/1024/1024).toFixed(2) + " MB";
+};
+window.storageUsage = ()=>{
+const groups = STORAGE_GROUPS.map(g=>({label: g.label, bytes: 0, keys: 0}));
+const other = {label: "配置与其他", bytes: 0, keys: 0};
+let total = 0;
+for(let i = 0; i < localStorage.length; i++){
+const k = localStorage.key(i);
+let v = "";
+try{ v = localStorage.getItem(k) || ""; }catch(e){}
+const b = (k.length + v.length) * 2; // localStorage 按 UTF-16 存, 每码元 2 字节
+total += b;
+let gi = -1;
+for(let j = 0; j < STORAGE_GROUPS.length; j++){
+if(STORAGE_GROUPS[j].prefixes.some(p=>k.indexOf(p) === 0)){ gi = j; break; }
+}
+const t = gi >= 0 ? groups[gi] : other;
+t.bytes += b; t.keys += 1;
+}
+groups.push(other);
+return {total: total, quota: 5*1024*1024, groups: groups.filter(g=>g.keys > 0)};
+};
+window.renderStorageCard = ()=>{
+const su = storageUsage();
+const pct = Math.min(100, su.total / su.quota * 100);
+const warn = su.total / su.quota >= 0.8;
+return `<div class="setcard"><h3>本地存储用量</h3>
+<div class="storbar"><div class="storbar-fg${warn?" warn":""}" style="width:${pct.toFixed(1)}%"></div></div>
+<div class="stornum${warn?" warn":""}">${fmtBytes(su.total)} / 5 MB（${pct.toFixed(0)}%）${warn?" · 空间告急，建议清理":""}</div>
+${su.groups.map(g=>`<div class="storow"><span>${g.label}</span><span>${g.keys} 项 · ${fmtBytes(g.bytes)}</span></div>`).join("")}
+<div class="btnrow"><button class="btn ghost" onclick="if(confirm('清空所有单聊/群聊/穿越聊天记录？'))clearChat()">清空聊天记录</button>
+<button class="btn danger" onclick="wipeAll()">清空全部数据</button></div>
+</div>`;
+};
 function showSettings(){
 __backAction = null;
 titleEl.textContent = "设置";
 subEl.textContent = "";
 const c = getCfg();
-view.innerHTML = `
+view.innerHTML = renderStorageCard() + `
 <div class="setcard"><h3>大模型接口 · RP 聊天用 (OpenAI 兼容)</h3>
 <div class="field"><label>API 地址</label>
 <input id="c_base" placeholder="https://api.openai.com/v1" value="${esc(c.base||"")}"></div>
@@ -1636,7 +1809,8 @@ view.innerHTML = `
 
 <h2 class="sec">数据</h2>
 <div class="hint">产物数据随 App 版本更新。新蒸馏任务跑完后, 我会打新版 APK, 覆盖安装即可。</div>
-<div class="btnrow"><button class="btn danger" onclick="wipeAll()">清空任务/聊天/配置</button></div>
+<div class="btnrow"><button class="btn ghost" onclick="showOnboard(1)">重新查看新手引导</button>
+<button class="btn danger" onclick="wipeAll()">清空任务/聊天/配置</button></div>
 </div>`;
 (function(){
 const rc = getRpCfg();
@@ -2018,10 +2192,46 @@ chatWith("custom", name.trim());
 }catch(e){ alert("保存失败: "+e.message); }
 }
 
+/* ============ P0-4 新手引导 (localStorage.nd_onboarded) ============ */
+window.showOnboard = (step)=>{
+step = Math.min(Math.max(step||1, 1), 3);
+let ob = document.getElementById("onboard");
+if(!ob){
+ob = document.createElement("div");
+ob.id = "onboard"; ob.className = "onboard";
+document.body.appendChild(ob);
+}
+const S = [
+{ t:"第 1 步 · 配置 API Key",
+d:"去「设置」填入你的 LLM Key<br>(OpenAI 兼容接口均可, 如硅基流动 / DeepSeek)。",
+btns:[["去设置配 Key","onboardDone();setNav('settings')"],["下一步 →","showOnboard(2)"]] },
+{ t:"第 2 步 · 选一个角色",
+d:"从蒸馏人物里选一位开聊,<br>或自己写一张原创角色卡。",
+btns:[["去选角色","onboardDone();setNav('chat')"],["自己写卡","onboardDone();setNav('writer')"],["下一步 →","showOnboard(3)"]] },
+{ t:"第 3 步 · 开始聊天",
+d:"一切就绪 —— 点开一位角色,<br>开始你的第一场对话吧！",
+btns:[["开始聊天","onboardDone();setNav('chat')"]] },
+];
+const s = S[step-1];
+ob.innerHTML = `<div class="obcard">
+<div class="obdots">${[1,2,3].map(i=>`<span class="${i===step?"on":""}"></span>`).join("")}</div>
+<h2>${s.t}</h2><p>${s.d}</p>
+<div class="btnrow">${s.btns.map(b=>`<button class="btn" onclick="${b[1]}">${b[0]}</button>`).join("")}</div>
+<button class="obskip" onclick="onboardDone()">跳过引导</button>
+</div>`;
+ob.classList.add("on");
+};
+window.onboardDone = ()=>{
+try{ localStorage.setItem("nd_onboarded", "1"); }catch(e){}
+const ob = document.getElementById("onboard");
+if(ob) ob.classList.remove("on");
+};
+
 /* ---------- 启动 ---------- */
 window.setNav = setNav; window.showTasks = showTasks; window.showChat = showChat;
 window.setTab = setTab; window.openRun = openRun;
 boot();
+if(!localStorage.getItem("nd_onboarded")) showOnboard(1);
 
 /* ================= 穿越 P0: 魂穿 / 肉身穿越 ================= */
 function travPlayerName(){
