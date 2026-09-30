@@ -135,11 +135,17 @@ function charCardHTML(o){
 return `<div class="charcard" onclick="${o.oncard}">`
 + `<div class="charcover ${charCoverCls(o.name)}">`
 + (o.tag?`<div class="tag">${esc(o.tag)}</div>`:"")
-+ `<div class="big">${esc((o.name||"?")[0])}</div></div>`
++ (o.img?`<img class="charimg" src="${esc(o.img)}" alt="" loading="lazy" onerror="this.remove()">`:`<div class="big">${esc((o.name||"?")[0])}</div>`)
++ `</div>`
 + `<div class="charbody"><div class="n">${esc(o.name)}</div>`
 + `<div class="s">${esc(o.sum||"")}</div>`
 + (o.ops?`<div class="ops">${o.ops}</div>`:"")
 + `</div></div>`;
+}
+// 角色卡画像: 查 window.CHARIMG (www/data/charimg.js), 无图返回 ""
+function charImg(novel, name){
+const m = window.CHARIMG||{};
+return m[(novel||"")+"|"+(name||"")]||"";
 }
 function charSumFor(runId, name){
 try{
@@ -195,7 +201,7 @@ setNav("chat");
 function charList(ps){
 if(!ps.length) return `<div class="empty"><span class="big">🎭</span>暂无人物卡</div>`;
 return `<div class="chargrid">` + ps.map(p=>charCardHTML({
-name:p.name, tag:RUN.novel, sum:tagline(p)||"人物档案",
+name:p.name, tag:RUN.novel, img:charImg(RUN.novel, p.name), sum:tagline(p)||"人物档案",
 oncard:`openChar(${JSON.stringify(p.name)})`,
 ops:`<button class="go" onclick='event.stopPropagation();chatWith(${JSON.stringify(RUN.run_id)},${JSON.stringify(p.name)})'>开聊</button>`
 +`<button onclick='event.stopPropagation();openChar(${JSON.stringify(p.name)})'>详情</button>`
@@ -209,7 +215,9 @@ window.openChar = (name)=>{
 __backAction = ()=>setTab("chars");
 const p = RUN.profiles.find(x=>x.name===name);
 titleEl.textContent = p.name; subEl.textContent = RUN.novel;
+const cimg = charImg(RUN.novel, p.name);
 view.innerHTML = `<button class="back" onclick="setTab('chars')">${icon("back")} 返回人物</button>
+${cimg?`<img class="charhero" src="${esc(cimg)}" alt="${esc(p.name)}画像" onerror="this.remove()">`:""}
 <div class="btnrow" style="margin-bottom:10px"><button class="btn ghost" onclick='genPortrait(${JSON.stringify(RUN.run_id)},${JSON.stringify(p.name)})'>${icon("palette")} 生成立绘</button></div>
 <div class="card md">${md(p.md)}</div>
 <div style="height:76px"></div>
@@ -1195,7 +1203,7 @@ titleEl.textContent = "选个角色开聊";
 subEl.textContent = "";
 const cs = allChars();
 view.innerHTML = (cs.length ? `<div class="chargrid">` + cs.map(c=>{ const qn=c.name.replace(/'/g,"\\'");
-return charCardHTML({name:c.name, tag:c.novel, sum:charSumFor(c.runId,c.name)||"点我直接开聊",
+return charCardHTML({name:c.name, tag:c.novel, img:charImg(c.novel, c.name), sum:charSumFor(c.runId,c.name)||"点我直接开聊",
 oncard:`chatWith('${c.runId}','${qn}')`,
 ops:`<button class="go" onclick="event.stopPropagation();chatWith('${c.runId}','${qn}')">开聊</button>`
 +`<button onclick="event.stopPropagation();charDetail('${c.runId}','${qn}','picker')">详情</button>`});
