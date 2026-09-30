@@ -232,7 +232,8 @@ function buildMessages(card, ctx, budget){
   var memRes = null;
   if(ctx.memBudgeted && typeof RP_MEM !== "undefined" && RP_MEM.renderBudgeted){
     memRes = RP_MEM.renderBudgeted(ctx.memBudgeted.runId, ctx.memBudgeted.name,
-      memBudget, {cardId: ctx.memBudgeted.cardId, novel: ctx.memBudgeted.novel, temporal: ctx.memBudgeted.temporal});
+      memBudget, {cardId: ctx.memBudgeted.cardId, novel: ctx.memBudgeted.novel,
+        temporal: ctx.memBudgeted.temporal, query: ctx.memBudgeted.query});
   }
   var memSeg = memRes ? memRes.text : (ctx.memory || "");
   var memTasks = ctx.memTasks || "";

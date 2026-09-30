@@ -712,7 +712,7 @@ const getCfg = ()=>{ try{return JSON.parse(localStorage.getItem(CFG_KEY))||{}}ca
 const saveCfg = (c)=> localStorage.setItem(CFG_KEY, JSON.stringify(c));
 const getRpCfg = ()=> Object.assign({maxContext:8192, respTokens:512, summaryModel:"",
   temperature:0.9, topP:1, ooc:true, preset:"classic", optCards:false, optCount:4, optMood:"none", ttsAuto:false, typewriter:true,
-  worldsim:true, wsPerMsg:3, wsStepMin:30, wsWxAuto:true, wsWxEvery:5, temporal:true,
+  worldsim:true, wsPerMsg:3, wsStepMin:30, wsWxAuto:true, wsWxEvery:5, temporal:true, leanmem:true,
   memCycle:10, memPoolRatio:"50/30/20",
   director:true, directorTier:"sentinel", directorStyle:"slowburn", directorEvery:5, directorStale:8, directorModel:""}, JSON.parse(localStorage.getItem(RPCFG_KEY)||"{}"));
 const saveRpCfg = (c)=> localStorage.setItem(RPCFG_KEY, JSON.stringify(c));
@@ -1880,7 +1880,9 @@ function renderAlbum(){
 const runId = ALBUM.runId, nm = ALBUM.name;
 __backAction = ()=>albumBack();
 document.body.classList.remove("chatmode");
-const st = RP_MEM.get(runId, nm);
+let st = RP_MEM.get(runId, nm);
+/* LeanMem: 事件簿打开时确保三库已迁移 (幂等), 展示分流结果 */
+if(st && RP_MEM.leanmemOn && RP_MEM.leanmemOn()) st = RP_MEM.migrate3(runId, nm, st);
 const short = (st && st.short) || [];
 const pinned = short.filter(m=>m.pin);
 const rest = short.filter(m=>!m.pin);
@@ -1911,6 +1913,15 @@ ${muBar}
 <div class="alb-stats">${icon("brain",14)} ${short.length} 条记忆 · ${icon("pin",13)} ${pinned.length} 置顶 · ${icon("thumb-up",13)} ${up} ${icon("thumb-down",13)} ${dn}</div>`
 + (st && st.mood && st.mood.state
 ? `<div class="card alb-mood"><div class="alb-time">当前心境</div><div class="alb-fact">${esc(st.mood.state)}${st.mood.filter?" —— "+esc(st.mood.filter):""}</div></div>` : "")
++ ((st && st.migrated3)
+? `<h2 class="sec">三库记忆（LeanMem 分流）</h2>`
++ `<div class="card"><div class="alb-time">画像库 · 稳定事实 ${(st.profile3||[]).length} 条</div>`
++ ((st.profile3||[]).map(p=>`<div class="alb-fact">· ${esc(p.text||"")}</div>`).join("")||'<div class="empty">暂无</div>') + `</div>`
++ `<div class="card"><div class="alb-time">事件库 · 带时间锚 ${(st.event3||[]).length} 条（可演化合并）</div>`
++ ((st.event3||[]).slice().reverse().map(e=>`<div class="alb-fact">· ${esc((e.t_anchor?e.t_anchor+" ":"")+(e.topic||""))}${e.state?" —— "+esc(e.state):""}${(e.merged||0)>1?` <span class="badge">合并×${e.merged}</span>`:""}</div>`).join("")||'<div class="empty">暂无</div>') + `</div>`
++ `<div class="card"><div class="alb-time">记录库 · 原文索引 ${(st.record3||[]).filter(r=>!r.legacy).length} 条（只追加不改写）</div>`
++ ((st.record3||[]).filter(r=>!r.legacy).slice().reverse().map(r=>`<div class="alb-fact">· ${esc(r.gist||"")}${(r.msg_from||r.msg_to)?` <span style="opacity:.6">（原文 ${esc(r.msg_from||"?")}→${esc(r.msg_to||"")}）</span>`:""}</div>`).join("")||'<div class="empty">暂无</div>') + `</div>`
+: "")
 + `<h2 class="sec">事件时间线${pinned.length?"（置顶优先）":""}</h2>`
 + `<div class="timeline">` + pinned.concat(rest).map(evCard).join("") + `</div>`
 + (st && st.long ? `<h2 class="sec">长远印象</h2><div class="card"><div class="alb-fact">${esc(st.long)}</div></div>` : "")
@@ -2292,7 +2303,7 @@ memPools: (stats && stats.memPools) || null};
 }
 const DIAG_SEG_LABELS = {identity:"身份", persona:"玩家人设", narrator:"叙事者模式", core:"核心人设",
 memory:"长期记忆", speech:"说话方式", examples:"对话示例", background:"背景", relations:"人物关系", lore:"世界书"};
-const DIAG_POOL_LABELS = {important:"重要池（铁律/置顶/心境）", recent:"近期池", similar:"长远池"};
+const DIAG_POOL_LABELS = {important:"重要池（铁律/置顶/画像库/心境）", recent:"近期池（事件库）", similar:"长远池（记录库/往事）"};
 window.promptDiag = ()=>{
 const lp = window.__LAST_PROMPT__;
 if(!lp || !lp.stats){ alert("先发一句话，引擎组装好 prompt 后这里才能诊断。"); return; }
@@ -2301,7 +2312,7 @@ const sysPct = Math.min(100, (s.sysTokens || 0) / Math.max(1, s.avail || 1) * 10
 const histPct = Math.min(100, (s.histTokens || 0) / Math.max(1, s.avail || 1) * 100);
 const segRows = Object.keys(s.segTokens || {}).map(k=>
 `<div class="storow"><span>${DIAG_SEG_LABELS[k] || k}</span><span>${s.segTokens[k]} tok</span></div>`).join("");
-const poolRows = Object.keys(lp.memPools || {}).map(k=>{
+const poolRows = Object.keys(lp.memPools || {}).filter(k=>k in DIAG_POOL_LABELS).map(k=>{
 const p = lp.memPools[k];
 return `<div class="storow"><span>${DIAG_POOL_LABELS[k] || k}</span><span>${p.tokens} tok · ${p.items} 条${p.dropped ? ` · 丢弃 ${p.dropped}` : ""}${p.source ? ` · ${p.source}` : ""}</span></div>`;
 }).join("");
@@ -2451,8 +2462,9 @@ view.innerHTML = renderStorageCard() + `
 <input id="r_memcycle" type="number" min="5" value=""></div>
 <div class="field"><label>记忆三池预算比例（近期 / 长远 / 重要，如 50/30/20）</label>
 <input id="r_mempool" placeholder="50/30/20" value=""></div>
+<div class="field"><label><input id="r_leanmem_on" type="checkbox" style="width:auto"> 启用三库记忆（LeanMem：画像 / 事件 / 记录分流，检索按问题类型自适应）</label></div>
 <div class="btnrow"><button class="btn" onclick="saveRpCfgUI()">保存 RP 设置</button><button class="btn ghost" onclick="importStPreset()">${icon("download")} 导入 ST 预设(采样参数)</button></div>
-<div class="hint">每 N 条消息，引擎自动整理一次三层记忆：当前心境 + 30 条近期记忆 + 长远印象（1 次模型调用），存在本机。</div>
+<div class="hint">每 N 条消息，引擎自动整理一次记忆：LeanMem 三库分流（画像库 / 事件库 / 记录库）+ 当前心境（1 次模型调用），存在本机；关闭三库记忆则回退为三池旧行为。</div>
 <div class="hint">Key 只保存在本机, 聊天时由手机直接请求你填的接口, 不经过任何中转。
 免费/便宜的兼容接口 (如硅基流动、DeepSeek) 都可以直接填。</div>
 
@@ -2547,6 +2559,7 @@ window.storeCleanup = async ()=>{
 })();
 document.getElementById("r_memcycle").value = rc.memCycle||10;
 document.getElementById("r_mempool").value = rc.memPoolRatio||"50/30/20";
+document.getElementById("r_leanmem_on").checked = rc.leanmem!==false;
 (function(){ const gp = RP_PERSONA.getGlobal();
 const el = document.getElementById("persona_sum");
 if(el) el.textContent = gp ? ("当前：" + (gp.name||"") + " " + String(gp.desc||"").slice(0,40)) : "未设置（建议填一下，AI 聊天时会知道你是谁）"; })();
@@ -2638,6 +2651,7 @@ ooc:$("#r_ooc").checked, preset:$("#r_preset").value,
 ttsAuto:$("#r_ttsauto").checked, typewriter:$("#r_typewriter").checked,
 memCycle:Math.max(5,parseInt($("#r_memcycle").value)||10),
 memPoolRatio:(($("#r_mempool")&&$("#r_mempool").value)||"50/30/20").trim()||"50/30/20",
+leanmem:$("#r_leanmem_on")?$("#r_leanmem_on").checked:true,
 /* 世界模拟三件套 */
 worldsim:$("#r_ws_on")?$("#r_ws_on").checked:true,
 wsPerMsg:Math.max(1,parseInt($("#r_ws_permsg")?$("#r_ws_permsg").value:"3")||3),
