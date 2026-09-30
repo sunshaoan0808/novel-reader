@@ -803,3 +803,10 @@ body[data-font="kai"] .bubble{font-family:"Kaiti SC","STKaiti","KaiTi","TW-Kai",
 .linkbtn.danger{color:#d66}
 .charcard.sel{outline:2px solid var(--gold);border-radius:10px}
 .ooc{color:#e0a33e;font-weight:600}
+/* ---- 世界模拟三件套（2026-09-30）：时间/天气/地理 HUD ---- */
+.simbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);
+  background:#14110d;border-bottom:1px solid var(--line);padding:6px 12px;cursor:pointer;line-height:1.6}
+.simchip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;color:var(--ink)}
+.simchip .ic{color:var(--gold);vertical-align:-2px}
+.simgo{margin-left:auto;opacity:.5;color:var(--muted)}
+.wsbar .simline{display:block;white-space:normal;margin-top:2px}

@@ -711,7 +711,8 @@ const RPCFG_KEY = "nd_rp_cfg_v1";
 const getCfg = ()=>{ try{return JSON.parse(localStorage.getItem(CFG_KEY))||{}}catch(e){return{}}};
 const saveCfg = (c)=> localStorage.setItem(CFG_KEY, JSON.stringify(c));
 const getRpCfg = ()=> Object.assign({maxContext:8192, respTokens:512, summaryModel:"",
-  temperature:0.9, topP:1, ooc:true, preset:"classic", optCards:false, optCount:4, optMood:"none", ttsAuto:false, typewriter:true}, JSON.parse(localStorage.getItem(RPCFG_KEY)||"{}"));
+  temperature:0.9, topP:1, ooc:true, preset:"classic", optCards:false, optCount:4, optMood:"none", ttsAuto:false, typewriter:true,
+  worldsim:true, wsPerMsg:3, wsStepMin:30, wsWxAuto:true, wsWxEvery:5}, JSON.parse(localStorage.getItem(RPCFG_KEY)||"{}"));
 const saveRpCfg = (c)=> localStorage.setItem(RPCFG_KEY, JSON.stringify(c));
 const chatKey = (runId, name)=> `nd_chat_${runId}_${name}`;
 const getHist = (k)=>{ try{
@@ -1381,6 +1382,7 @@ return `<div class="msg ${m.role==="user"?"me":""}${mtype==="narr"?" narr":""}${
 renderCtxBar();
 log.scrollTop = log.scrollHeight;
 renderWsBar();
+renderSimBar();
 /* P2 打字机：只对"最新一条 AI 消息"做逐字动画；重渲染旧消息不重复播 */
 try{
 if(lastAI>=0){
@@ -1412,6 +1414,85 @@ bar.innerHTML = `<div class="ctxrow"><div class="ctxbar-bg"><div class="ctxbar-f
 + `<span class="ctxnum">上下文 ${used}/${max} · 历史${s.histKept||0}条</span></div>`
 + (hits.length ? `<div class="ctxlore">${icon("book-open",14)} 触发：${hits.map(x=>esc(x)).join("、")}</div>` : "");
 }
+/* ============ 世界模拟 HUD：聊天页顶栏下常驻时间/天气/地点 ============ */
+function simChatKey(){
+  try{ return chatHistKey(); }catch(e){ return "misc"; }
+}
+function simHint(){
+  var novel = "";
+  try{ novel = ((window.__DATA__.runs||{})[CHAT.runId]||{}).novel || ""; }catch(e){}
+  if(CHAT.mode==="traverse"){
+    try{ var t = (typeof RP_TRAVERSE!=="undefined") ? RP_TRAVERSE.get(CHAT.travId) : null;
+      if(t && t.worldName) novel = t.worldName; }catch(e){}
+  }
+  return {novel: novel, worldName: novel};
+}
+function renderSimBar(){
+  if(CHAT.mode==="traverse") return; /* 穿越用 wsbar 显示 */
+  const head = document.getElementById("chathead");
+  let bar = document.getElementById("simbar");
+  if(typeof RP_WORLDSIM==="undefined" || !head) { if(bar) bar.style.display="none"; return; }
+  if(!RP_WORLDSIM.enabled()){ if(bar) bar.style.display="none"; return; }
+  if(!bar){
+    bar = document.createElement("div");
+    bar.id = "simbar"; bar.className = "simbar";
+    bar.title = "世界模拟：点我调整时间/天气/地点";
+    bar.addEventListener("click", ()=>simEditor());
+    head.parentNode.insertBefore(bar, head.nextSibling);
+  }
+  bar.style.display = "flex";
+  bar.innerHTML = RP_WORLDSIM.briefHTML(simChatKey(), simHint()) + `<span class="simgo">›</span>`;
+}
+/* ============ 世界模拟编辑器（手动调整时间/天气/地点） ============ */
+window.simEditor = ()=>{
+  if(typeof RP_WORLDSIM==="undefined"){ alert("世界模拟模块未加载"); return; }
+  const key = simChatKey(), hint = simHint();
+  const st = RP_WORLDSIM.ensure(key, hint);
+  __backAction = ()=>showChat();
+  document.body.classList.remove("chatmode");
+  titleEl.innerHTML = icon("clock") + " 世界模拟"; subEl.textContent = "";
+  const p = RP_WORLDSIM.curPlace(st);
+  const wxOpts = RP_WORLDSIM.WEATHER.map(w=>
+    `<option value="${w.id}" ${st.wx===w.id?"selected":""}>${w.name}</option>`).join("");
+  const placeRows = st.places.map(pl=>
+    `<div class="kvline">${pl.id===st.cur?"★ ":""}${esc(pl.name)}${pl.mood?" · "+esc(pl.mood):""}`+
+    (pl.id!==st.cur?` <button class="btn ghost sm" onclick="wsMoveTo('${esc(pl.name).replace(/'/g,"\\'")}')">前往（+${st.travelMin||30}分钟）</button>`:"")+
+    `</div>`).join("") || `<div class="meta">暂无地点</div>`;
+  view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回</button>
+  <div class="card"><h3>${icon("clock",15)} 时间</h3>
+    <div class="kv" style="font-size:17px;margin-bottom:8px">${esc(RP_WORLDSIM.fmtTime(st))}</div>
+    <div class="btnrow">
+      <button class="btn ghost" style="white-space:nowrap" onclick="wsAdjustTime(30)">+30分钟</button>
+      <button class="btn ghost" style="white-space:nowrap" onclick="wsAdjustTime(120)">+2小时</button>
+      <button class="btn ghost" style="white-space:nowrap" onclick="wsAdjustTime(1440)">+1天</button>
+      <button class="btn ghost" style="white-space:nowrap" onclick="wsAdjustTime(-60)">-1小时</button>
+    </div></div>
+  <div class="card"><h3>${icon("ws_cloud",15)} 天气</h3>
+    <div class="field"><label>当前：${esc(RP_WORLDSIM.weatherName(st.wx))}（${esc(RP_WORLDSIM.seasonName(st.m))}季）</label>
+    <div class="modelrow"><select id="ws_wxsel">${wxOpts}</select>
+    <button class="btn" onclick="wsSetWeather()">设为此天气</button></div></div></div>
+  <div class="card"><h3>${icon("pin",15)} 地点 · 当前：${esc(p.name)}</h3>
+    ${placeRows}
+    <div class="field" style="margin-top:8px"><label>新增地点</label>
+    <div class="modelrow"><input id="ws_newplace" placeholder="地点名，如：潇湘馆">
+    <button class="btn ghost" onclick="wsAddPlace()">添加</button></div></div>
+    <div class="hint">前往地点消耗 ${st.travelMin||30} 分钟（联动时间）。AI 也可在回复中用 ⟦地点=xxx⟧ 自行移动。</div></div>`;
+};
+window.wsAdjustTime = (min)=>{
+  RP_WORLDSIM.adjustTime(simChatKey(), min, simHint()); simEditor();
+};
+window.wsSetWeather = ()=>{
+  const v = parseInt(document.getElementById("ws_wxsel").value, 10);
+  RP_WORLDSIM.setWeather(simChatKey(), v, simHint()); simEditor();
+};
+window.wsMoveTo = (name)=>{
+  RP_WORLDSIM.moveTo(simChatKey(), name, "", simHint()); simEditor();
+};
+window.wsAddPlace = ()=>{
+  const el = document.getElementById("ws_newplace");
+  const name = (el.value||"").trim(); if(!name) return;
+  RP_WORLDSIM.addPlace(simChatKey(), name, "", "", simHint()); simEditor();
+};
 /* ============ 单条消息评分 (对标 Talkie RatingFeedback, 本地存档) ============ */
 window.rateMsg = (idx, v)=>{
 const k = chatHistKey();
@@ -2243,6 +2324,19 @@ view.innerHTML = renderStorageCard() + `
 <div class="hint">Key 只保存在本机, 聊天时由手机直接请求你填的接口, 不经过任何中转。
 免费/便宜的兼容接口 (如硅基流动、DeepSeek) 都可以直接填。</div>
 
+<div class="setcard"><h3>${icon("clock",15)} 世界模拟 · 时间 / 天气 / 地理</h3>
+<div class="field"><label><input id="r_ws_on" type="checkbox" style="width:auto"> 启用世界模拟（每会话独立时钟，随聊天自动流逝）</label></div>
+<div class="field"><label>时间推进：每 N 轮用户消息</label>
+<input id="r_ws_permsg" type="number" min="1" max="20" step="1" value=""></div>
+<div class="field"><label>每次推进分钟数（古代世界显示为时辰）</label>
+<input id="r_ws_stepmin" type="number" min="0" max="1440" step="5" value=""></div>
+<div class="field"><label><input id="r_ws_wxauto" type="checkbox" style="width:auto"> 天气自动流转（按季节随机变化）</label></div>
+<div class="field"><label>每 N 轮掷一次天气变化</label>
+<input id="r_ws_wxevery" type="number" min="1" max="50" step="1" value=""></div>
+<div class="hint">时间/天气/地点会注入 prompt，AI 叙述会自动呼应；AI 也可用 ⟦+30分钟⟧ / ⟦天气=雨⟧ / ⟦地点=宁国府⟧ 标记调整。地点切换消耗移动时间。</div>
+<div class="btnrow"><button class="btn" onclick="saveRpCfgUI()">保存 RP 设置</button></div>
+</div>
+
 <h2 class="sec">数据</h2>
 <div class="hint">产物数据随 App 版本更新。新蒸馏任务跑完后, 我会打新版 APK, 覆盖安装即可。</div>
 <div class="btnrow"><button class="btn ghost" onclick="showOnboard(1)">重新查看新手引导</button>
@@ -2261,6 +2355,11 @@ document.getElementById("r_optmood").value = rc.optMood||"none";
 document.getElementById("r_ooc").checked = !!rc.ooc;
 document.getElementById("r_ttsauto").checked = !!rc.ttsAuto;
 document.getElementById("r_typewriter").checked = rc.typewriter!==false;
+document.getElementById("r_ws_on").checked = rc.worldsim!==false;
+document.getElementById("r_ws_permsg").value = rc.wsPerMsg||3;
+document.getElementById("r_ws_stepmin").value = rc.wsStepMin||30;
+document.getElementById("r_ws_wxauto").checked = rc.wsWxAuto!==false;
+document.getElementById("r_ws_wxevery").value = rc.wsWxEvery||5;
 (function(){ /* P2: 壁纸/字体选项 */
 if(typeof RP_APPEAR==="undefined") return;
 const ap = RP_APPEAR.getAppear();
@@ -2380,7 +2479,13 @@ optCount:Math.min(6,Math.max(2,parseInt($("#r_optcount").value)||4)),
 optMood:$("#r_optmood").value||"none",
 ooc:$("#r_ooc").checked, preset:$("#r_preset").value,
 ttsAuto:$("#r_ttsauto").checked, typewriter:$("#r_typewriter").checked,
-memCycle:Math.max(5,parseInt($("#r_memcycle").value)||10)});
+memCycle:Math.max(5,parseInt($("#r_memcycle").value)||10),
+/* 世界模拟三件套 */
+worldsim:$("#r_ws_on")?$("#r_ws_on").checked:true,
+wsPerMsg:Math.max(1,parseInt($("#r_ws_permsg")?$("#r_ws_permsg").value:"3")||3),
+wsStepMin:Math.max(0,parseInt($("#r_ws_stepmin")?$("#r_ws_stepmin").value:"30")||0),
+wsWxAuto:$("#r_ws_wxauto")?$("#r_ws_wxauto").checked:true,
+wsWxEvery:Math.max(1,parseInt($("#r_ws_wxevery")?$("#r_ws_wxevery").value:"5")||5)});
 /* P2: 壁纸/字体 */
 try{
 if(typeof RP_APPEAR!=="undefined"){
@@ -3183,9 +3288,18 @@ async function showTraverseChat(cfg){
 function renderWsBar(){
   const bar = $("#wsbar"); if(!bar || CHAT.mode!=="traverse") return;
   const st = RP_TRAVERSE.getState(CHAT.travId);
+  /* 世界模拟三件套：时间/天气/地点（与单聊/群聊同一套状态键 nd_travchat_<id>） */
+  let sim = "";
+  try{
+    if(typeof RP_WORLDSIM!=="undefined" && RP_WORLDSIM.enabled()){
+      const trav = RP_TRAVERSE.get(CHAT.travId) || {};
+      sim = '<span class="simline">' + RP_WORLDSIM.briefHTML("nd_travchat_"+CHAT.travId, {novel: trav.worldName||"", worldName: trav.worldName||""}) + "</span>";
+    }
+  }catch(e){}
   bar.innerHTML = `${icon("scroll",13)} ${esc(RP_TRAVERSE.stateLine(st))}`+
     (st.items.length?` · 物品${st.items.length}`:"")+
     ((st.flags&&st.flags.ooc>0)?` · <span class="ooc">出戏值${st.flags.ooc}</span>`:"")+
+    sim+
     `<span style="float:right;opacity:.6">查看 ›</span>`;
 }
 window.travWsEditor = ()=>{
@@ -3202,6 +3316,10 @@ window.travWsEditor = ()=>{
   <div class="field"><label>地点</label><input id="wsLoc" style="width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px" value="${esc(st.loc||"")}"></div>
   <div class="field"><label>剧情进度</label><input id="wsProg" style="width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px" value="${esc(st.progress||"")}"></div>
   <div class="btnrow" style="margin-top:8px"><button class="btn" onclick="travWsSave()">保存</button></div>
+  </div>
+  <div class="card"><h3>${icon("clock",15)} 世界模拟</h3>
+  <div class="btnrow"><button class="btn ghost" onclick="simEditor()">调整时间 / 天气 / 地点</button></div>
+  <div class="hint">每会话独立时钟，随聊天自动流逝；天气按季节流转；地点切换消耗移动时间。三者会注入 prompt，AI 叙述自动呼应。</div>
   </div>
   <h2 class="sec">随身物品</h2>
   <div class="card">${st.items.length? st.items.map(i=>`<div class="kvline">${esc(i)}</div>`).join("") : `<div class="meta">空</div>`}</div>

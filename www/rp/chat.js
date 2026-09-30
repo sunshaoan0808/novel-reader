@@ -276,6 +276,10 @@ async function send(runId, name, text, opts){
 
   var budget = opts.budget || {};
   if(!budget.maxContext && cfg.maxContext) budget.maxContext = cfg.maxContext;
+  /* 世界模拟：用户消息推进时间/天气（Living world 思路），prompt 注入三要素 */
+  var wsId = (typeof chatKey !== "undefined") ? chatKey(runId, name) : (runId + "|" + name);
+  var wsHint = {novel: run.novel};
+  try{ if(typeof RP_WORLDSIM !== "undefined") RP_WORLDSIM.onUserMessage(wsId, wsHint); }catch(e){}
   var b = RP_PROMPT.buildMessages(card, {
     novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: run.relations,
     memory: memPrompt + RP_TASKS.renderPrompt(runId, name, text),
@@ -283,6 +287,13 @@ async function send(runId, name, text, opts){
     persona: RP_PERSONA.renderText(RP_PERSONA.resolve(runId)),
     pov: opts.pov, person: opts.person,
   }, budget);
+  try{
+    if(typeof RP_WORLDSIM !== "undefined"){
+      var wsText = RP_WORLDSIM.renderPrompt(wsId, wsHint);
+      if(wsText && b.messages.length && b.messages[0].role === "system")
+        b.messages[0].content += "\n\n" + wsText;
+    }
+  }catch(e){}
   if(opts.optCards && b.messages.length && b.messages[0].role === "system")
     b.messages[0].content += "\n\n" + optCardsInstr(opts.optCount, opts.optMood);
   if(opts.plotOutline && b.messages.length && b.messages[0].role === "system")
@@ -331,6 +342,13 @@ async function send(runId, name, text, opts){
   }
 
   reply = applyRegex(reply, getRegex(runId, name));
+  /* 世界模拟：解析 AI 的 ⟦时间/天气/地点⟧ 标记并从正文剥离 */
+  try{
+    if(typeof RP_WORLDSIM !== "undefined"){
+      var wres = RP_WORLDSIM.applyReply(wsId, reply, wsHint);
+      if(wres.changed) reply = wres.clean;
+    }
+  }catch(e){}
   h.push(newMsg("assistant", reply));
   return {history: h, aborted: false, stats: b.stats};
 }
@@ -405,6 +423,12 @@ async function sendGroup(runId, members, speakers, text, opts){
   if(opts.onPush) opts.onPush();
   if(opts.onUserMsg) opts.onUserMsg();
 
+  /* 世界模拟：群聊每轮用户消息推进一次 */
+  try{
+    if(typeof RP_WORLDSIM !== "undefined" && typeof groupKey !== "undefined")
+      RP_WORLDSIM.onUserMessage(groupKey(runId, members), {novel: run.novel});
+  }catch(e){}
+
   var doneSpeakers = [], lastStats = null, aborted = false, failed = false;
 
   for(var si = 0; si < speakers.length && !aborted && !failed; si++){
@@ -450,6 +474,16 @@ async function genOneSpeaker(runId, run, members, speaker, text, h, opts, budget
     b.messages[0].content += "\n\n" + plotRef(opts.plotOutline);
   if(opts.scenario && b.messages.length && b.messages[0].role === "system")
     b.messages[0].content += "\n\n" + opts.scenario;
+  /* 世界模拟：群聊与单聊共用同一会话时钟 */
+  var wsIdG = null, wsHintG = null;
+  try{
+    if(typeof RP_WORLDSIM !== "undefined" && typeof groupKey !== "undefined"){
+      wsIdG = groupKey(runId, members); wsHintG = {novel: run.novel};
+      var wsTextG = RP_WORLDSIM.renderPrompt(wsIdG, wsHintG);
+      if(wsTextG && b.messages.length && b.messages[0].role === "system")
+        b.messages[0].content += "\n\n" + wsTextG;
+    }
+  }catch(e){}
   var gpost = RP_GROUP.groupPostInstructions(speaker, others, opts.pov, opts.person);
   b.messages[b.messages.length - 1].content = gpost;
   if(opts.onSystem) opts.onSystem(b.messages[0].content + "\n\n" + gpost, b.stats);
@@ -494,6 +528,13 @@ async function genOneSpeaker(runId, run, members, speaker, text, h, opts, budget
   }
 
   reply = applyRegex(reply, getRegex(runId, speaker));
+  /* 世界模拟：解析 AI 标记 */
+  try{
+    if(typeof RP_WORLDSIM !== "undefined" && wsIdG){
+      var wresG = RP_WORLDSIM.applyReply(wsIdG, reply, wsHintG);
+      if(wresG.changed) reply = wresG.clean;
+    }
+  }catch(e){}
   var msg = newMsg("assistant", reply);
   msg.speaker = speaker;
   h.push(msg);
@@ -512,6 +553,11 @@ async function sendTraverse(travId, text, opts){
   h.push(newMsg("user", text));
   if(opts.onPush) opts.onPush();
   if(opts.onUserMsg) opts.onUserMsg();
+
+  /* 世界模拟：穿越会话独立时钟/天气/地点 */
+  var wsIdT = "nd_travchat_" + travId;
+  var wsHintT = {novel: trav.worldName || "", worldName: trav.worldName || ""};
+  try{ if(typeof RP_WORLDSIM !== "undefined") RP_WORLDSIM.onUserMessage(wsIdT, wsHintT); }catch(e){}
 
   var cardHint = "穿越世界";
   await RP_MEM.maybeAnalyze("trav", travId, h, cfg,
@@ -532,6 +578,14 @@ async function sendTraverse(travId, text, opts){
     b.messages.push({role: "system", content: String(opts.extraPrompt)});
     b.preview += "\n\n" + String(opts.extraPrompt);
   }
+  /* 世界模拟：时间/天气/地点注入 */
+  try{
+    if(typeof RP_WORLDSIM !== "undefined"){
+      var wsTextT = RP_WORLDSIM.renderPrompt(wsIdT, wsHintT);
+      if(wsTextT && b.messages.length && b.messages[0].role === "system")
+        b.messages[0].content += "\n\n" + wsTextT;
+    }
+  }catch(e){}
   if(opts.onSystem) opts.onSystem(b.preview, b.stats);
 
   var reply = "";
@@ -560,6 +614,14 @@ async function sendTraverse(travId, text, opts){
     RP_TRAVERSE.saveState(travId, RP_TRAVERSE.mergeState(st, parsed.patch));
   }
   reply = parsed.clean || reply;
+
+  /* 世界模拟：解析 AI 的 ⟦时间/天气/地点⟧ 标记并从正文剥离 */
+  try{
+    if(typeof RP_WORLDSIM !== "undefined"){
+      var wresT = RP_WORLDSIM.applyReply(wsIdT, reply, wsHintT);
+      if(wresT.changed) reply = wresT.clean;
+    }
+  }catch(e){}
 
   h.push(newMsg("assistant", reply));
   return {history: h, aborted: false, stats: b.stats,
