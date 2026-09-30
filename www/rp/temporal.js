@@ -117,9 +117,23 @@ return "（第" + x.ev.ch + "回）" + String(x.ev.s).slice(0, 72);
 return {chapter: S, manual: st.manual, text: head + "\n" + lines.join("\n"), items: top.length, future: future};
 }
 
+/* 人物词汇表（APEX-MEM 人物→事件索引用）：日历 c 数组已归一化的人名去重；未加载时返回空数组 */
+function persons(){
+  var out = [], seen = {};
+  try{
+    (_cal || []).forEach(function(ev){
+      (ev.c || []).forEach(function(c){
+        c = String(c || "");
+        if(c && !seen[c]){ seen[c] = 1; out.push(c); }
+      });
+    });
+  }catch(e){}
+  return out;
+}
+
 return {
 getS: getS, setS: setS, clampCh: clampCh, defaultChapter: defaultChapter,
-fmtChapter: fmtChapter, enabled: enabled,
+fmtChapter: fmtChapter, enabled: enabled, persons: persons,
 calendarFor: calendarFor, retrieveTemporal: retrieveTemporal,
 _setCalendarForTest: _setCalendarForTest, _STAGE_MAP: STAGE_MAP
 };

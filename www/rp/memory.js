@@ -165,6 +165,7 @@ if(base) return seedStores(base);
 return null;
 }
 var p3 = (prev.profile3 || []).slice(), e3 = (prev.event3 || []).slice(), r3 = (prev.record3 || []).slice();
+var apexW = (typeof RP_APEX !== "undefined") && RP_APEX.on(); // APEX-MEM: 开则只追加版本, 关则覆盖式旧行为
 if(!o.drop){
 /* profile: 只追加/覆盖 (新条目包含旧条目或反之 -> 替换, 否则追加) */
 (o.profile || []).forEach(function(tx){
@@ -175,10 +176,16 @@ for(var i = 0; i < p3.length; i++){
 var e = String(p3[i].text || "");
 if(e && (e.indexOf(tx) >= 0 || tx.indexOf(e) >= 0)){ found = i; break; }
 }
+if(apexW){
+if(found >= 0) p3.push(RP_APEX.appendVersion(p3, "p3", p3[found].id,
+{fromPin: !!p3[found].fromPin, text: tx}, false));
+else p3.push(RP_APEX.appendVersion(p3, "p3", nextStoreId(p3), {text: tx}, true));
+}else{
 if(found >= 0) p3[found] = {id: p3[found].id, fromPin: !!p3[found].fromPin, text: tx, updatedAt: Date.now()};
 else p3.push({id: nextStoreId(p3), text: tx, updatedAt: Date.now()});
+}
 });
-p3 = p3.slice(-PROFILE3_MAX);
+p3 = apexW ? RP_APEX.capLogical(p3, PROFILE3_MAX) : p3.slice(-PROFILE3_MAX);
 /* event: 演化合并 —— 只有 event 库允许跨周期合并, profile/record 不动 */
 (o.event || []).forEach(function(ev){
 if(!ev) return;
@@ -188,25 +195,34 @@ if(!topic && !state) return;
 var m = null;
 for(var i = 0; i < e3.length; i++) if(eventSimilar(e3[i], topic)){ m = e3[i]; break; }
 if(m){
-m.state = ((m.state ? m.state + "；" : "") + state).slice(0, 200);
-if(!m.t_anchor) m.t_anchor = ta;
-m.merged = (m.merged || 1) + 1; m.updatedAt = Date.now();
+var ns = ((m.state ? m.state + "；" : "") + state).slice(0, 200);
+if(apexW) e3.push(RP_APEX.appendVersion(e3, "e3", m.id,
+{topic: m.topic, t_anchor: m.t_anchor || ta, state: ns, merged: (m.merged || 1) + 1}, false));
+else { m.state = ns; if(!m.t_anchor) m.t_anchor = ta; m.merged = (m.merged || 1) + 1; m.updatedAt = Date.now(); }
 }else{
-e3.push({id: nextStoreId(e3), topic: topic, t_anchor: ta, state: state, updatedAt: Date.now()});
+if(apexW) e3.push(RP_APEX.appendVersion(e3, "e3", nextStoreId(e3),
+{topic: topic, t_anchor: ta, state: state}, true));
+else e3.push({id: nextStoreId(e3), topic: topic, t_anchor: ta, state: state, updatedAt: Date.now()});
 }
 });
-e3 = e3.slice(-EVENT3_MAX);
+e3 = apexW ? RP_APEX.capLogical(e3, EVENT3_MAX) : e3.slice(-EVENT3_MAX);
 /* record: 只追加不改写 */
 (o.record || []).forEach(function(g){
 g = String(g || "").slice(0, 120);
 if(!g) return;
-r3.push({id: nextStoreId(r3), gist: g,
+if(apexW) r3.push(RP_APEX.appendVersion(r3, "r3", nextStoreId(r3), {gist: g,
+msg_from: (msgRange && msgRange.from) || null, msg_to: (msgRange && msgRange.to) || null}, true));
+else r3.push({id: nextStoreId(r3), gist: g,
 msg_from: (msgRange && msgRange.from) || null, msg_to: (msgRange && msgRange.to) || null});
 });
-r3 = r3.slice(-RECORD3_MAX);
+r3 = apexW ? RP_APEX.capLogical(r3, RECORD3_MAX) : r3.slice(-RECORD3_MAX);
 }
 var mood = (o.mood && o.mood.state) ? {state: String(o.mood.state).slice(0, 30),
 filter: String(o.mood.filter || "").slice(0, 150)} : (prev.mood || null);
+if(apexW){ // 保证返回状态的每条目都有版本戳 (种子条目无写入时也补 v1)
+var _e3 = RP_APEX.ensure({profile3: p3, event3: e3, record3: r3});
+p3 = _e3.st.profile3; e3 = _e3.st.event3; r3 = _e3.st.record3;
+}
 return {mood: mood, short: prev.short || [], long: prev.long || "",
 profile3: p3, event3: e3, record3: r3, migrated3: true, updatedAt: Date.now()};
 }
@@ -246,6 +262,12 @@ budgetTokens = Math.max(0, Math.floor(budgetTokens || 0));
 var st = get(runId, name) || {};
 var lean = leanmemOn();
 if(lean) st = migrate3(runId, name, st); // 幂等迁移: 老 short/long 进三库, 不丢水位
+var apex = lean && (typeof RP_APEX !== "undefined") && RP_APEX.on();
+if(apex){ var _ae = RP_APEX.ensure(st); st = _ae.st; if(_ae.changed) save(runId, name, st); }
+/* APEX-MEM: 展示默认只看最新版 (旧版本保留在版本链里, 事件簿可展开查看) */
+var P3 = apex ? RP_APEX.latestOf(st.profile3) : (st.profile3 || []);
+var E3 = apex ? RP_APEX.latestOf(st.event3) : (st.event3 || []);
+var R3 = apex ? RP_APEX.latestOf(st.record3) : (st.record3 || []);
 var iron = getIronLaw(runId, name, opts.cardId);
 var short = (st.short || []).slice();
 var pinned = short.filter(function(m){ return m.pin; }).reverse();  // 新→旧
@@ -294,7 +316,7 @@ if(pl) pinLines.push(pl);
 }
 /* LeanMem: profile 库 (稳定事实) 进 important 池; fromPin 的已在置顶区展示, 跳过 */
 if(lean){
-var p3arr = (st.profile3 || []);
+var p3arr = P3;
 for(var qi = 0; qi < p3arr.length; qi++){
 if(p3arr[qi].fromPin) continue;
 var ql = addImp("profile", "- " + String(p3arr[qi].text || ""), false);
@@ -317,9 +339,9 @@ if(moodSec) secs.push(moodSec);
 
 /* ---- recent 池: LeanMem 开 -> event 库 (新→旧, 按条丢弃); 关 -> 未置顶短期 ---- */
 var recLines = [], recLeft = bRec;
-if(lean && st.event3 && st.event3.length){
+if(lean && E3.length){
 pools.recent.store = "event库";
-var evSrc = st.event3.slice().reverse(); // 新→旧
+var evSrc = E3.slice().reverse(); // 新→旧
 for(var rei = 0; rei < evSrc.length; rei++){
 var evx = evSrc[rei];
 var et = "- " + (evx.t_anchor ? evx.t_anchor + " " : "") + String(evx.topic || "") +
@@ -367,9 +389,22 @@ else pools.similar.dropped = 1;
 }
 
 /* LeanMem: record 库 (gist + 原文指针) 补进 similar 池剩余预算, 只追加不改写;
- * legacy 种子(由旧 long 迁移)不单独渲染, 仍走上面的"占位"路径。 */
-if(lean){
-var rec3src = (st.record3 || []).filter(function(r){ return r && !r.legacy; }).reverse(); // 新→旧
+ * legacy 种子(由旧 long 迁移)不单独渲染, 仍走上面的"占位"路径。
+ * APEX-MEM: chat.js 的 apexFor 已做人物收窄 + 检索时冲突消解, 这里直接渲染干净版本。 */
+var apexBlock = (apex && opts.apex && opts.apex.text) ? opts.apex : null;
+if(apexBlock){
+pools.similar.source = (tInfo ? "时序切片+" : "") + "记录库·版本链";
+var abn = estTokens(apexBlock.text);
+if(abn <= simLeft){
+secs.push(apexBlock.text); pools.similar.tokens += abn; pools.similar.items += (apexBlock.items || 0);
+}else if(simLeft >= 20){
+var abc = truncText(apexBlock.text, simLeft);
+secs.push(abc); pools.similar.tokens += estTokens(abc); pools.similar.items += (apexBlock.items || 0);
+}else pools.similar.dropped++;
+if(apexBlock.adjudicated){ pools.similar.adjudicated = true; pools.similar.adjudReason = apexBlock.reason || ""; }
+}
+if(lean && !apexBlock){
+var rec3src = R3.filter(function(r){ return r && !r.legacy; }).reverse(); // 新→旧
 if(rec3src.length){
 var gLeft = bSim - pools.similar.tokens;
 var gLines = [];
@@ -471,6 +506,9 @@ async function maybeAnalyze(runId, name, history, cfg, callChat, cardHint){
 var st = get(runId, name);
 var lean = leanmemOn();
 if(lean) st = migrate3(runId, name, st); // 幂等迁移, 先保证三库存在; 不丢水位
+if(lean && (typeof RP_APEX !== "undefined") && RP_APEX.on()){
+var _ae2 = RP_APEX.ensure(st); st = _ae2.st; if(_ae2.changed) save(runId, name, st);
+}
 var upId = (st && st.up_to_msg_id) || null;
 var idx = 0;
 if(upId){
@@ -538,12 +576,17 @@ var st = get(runId, name);
 var short = (st && st.short) || [];
 var pinned = 0;
 short.forEach(function(m){ if(m.pin) pinned++; });
+var apexS = leanmemOn() && (typeof RP_APEX !== "undefined") && RP_APEX.on();
+var cntP = 0, cntE = 0, cntR = 0;
+if(st){
+if(apexS){ cntP = RP_APEX.latestOf(st.profile3).length;
+cntE = RP_APEX.latestOf(st.event3).length; cntR = RP_APEX.latestOf(st.record3).length; }
+else { cntP = (st.profile3 || []).length; cntE = (st.event3 || []).length; cntR = (st.record3 || []).length; }
+}
 return {events: short.length, pinned: pinned, shortN: short.length,
 longN: (st && st.long) ? 1 : 0, shortMax: SHORT_MAX, pinMax: PIN_MAX,
-profileN: (st && st.profile3) ? st.profile3.length : 0,
-event3N: (st && st.event3) ? st.event3.length : 0,
-recordN: (st && st.record3) ? st.record3.length : 0,
-lean: leanmemOn() && !!(st && st.migrated3)};
+profileN: cntP, event3N: cntE, recordN: cntR,
+lean: leanmemOn() && !!(st && st.migrated3), apex: apexS && !!(st && st.apexMigrated)};
 }
 
 return {get: get, save: save, clear: clear, renderPrompt: renderPrompt,

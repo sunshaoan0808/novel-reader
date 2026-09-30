@@ -713,6 +713,7 @@ const saveCfg = (c)=> localStorage.setItem(CFG_KEY, JSON.stringify(c));
 const getRpCfg = ()=> Object.assign({maxContext:8192, respTokens:512, summaryModel:"",
   temperature:0.9, topP:1, ooc:true, preset:"classic", optCards:false, optCount:4, optMood:"none", ttsAuto:false, typewriter:true,
   worldsim:true, wsPerMsg:3, wsStepMin:30, wsWxAuto:true, wsWxEvery:5, temporal:true, leanmem:true,
+  apex:true,
   memCycle:10, memPoolRatio:"50/30/20",
   ppaMode:"key", ppaModel:"",
   director:true, directorTier:"sentinel", directorStyle:"slowburn", directorEvery:5, directorStale:8, directorModel:""}, JSON.parse(localStorage.getItem(RPCFG_KEY)||"{}"));
@@ -1917,6 +1918,17 @@ return `<div class="tl-item${m.pin?" gold":""}"><div class="card alb-event${m.pi
 + `<button class="btn danger" onclick="memDel(${id})">删除</button>`
 + `</div></div></div>`;
 };
+const apexAlb = (typeof RP_APEX !== "undefined") && (getRpCfg().apex !== false) && !!(st && st.migrated3);
+const P3alb = apexAlb ? RP_APEX.latestOf(st.profile3) : ((st && st.profile3) || []);
+const E3alb = apexAlb ? RP_APEX.latestOf(st.event3) : ((st && st.event3) || []);
+const R3alb = apexAlb ? RP_APEX.latestOf(st.record3) : ((st && st.record3) || []);
+const apexHist = (arr, id, fmt)=>{
+  if(!apexAlb || typeof RP_APEX === "undefined") return "";
+  const vers = RP_APEX.versionsOf(arr || [], id);
+  if(vers.length <= 1) return "";
+  const olds = vers.slice(0, -1).reverse().map(v=>`<div class="alb-fact" style="opacity:.62">v${v.v||1} · ${esc(fmt(v))}</div>`).join("");
+  return `<details class="alb-hist"><summary>历史版本（${vers.length - 1}）</summary>${olds}</details>`;
+};
 view.innerHTML = `<button class="back" onclick="albumBack()">${icon("back")} 返回</button>
 ${muBar}
 <div class="alb-stats">${icon("brain",14)} ${short.length} 条记忆 · ${icon("pin",13)} ${pinned.length} 置顶 · ${icon("thumb-up",13)} ${up} ${icon("thumb-down",13)} ${dn}</div>`
@@ -1924,12 +1936,12 @@ ${muBar}
 ? `<div class="card alb-mood"><div class="alb-time">当前心境</div><div class="alb-fact">${esc(st.mood.state)}${st.mood.filter?" —— "+esc(st.mood.filter):""}</div></div>` : "")
 + ((st && st.migrated3)
 ? `<h2 class="sec">三库记忆（LeanMem 分流）</h2>`
-+ `<div class="card"><div class="alb-time">画像库 · 稳定事实 ${(st.profile3||[]).length} 条</div>`
-+ ((st.profile3||[]).map(p=>`<div class="alb-fact">· ${esc(p.text||"")}</div>`).join("")||'<div class="empty">暂无</div>') + `</div>`
-+ `<div class="card"><div class="alb-time">事件库 · 带时间锚 ${(st.event3||[]).length} 条（可演化合并）</div>`
-+ ((st.event3||[]).slice().reverse().map(e=>`<div class="alb-fact">· ${esc((e.t_anchor?e.t_anchor+" ":"")+(e.topic||""))}${e.state?" —— "+esc(e.state):""}${(e.merged||0)>1?` <span class="badge">合并×${e.merged}</span>`:""}</div>`).join("")||'<div class="empty">暂无</div>') + `</div>`
-+ `<div class="card"><div class="alb-time">记录库 · 原文索引 ${(st.record3||[]).filter(r=>!r.legacy).length} 条（只追加不改写）</div>`
-+ ((st.record3||[]).filter(r=>!r.legacy).slice().reverse().map(r=>`<div class="alb-fact">· ${esc(r.gist||"")}${(r.msg_from||r.msg_to)?` <span style="opacity:.6">（原文 ${esc(r.msg_from||"?")}→${esc(r.msg_to||"")}）</span>`:""}</div>`).join("")||'<div class="empty">暂无</div>') + `</div>`
++ `<div class="card"><div class="alb-time">画像库 · 稳定事实 ${P3alb.length} 条${apexAlb ? "（版本链）" : ""}</div>`
++ (P3alb.map(p=>`<div class="alb-fact">· ${esc(p.text||"")}${(p.v||1)>1?` <span class="badge">v${p.v}</span>`:""}</div>`+apexHist(st.profile3,p.id,x=>x.text||"")).join("")||'<div class="empty">暂无</div>') + `</div>`
++ `<div class="card"><div class="alb-time">事件库 · 带时间锚 ${E3alb.length} 条（可演化合并）${apexAlb ? "（版本链）" : ""}</div>`
++ (E3alb.slice().reverse().map(e=>`<div class="alb-fact">· ${esc((e.t_anchor?e.t_anchor+" ":"")+(e.topic||""))}${e.state?" —— "+esc(e.state):""}${(e.merged||0)>1?` <span class="badge">合并×${e.merged}</span>`:""}${(e.v||1)>1?` <span class="badge">v${e.v}</span>`:""}</div>`+apexHist(st.event3,e.id,x=>(x.t_anchor?x.t_anchor+" ":"")+(x.topic||"")+(x.state?" —— "+x.state:""))).join("")||'<div class="empty">暂无</div>') + `</div>`
++ `<div class="card"><div class="alb-time">记录库 · 原文索引 ${R3alb.filter(r=>!r.legacy).length} 条（只追加不改写）${apexAlb ? "（版本链）" : ""}</div>`
++ (R3alb.filter(r=>!r.legacy).slice().reverse().map(r=>`<div class="alb-fact">· ${esc(r.gist||"")}${(r.msg_from||r.msg_to)?` <span style="opacity:.6">（原文 ${esc(r.msg_from||"?")}→${esc(r.msg_to||"")}）</span>`:""}${(r.v||1)>1?` <span class="badge">v${r.v}</span>`:""}</div>`+apexHist(st.record3,r.id,x=>x.gist||"")).join("")||'<div class="empty">暂无</div>') + `</div>`
 : "")
 + `<h2 class="sec">事件时间线${pinned.length?"（置顶优先）":""}</h2>`
 + `<div class="timeline">` + pinned.concat(rest).map(evCard).join("") + `</div>`
@@ -2339,7 +2351,7 @@ const segRows = Object.keys(s.segTokens || {}).map(k=>
 `<div class="storow"><span>${DIAG_SEG_LABELS[k] || k}</span><span>${s.segTokens[k]} tok</span></div>`).join("");
 const poolRows = Object.keys(lp.memPools || {}).filter(k=>k in DIAG_POOL_LABELS).map(k=>{
 const p = lp.memPools[k];
-return `<div class="storow"><span>${DIAG_POOL_LABELS[k] || k}</span><span>${p.tokens} tok · ${p.items} 条${p.dropped ? ` · 丢弃 ${p.dropped}` : ""}${p.source ? ` · ${p.source}` : ""}</span></div>`;
+return `<div class="storow"><span>${DIAG_POOL_LABELS[k] || k}</span><span>${p.tokens} tok · ${p.items} 条${p.dropped ? ` · 丢弃 ${p.dropped}` : ""}${p.source ? ` · ${p.source}` : ""}${p.adjudicated ? ` · 冲突已消解${p.adjudReason ? "(" + esc(p.adjudReason) + ")" : ""}` : ""}</span></div>`;
 }).join("");
 const dropped = (s.droppedSegs || []).map(k=>DIAG_SEG_LABELS[k] || k).join("、");
 const sysPreview = String(window.LAST_SYSTEM || "");
@@ -2495,6 +2507,7 @@ view.innerHTML = renderStorageCard() + `
 <div class="field"><label>记忆三池预算比例（近期 / 长远 / 重要，如 50/30/20）</label>
 <input id="r_mempool" placeholder="50/30/20" value=""></div>
 <div class="field"><label><input id="r_leanmem_on" type="checkbox" style="width:auto"> 启用三库记忆（LeanMem：画像 / 事件 / 记录分流，检索按问题类型自适应）</label></div>
+<div class="field"><label><input id="r_apex_on" type="checkbox" style="width:auto"> 启用记忆版本链（APEX-MEM：只追加不覆盖，旧版本可查；检索时消解矛盾记忆）</label></div>
 <div class="field"><label>二遍对齐 PPA（第一遍自由生成，第二遍对照铁律/弧光改写，只修人设与穿帮）</label>
 <select id="r_ppa_mode"><option value="off">关闭</option><option value="key">关键轮触发（默认）</option><option value="always">每轮都跑</option></select></div>
 <div class="field"><label>二遍对齐模型（留空=用摘要模型，再空=用主模型，建议填便宜小模型）</label>
@@ -2596,6 +2609,7 @@ window.storeCleanup = async ()=>{
 document.getElementById("r_memcycle").value = rc.memCycle||10;
 document.getElementById("r_mempool").value = rc.memPoolRatio||"50/30/20";
 document.getElementById("r_leanmem_on").checked = rc.leanmem!==false;
+document.getElementById("r_apex_on").checked = rc.apex!==false;
 document.getElementById("r_ppa_mode").value = rc.ppaMode||"key";
 document.getElementById("r_ppa_model").value = rc.ppaModel||"";
 (function(){ const gp = RP_PERSONA.getGlobal();
@@ -2690,6 +2704,7 @@ ttsAuto:$("#r_ttsauto").checked, typewriter:$("#r_typewriter").checked,
 memCycle:Math.max(5,parseInt($("#r_memcycle").value)||10),
 memPoolRatio:(($("#r_mempool")&&$("#r_mempool").value)||"50/30/20").trim()||"50/30/20",
 leanmem:$("#r_leanmem_on")?$("#r_leanmem_on").checked:true,
+apex:$("#r_apex_on")?$("#r_apex_on").checked:true,
 ppaMode:$("#r_ppa_mode")?$("#r_ppa_mode").value:"key",
 ppaModel:$("#r_ppa_model")?$("#r_ppa_model").value.trim():"",
 /* 世界模拟三件套 */

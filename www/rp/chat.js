@@ -246,9 +246,17 @@ function newMsg(role, content){
 
 /* P0-1: prompt.js 三池预算用的记忆上下文 (cardId 取不到则 renderBudgeted 内回退 runId_name) */
 /* LeanMem: query 透传当前用户问题, 供 Adaptive Evidence Composition 自适应调三池权重 */
-function memCtxFor(runId, name, card, novel, temporal, query){
+function memCtxFor(runId, name, card, novel, temporal, query, apex){
   return {runId: runId, name: name, cardId: (card && (card.id || card.cardId)) || null,
-    novel: novel || null, temporal: temporal || null, query: query || ""};
+    novel: novel || null, temporal: temporal || null, query: query || "", apex: apex || null};
+}
+/* APEX-MEM 检索时冲突消解：similar 池 record 候选先按人物收窄，矛盾时便宜小模型裁决一次。
+ * 无候选/无矛盾时零额外调用；任何异常返回 null（调用方走旧 record 渲染路径）。 */
+async function apexFor(runId, name, card, query, cfg, callChat){
+  try{
+    if(typeof RP_APEX === "undefined" || !RP_APEX.on()) return null;
+    return await RP_APEX.apexFor(runId, name, card, query, cfg, callChat);
+  }catch(e){ return null; }
 }
 /* 时序感知检索（Chronos 思路）：故事进度 S 之前的事件进 similar 池，防"提前知道剧本" */
 async function temporalFor(storyKey, card, novel, h){
@@ -359,11 +367,13 @@ async function send(runId, name, text, opts){
         hint: wsHint, cardBrief: cardBriefOf(card)});
   }catch(e){}
   var temporal = await temporalFor(wsId, card, run.novel, h);
+  var apex = await apexFor(runId, name, card, text, cfg,
+    function(c, ms, t){ return RP_NET.complete(c, ms, t); });
   var arcText = arcTextFor(runId, name, card); // PPA 对齐依据复用, 避免重复计算
   var b = RP_PROMPT.buildMessages(card, {
     novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: run.relations,
     memory: memPrompt, memTasks: memTasks,
-    memBudgeted: memCtxFor(runId, name, card, run.novel, temporal, text),
+    memBudgeted: memCtxFor(runId, name, card, run.novel, temporal, text, apex),
     arc: arcText,
     history: mapHistory(h),
     persona: RP_PERSONA.renderText(RP_PERSONA.resolve(runId)),
@@ -482,12 +492,14 @@ async function regenerate(runId, name, opts){
   }
   var wsIdRe = (typeof chatKey !== "undefined") ? chatKey(runId, name) : (runId + "|" + name);
   var temporalRe = await temporalFor(wsIdRe, card, run.novel, h.slice(0, upto));
+  var apexRe = await apexFor(runId, name, card, lastUserText, cfg,
+    function(c, ms, t){ return RP_NET.complete(c, ms, t); });
   var arcTextRe = arcTextFor(runId, name, card);
   var b = RP_PROMPT.buildMessages(card, {
     novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: run.relations,
     memory: RP_MEM.renderBudgeted ? "" : RP_MEM.renderPrompt(mem),
     memTasks: RP_TASKS.renderPrompt(runId, name, lastUserText),
-    memBudgeted: memCtxFor(runId, name, card, run.novel, temporalRe, lastUserText),
+    memBudgeted: memCtxFor(runId, name, card, run.novel, temporalRe, lastUserText, apexRe),
     arc: arcTextRe,
     history: mapHistory(h.slice(0, upto)),
     persona: RP_PERSONA.renderText(RP_PERSONA.resolve(runId)),
@@ -598,12 +610,14 @@ async function genOneSpeaker(runId, run, members, speaker, text, h, opts, budget
     function(c, ms, t){ return RP_NET.complete(c, ms, t); }, spHint);
   var wsIdSpk = (typeof groupKey !== "undefined") ? groupKey(runId, members) : (runId + "|" + speaker);
   var temporalSpk = await temporalFor(wsIdSpk, activeCard, run.novel, h);
+  var apexSpk = await apexFor(runId, speaker, activeCard, text, cfg,
+    function(c, ms, t){ return RP_NET.complete(c, ms, t); });
   var arcTextSpk = arcTextFor(runId, speaker, activeCard);
   var b = RP_PROMPT.buildMessages(activeCard, {
     novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: run.relations,
     memory: RP_MEM.renderBudgeted ? "" : RP_MEM.renderPrompt(RP_MEM.get(runId, speaker)),
     memTasks: RP_TASKS.renderPrompt(runId, speaker, text),
-    memBudgeted: memCtxFor(runId, speaker, activeCard, run.novel, temporalSpk, text),
+    memBudgeted: memCtxFor(runId, speaker, activeCard, run.novel, temporalSpk, text, apexSpk),
     arc: arcTextSpk,
     history: mapHistory(h),
     persona: RP_PERSONA.renderText(RP_PERSONA.resolve(runId)),
