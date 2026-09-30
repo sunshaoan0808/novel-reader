@@ -36,9 +36,9 @@
    "name": "scroll-hidebars",
    "ok": true,
    "detail": {
-    "maxST": 3596,
+    "maxST": 2887,
     "preHidden": false,
-    "dist": 3370,
+    "dist": 2661,
     "hidden": true,
     "scenGone": true,
     "h0": 374,
@@ -74,7 +74,7 @@
      "overlaps": 0,
      "overflows": 0,
      "pageOverflow": false,
-     "nLeaf": 160,
+     "nLeaf": 143,
      "overlapSample": [],
      "overflowSample": []
     },

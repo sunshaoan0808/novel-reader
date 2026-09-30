@@ -1850,7 +1850,6 @@ if(oc){ body = m.content.replace(oc.full, "").trim(); cardHTML = optCardHTML(oc,
 const isHit = SEARCH.active && SEARCH.hits.indexOf(idx)>=0;
 const isCur = isHit && SEARCH.hits[SEARCH.cur]===idx;
 return `<div class="msg ${m.role==="user"?"me":""}${mtype==="narr"?" narr":""}${mtype==="npc"?" npc":""}${isCur?" curhit":""}" id="smsg-${idx}" onclick="toggleTools(event,${idx})" oncontextmenu="event.preventDefault();msgMenu(${idx});return false;" ontouchstart="msgPressStart(event,${idx})" ontouchend="msgPressEnd()" ontouchmove="msgPressEnd()">`
-+ `<div class="avatar sm">${esc((who||"?")[0])}</div>`
 + `<div class="msgcol"><div class="who">${esc(who)}</div><div class="bubble">${hlRestore(md(hlSearchRaw(body)))}${cardHTML}</div>${extra}${ts}</div>`
 + `</div>`;
 }).join("") || `<div class="empty">还没有对话，打个招呼吧<br><span style="font-size:12px">试试：你是谁？</span></div>`;
@@ -2158,7 +2157,7 @@ let live = document.getElementById("live");
 if(!live){
 if(document.getElementById("typing")) document.getElementById("typing").remove();
 log.insertAdjacentHTML("beforeend",
-`<div class="msg"><div class="avatar sm">${esc(streamWho()[0])}</div><div><div class="who">${esc(streamWho())}</div><div class="bubble" id="live"></div></div></div>`);
+`<div class="msg"><div class="msgcol"><div class="who">${esc(streamWho())}</div><div class="bubble" id="live"></div></div></div>`);
 live = document.getElementById("live");
 }
 live.textContent += tok;
