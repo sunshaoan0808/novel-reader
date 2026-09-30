@@ -810,3 +810,6 @@ body[data-font="kai"] .bubble{font-family:"Kaiti SC","STKaiti","KaiTi","TW-Kai",
 .simchip .ic{color:var(--gold);vertical-align:-2px}
 .simgo{margin-left:auto;opacity:.5;color:var(--muted)}
 .wsbar .simline{display:block;white-space:normal;margin-top:2px}
+/* ---- 导演系统（2026-09-30）：HUD 只显示风格，不剧透指令 ---- */
+.dirchip{color:var(--gold)}
+.dirchip .ic{color:var(--gold)}

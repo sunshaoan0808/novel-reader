@@ -712,7 +712,8 @@ const getCfg = ()=>{ try{return JSON.parse(localStorage.getItem(CFG_KEY))||{}}ca
 const saveCfg = (c)=> localStorage.setItem(CFG_KEY, JSON.stringify(c));
 const getRpCfg = ()=> Object.assign({maxContext:8192, respTokens:512, summaryModel:"",
   temperature:0.9, topP:1, ooc:true, preset:"classic", optCards:false, optCount:4, optMood:"none", ttsAuto:false, typewriter:true,
-  worldsim:true, wsPerMsg:3, wsStepMin:30, wsWxAuto:true, wsWxEvery:5}, JSON.parse(localStorage.getItem(RPCFG_KEY)||"{}"));
+  worldsim:true, wsPerMsg:3, wsStepMin:30, wsWxAuto:true, wsWxEvery:5,
+  director:true, directorTier:"sentinel", directorStyle:"slowburn", directorEvery:5, directorStale:8, directorModel:""}, JSON.parse(localStorage.getItem(RPCFG_KEY)||"{}"));
 const saveRpCfg = (c)=> localStorage.setItem(RPCFG_KEY, JSON.stringify(c));
 const chatKey = (runId, name)=> `nd_chat_${runId}_${name}`;
 const getHist = (k)=>{ try{
@@ -1441,7 +1442,10 @@ function renderSimBar(){
     head.parentNode.insertBefore(bar, head.nextSibling);
   }
   bar.style.display = "flex";
-  bar.innerHTML = RP_WORLDSIM.briefHTML(simChatKey(), simHint()) + `<span class="simgo">›</span>`;
+  /* 导演标识：只显示风格，不剧透具体指令 */
+  var dirChip = "";
+  try{ if(typeof RP_DIRECTOR!=="undefined") dirChip = RP_DIRECTOR.briefHTML(simChatKey()); }catch(e){}
+  bar.innerHTML = RP_WORLDSIM.briefHTML(simChatKey(), simHint()) + dirChip + `<span class="simgo">›</span>`;
 }
 /* ============ 世界模拟编辑器（手动调整时间/天气/地点） ============ */
 window.simEditor = ()=>{
@@ -2337,6 +2341,22 @@ view.innerHTML = renderStorageCard() + `
 <div class="btnrow"><button class="btn" onclick="saveRpCfgUI()">保存 RP 设置</button></div>
 </div>
 
+<div class="setcard"><h3>${icon("clapperboard",15)} 导演系统 · 剧情节奏</h3>
+<div class="field"><label><input id="r_dir_on" type="checkbox" style="width:auto"> 启用导演系统（幕后规划剧情节奏、抛事件，AI 扮演不受影响）</label></div>
+<div class="field"><label>介入档位</label>
+<select id="r_dir_tier"><option value="sentinel">节奏哨兵（默认）</option><option value="full">全导演（每轮介入）</option></select></div>
+<div class="field"><label>导演风格</label>
+<select id="r_dir_style">${(typeof RP_DIRECTOR!=="undefined"?Object.keys(RP_DIRECTOR.STYLES):["slowburn"]).map(k=>`<option value="${k}" ${(getRpCfg().directorStyle||"slowburn")===k?"selected":""}>${(typeof RP_DIRECTOR!=="undefined"?RP_DIRECTOR.STYLES[k].name:k)}</option>`).join("")}</select></div>
+<div class="field"><label>节奏哨兵：每 N 轮用户消息介入一次</label>
+<input id="r_dir_every" type="number" min="2" max="20" step="1" value=""></div>
+<div class="field"><label>停滞强制升级：连续 N 轮无波澜则强制抛事件打破循环</label>
+<input id="r_dir_stale" type="number" min="3" max="30" step="1" value=""></div>
+<div class="field"><label>导演用模型（留空则与主模型一致；建议填便宜小模型省 token）</label>
+<input id="r_dir_model" type="text" placeholder="留空 = 与主模型一致" value=""></div>
+<div class="hint">导演只规划剧情（节奏/事件/转场），永远不写正文、不替你做决定；指令注入 prompt 后从正文剥离，你看不到导演的存在。节奏哨兵约增加 1/5 token 消耗。</div>
+<div class="btnrow"><button class="btn" onclick="saveRpCfgUI()">保存 RP 设置</button></div>
+</div>
+
 <h2 class="sec">数据</h2>
 <div class="hint">产物数据随 App 版本更新。新蒸馏任务跑完后, 我会打新版 APK, 覆盖安装即可。</div>
 <div class="btnrow"><button class="btn ghost" onclick="showOnboard(1)">重新查看新手引导</button>
@@ -2360,6 +2380,12 @@ document.getElementById("r_ws_permsg").value = rc.wsPerMsg||3;
 document.getElementById("r_ws_stepmin").value = rc.wsStepMin||30;
 document.getElementById("r_ws_wxauto").checked = rc.wsWxAuto!==false;
 document.getElementById("r_ws_wxevery").value = rc.wsWxEvery||5;
+document.getElementById("r_dir_on").checked = rc.director!==false;
+document.getElementById("r_dir_tier").value = rc.directorTier||"sentinel";
+document.getElementById("r_dir_style").value = rc.directorStyle||"slowburn";
+document.getElementById("r_dir_every").value = rc.directorEvery||5;
+document.getElementById("r_dir_stale").value = rc.directorStale||8;
+document.getElementById("r_dir_model").value = rc.directorModel||"";
 (function(){ /* P2: 壁纸/字体选项 */
 if(typeof RP_APPEAR==="undefined") return;
 const ap = RP_APPEAR.getAppear();
@@ -2485,7 +2511,14 @@ worldsim:$("#r_ws_on")?$("#r_ws_on").checked:true,
 wsPerMsg:Math.max(1,parseInt($("#r_ws_permsg")?$("#r_ws_permsg").value:"3")||3),
 wsStepMin:Math.max(0,parseInt($("#r_ws_stepmin")?$("#r_ws_stepmin").value:"30")||0),
 wsWxAuto:$("#r_ws_wxauto")?$("#r_ws_wxauto").checked:true,
-wsWxEvery:Math.max(1,parseInt($("#r_ws_wxevery")?$("#r_ws_wxevery").value:"5")||5)});
+wsWxEvery:Math.max(1,parseInt($("#r_ws_wxevery")?$("#r_ws_wxevery").value:"5")||5),
+/* 导演系统 */
+director:$("#r_dir_on")?$("#r_dir_on").checked:true,
+directorTier:$("#r_dir_tier")?$("#r_dir_tier").value:"sentinel",
+directorStyle:$("#r_dir_style")?$("#r_dir_style").value:"slowburn",
+directorEvery:Math.max(2,parseInt($("#r_dir_every")?$("#r_dir_every").value:"5")||5),
+directorStale:Math.max(3,parseInt($("#r_dir_stale")?$("#r_dir_stale").value:"8")||8),
+directorModel:(($("#r_dir_model")?$("#r_dir_model").value:"")||"").trim()});
 /* P2: 壁纸/字体 */
 try{
 if(typeof RP_APPEAR!=="undefined"){
@@ -3293,7 +3326,9 @@ function renderWsBar(){
   try{
     if(typeof RP_WORLDSIM!=="undefined" && RP_WORLDSIM.enabled()){
       const trav = RP_TRAVERSE.get(CHAT.travId) || {};
-      sim = '<span class="simline">' + RP_WORLDSIM.briefHTML("nd_travchat_"+CHAT.travId, {novel: trav.worldName||"", worldName: trav.worldName||""}) + "</span>";
+      sim = '<span class="simline">' + RP_WORLDSIM.briefHTML("nd_travchat_"+CHAT.travId, {novel: trav.worldName||"", worldName: trav.worldName||""});
+      try{ if(typeof RP_DIRECTOR!=="undefined") sim += RP_DIRECTOR.briefHTML("nd_travchat_"+CHAT.travId); }catch(e){}
+      sim += "</span>";
     }
   }catch(e){}
   bar.innerHTML = `${icon("scroll",13)} ${esc(RP_TRAVERSE.stateLine(st))}`+

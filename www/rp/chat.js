@@ -194,6 +194,18 @@ function mapHistory(h){
   });
 }
 
+/* 导演系统用：角色一句话简介（给导演做输入，不占多少 token） */
+function cardBriefOf(card){
+  var f = (card && card.fields) || {};
+  var parts = [card && card.name ? card.name : ""];
+  ["core_identity", "core_traits"].forEach(function(k){
+    var v = f[k];
+    if(typeof v === "string" && v.trim()) parts.push(v.trim().slice(0, 60));
+    else if(v && v.v) parts.push(String(v.v).trim().slice(0, 60));
+  });
+  return parts.filter(Boolean).join("，");
+}
+
 /* 用户消息打分型标记 (mtype: player/narr/npc, npc 时带 speaker) */
 function tagUserMsg(um, opts){
   um.mtype = (opts && opts.userMtype) || "player";
@@ -280,6 +292,13 @@ async function send(runId, name, text, opts){
   var wsId = (typeof chatKey !== "undefined") ? chatKey(runId, name) : (runId + "|" + name);
   var wsHint = {novel: run.novel};
   try{ if(typeof RP_WORLDSIM !== "undefined") RP_WORLDSIM.onUserMessage(wsId, wsHint); }catch(e){}
+  /* 导演系统：two-model pass——按档位决定是否先跑一次导演调用，指令注入扮演 prompt */
+  var dirText = "";
+  try{
+    if(typeof RP_DIRECTOR !== "undefined")
+      dirText = await RP_DIRECTOR.onUserMessage(wsId, {cfg: cfg, history: h,
+        hint: wsHint, cardBrief: cardBriefOf(card)});
+  }catch(e){}
   var b = RP_PROMPT.buildMessages(card, {
     novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: run.relations,
     memory: memPrompt + RP_TASKS.renderPrompt(runId, name, text),
@@ -293,6 +312,11 @@ async function send(runId, name, text, opts){
       if(wsText && b.messages.length && b.messages[0].role === "system")
         b.messages[0].content += "\n\n" + wsText;
     }
+  }catch(e){}
+  /* 导演指令注入（compact briefing；关闭/未触发时为空字符串，不注入） */
+  try{
+    if(dirText && b.messages.length && b.messages[0].role === "system")
+      b.messages[0].content += "\n\n" + dirText;
   }catch(e){}
   if(opts.optCards && b.messages.length && b.messages[0].role === "system")
     b.messages[0].content += "\n\n" + optCardsInstr(opts.optCount, opts.optMood);
@@ -428,6 +452,12 @@ async function sendGroup(runId, members, speakers, text, opts){
     if(typeof RP_WORLDSIM !== "undefined" && typeof groupKey !== "undefined")
       RP_WORLDSIM.onUserMessage(groupKey(runId, members), {novel: run.novel});
   }catch(e){}
+  /* 导演系统：群聊每轮只跑一次导演（不是每位发言人一次），指令分发给各发言人 */
+  try{
+    if(typeof RP_DIRECTOR !== "undefined" && typeof groupKey !== "undefined")
+      opts._dirText = await RP_DIRECTOR.onUserMessage(groupKey(runId, members), {cfg: cfg, history: h,
+        hint: {novel: run.novel}, cardBrief: "群聊：" + members.join("、")});
+  }catch(e){}
 
   var doneSpeakers = [], lastStats = null, aborted = false, failed = false;
 
@@ -483,6 +513,11 @@ async function genOneSpeaker(runId, run, members, speaker, text, h, opts, budget
       if(wsTextG && b.messages.length && b.messages[0].role === "system")
         b.messages[0].content += "\n\n" + wsTextG;
     }
+  }catch(e){}
+  /* 导演指令注入（与单聊同一套） */
+  try{
+    if(opts._dirText && b.messages.length && b.messages[0].role === "system")
+      b.messages[0].content += "\n\n" + opts._dirText;
   }catch(e){}
   var gpost = RP_GROUP.groupPostInstructions(speaker, others, opts.pov, opts.person);
   b.messages[b.messages.length - 1].content = gpost;
@@ -558,6 +593,13 @@ async function sendTraverse(travId, text, opts){
   var wsIdT = "nd_travchat_" + travId;
   var wsHintT = {novel: trav.worldName || "", worldName: trav.worldName || ""};
   try{ if(typeof RP_WORLDSIM !== "undefined") RP_WORLDSIM.onUserMessage(wsIdT, wsHintT); }catch(e){}
+  /* 导演系统：穿越会话同样按档位介入 */
+  var dirTextT = "";
+  try{
+    if(typeof RP_DIRECTOR !== "undefined")
+      dirTextT = await RP_DIRECTOR.onUserMessage(wsIdT, {cfg: cfg, history: h,
+        hint: wsHintT, cardBrief: "穿越：" + (trav.worldName || "") + "·" + (trav.anchorTitle || "")});
+  }catch(e){}
 
   var cardHint = "穿越世界";
   await RP_MEM.maybeAnalyze("trav", travId, h, cfg,
@@ -585,6 +627,11 @@ async function sendTraverse(travId, text, opts){
       if(wsTextT && b.messages.length && b.messages[0].role === "system")
         b.messages[0].content += "\n\n" + wsTextT;
     }
+  }catch(e){}
+  /* 导演指令注入 */
+  try{
+    if(dirTextT && b.messages.length && b.messages[0].role === "system")
+      b.messages[0].content += "\n\n" + dirTextT;
   }catch(e){}
   if(opts.onSystem) opts.onSystem(b.preview, b.stats);
 
