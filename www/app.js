@@ -2007,6 +2007,18 @@ const h = getHist(k);
 const m = h[idx]; if(!m) return;
 m.rating = (m.rating===v) ? 0 : v;
 saveHist(k, h); renderChat();
+/* 点踩最新一条 AI 回复: 自动重生一条(旧版保留为 swipe 候选, 可左右切换对比)。
+   穿越模式没有重生管线, 仅记录评分; 生成中不重复触发。 */
+if(m.rating===-1 && m.role==="assistant"
+&& (CHAT.mode==="single" || CHAT.mode==="group")
+&& !document.querySelector(".chatbar .stopbtn")){
+let lastAI = -1;
+h.forEach((mm, i)=>{
+const c = mm.content || "";
+if(mm.role==="assistant" && c.indexOf("⚠️")!==0 && c.indexOf("【OOC")!==0 && c.indexOf("（已停止")!==0) lastAI = i;
+});
+if(idx===lastAI) regenMsg();
+}
 };
 /* ============ 沉浸式剧情选项卡 (Ny 式 <small> N 选项, 原生实现; v21 支持 2-6 个) ============ */
 function parseOptCard(text){
