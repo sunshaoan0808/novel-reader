@@ -1000,3 +1000,12 @@ background:#241d12;border:1px solid var(--line);border-radius:999px;padding:4px 
 .memstatus.running{color:#e0a33e;background:#221a10;border:1px solid #6b4f1d}
 .memstatus.done{color:#8fce8f;background:#142116;border:1px solid #2c5a34}
 .memstatus.fail{color:#e07a7a;background:#241414;border:1px solid #6b2c2c}
+/* AI 帮填按钮：所有手动填写的输入框旁的 ✨AI 徽标 */
+.aifillbtn{display:inline-block;margin-left:6px;padding:1px 9px;font-size:11px;line-height:1.7;
+color:#e8c06a;background:rgba(232,192,106,.08);border:1px solid rgba(232,192,106,.35);
+border-radius:20px;cursor:pointer;vertical-align:1px;white-space:nowrap}
+.aifillbtn:disabled{opacity:.5;cursor:wait}
+.aifillbtn:active{transform:scale(.94)}
+/* 聊天输入栏里的 AI 代笔按钮：小方块，和 narrbtn 同尺寸 */
+.chatbar .aifillbtn.chatfill{flex:0 0 auto;align-self:center;margin-left:0;padding:8px 10px;
+font-size:14px;line-height:1;border-radius:10px}

@@ -174,7 +174,7 @@ view.innerHTML = `<button class="back" onclick="setTab('chars')">${icon("back")}
 <div id="gpick">` + RUN.profiles.map(p=>`
 <label class="pickcard"><input type="checkbox" value="${esc(p.name)}">
 <div class="avatar sm">${esc(p.name[0])}</div><div class="name">${esc(p.name)}</div></label>`).join("") + `</div>
-<div class="field"><label>角色关系（可选，每行一条，格式：A是B的C）</label>
+<div class="field"><label>角色关系（可选，每行一条，格式：A是B的C）${RP_AIFILL.btn("grel_in","群聊角色关系","每行一条，格式：A是B的C，3~6条","群聊成员："+RUN.profiles.map(p=>p.name).join("、")+"；小说《"+RUN.novel+"》")}</label>
 <textarea id="grel_in" rows="2" placeholder="林黛玉是贾宝玉的表妹"></textarea></div>
 <div class="hint" style="margin:0 0 6px">关系会注入每轮群聊 prompt；建群后也可在群聊抽屉 → 角色关系里增删。</div>
 <div class="actionbar"><button class="btn" style="flex:1" onclick="startGroupChat()">开始群聊</button></div>
@@ -549,10 +549,13 @@ const logicOpts = [[0,"AND ANY（任一次级命中即纳入）"],[1,"NOT ALL（
 const placeOpts = [["default","默认（世界书段）"],["personality","人设段"],["scenario","场景段"],["exampleDialogs","示例对话段"]]
 .map(o=>`<option value="${o[0]}"${n.placement===o[0]?" selected":""}>${o[1]}</option>`).join("");
 titleEl.textContent = (_isNew?"新增":"编辑") + "世界书条目"; subEl.textContent = "";
+/* AI 帮填上下文：小说名 */
+const _loreNovel = ((((window.__DATA__||{}).runs||{})[runId]||{}).novel)||"";
+const _loreCtx = "世界书条目" + (_loreNovel?("，出自小说《"+_loreNovel+"》"):"") + "；条目内容会被注入 AI 的 prompt";
 view.innerHTML = `<button class="back" onclick="renderLoreList('${runId}')">${icon("back")} 返回列表</button>
-<div class="field"><label>标题</label><input id="l_title" value="${esc(n.name||"")}"></div>
-<div class="field"><label>触发词（逗号/顿号分隔，消息里出现即触发；可用 /正则/flags 写法）</label><input id="l_keys" value="${esc((n.key||[]).join("、"))}" placeholder="如：大观园、贾府"></div>
-<div class="field"><label>内容（进 prompt 的正文）</label><textarea id="l_content" oninput="tokCount('l_content','l_tok')" style="width:100%;min-height:120px;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:10px">${esc(n.content||"")}</textarea><div class="tokline" id="l_tok"></div></div>
+<div class="field"><label>标题${RP_AIFILL.btn("l_title","世界书条目标题","2~8个字的人物名/地点名/势力名/物品名",_loreCtx)}</label><input id="l_title" value="${esc(n.name||"")}"></div>
+<div class="field"><label>触发词（逗号/顿号分隔，消息里出现即触发；可用 /正则/flags 写法）${RP_AIFILL.btn("l_keys","世界书触发词","逗号/顿号分隔；根据标题联想读者聊天时可能提到的相关词，5~12个",_loreCtx)}</label><input id="l_keys" value="${esc((n.key||[]).join("、"))}" placeholder="如：大观园、贾府"></div>
+<div class="field"><label>内容（进 prompt 的正文）${RP_AIFILL.btn("l_content","世界书内容","100~300字的设定正文，客观叙述、设定向",_loreCtx)}</label><textarea id="l_content" oninput="tokCount('l_content','l_tok')" style="width:100%;min-height:120px;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:10px">${esc(n.content||"")}</textarea><div class="tokline" id="l_tok"></div></div>
 <div class="field"><label>优先级：第 ${n.priority} 位（在列表用 ↑↓ 调整顺序，越靠上越强）</label></div>
 <div class="field"><label><input type="checkbox" id="l_const" style="width:auto" ${n.constant?"checked":""}> 常驻条目（每轮必进 prompt）</label></div>
 <div class="field"><label><input type="checkbox" id="l_en" style="width:auto" ${n.enabled?"":"checked"}> 启用</label></div>
@@ -562,7 +565,7 @@ view.innerHTML = `<button class="back" onclick="renderLoreList('${runId}')">${ic
 <div class="field"><label>最小消息数（N 条消息后才激活，0=立即）</label><input id="l_minmsg" type="number" min="0" step="1" value="${n.minMessages||0}"></div>
 <div class="field"><label><input type="checkbox" id="l_case" style="width:auto" ${n.case_sensitive?"checked":""}> 区分大小写（对正则键无效）</label></div>
 <div class="field"><label><input type="checkbox" id="l_whole" style="width:auto" ${n.matchWholeWords?"checked":""}> 整词匹配（king 不匹配 liking）</label></div>
-<div class="field"><label>次级关键词（逗号/顿号分隔；用于纳入或排除）</label><input id="l_keys2" value="${esc((n.keysecondary||[]).join("、"))}"></div>
+<div class="field"><label>次级关键词（逗号/顿号分隔；用于纳入或排除）${RP_AIFILL.btn("l_keys2","世界书次级关键词","逗号分隔；补充的精细控制关键词，5~10个",_loreCtx)}</label><input id="l_keys2" value="${esc((n.keysecondary||[]).join("、"))}"></div>
 <div class="field"><label>次级关键词逻辑</label><select id="l_logic">${logicOpts}</select></div>
 <div class="field"><label>互斥组（逗号分隔；同组每次只激活一条）</label><input id="l_group" value="${esc(grpStr)}" placeholder="如：combat、social"></div>
 <div class="field"><label>组内权重（同组随机挑选时的权重）</label><input id="l_gweight" type="number" min="1" step="1" value="${n.groupWeight||100}"></div>
@@ -570,7 +573,7 @@ view.innerHTML = `<button class="back" onclick="renderLoreList('${runId}')">${ic
 <div class="field"><label>插入位置（锚定到对应 prompt 段）</label><select id="l_place">${placeOpts}</select>
 <select id="l_placepos" style="margin-top:6px"><option value="after"${n.placementPosition!=="before"?" selected":""}>该段之后</option><option value="before"${n.placementPosition==="before"?" selected":""}>该段之前</option></select></div>
 <div class="field"><label>扫描深度（检测最近 N 条消息，1-10，空=默认 4）</label><input id="l_depth" type="number" min="1" max="10" value="${n.depth||""}" placeholder="默认"></div>
-<div class="field"><label>备注（不进 prompt，仅自己看）</label><input id="l_comment" value="${esc(n.comment||"")}"></div>
+<div class="field"><label>备注（不进 prompt，仅自己看）${RP_AIFILL.btn("l_comment","世界书备注","一句话说明这条条目的用途，仅自己看",_loreCtx)}</label><input id="l_comment" value="${esc(n.comment||"")}"></div>
 </div></details>
 <div class="btnrow"><button class="btn" onclick="loreSave('${runId}',${i==null?"null":i})">保存</button></div>`;
 tokCount("l_content","l_tok");
@@ -680,8 +683,8 @@ const _rl = getRegexUI(runId, name);
 const r = (i==null || !_rl[i]) ? {find:"", replace:"", enabled:true} : _rl[i];
 titleEl.textContent = (i==null?"新增":"编辑")+"正则规则"; subEl.textContent = name;
 view.innerHTML = `<button class="back" onclick="renderRegexList('${runId}','${name.replace(/'/g,"\\'")}')">${icon("back")} 返回列表</button>
-<div class="field"><label>查找（正则表达式）</label><input id="x_find" value="${esc(r.find||"")}" placeholder="如：好的|嗯嗯"></div>
-<div class="field"><label>替换为（可用 $1 引用分组）</label><input id="x_rep" value="${esc(r.replace||"")}" oninput="tokCount('x_rep','x_tok')"><div class="tokline" id="x_tok"></div></div>
+<div class="field"><label>查找（正则表达式）${RP_AIFILL.btn("x_find","正则查找式","用自然语言描述想匹配的文本，只输出正则表达式本身，不要解释","文本替换规则")}</label><input id="x_find" value="${esc(r.find||"")}" placeholder="如：好的|嗯嗯"></div>
+<div class="field"><label>替换为（可用 $1 引用分组）${RP_AIFILL.btn("x_rep","正则替换文本","写替换后的文本，可用 $1 $2 引用分组，只输出替换文本","文本替换规则；查找式："+(r.find||"（未填）"))}</label><input id="x_rep" value="${esc(r.replace||"")}" oninput="tokCount('x_rep','x_tok')"><div class="tokline" id="x_tok"></div></div>
 <div class="field"><label><input type="checkbox" id="x_en" style="width:auto" ${r.enabled===false?"":"checked"}> 启用</label></div>
 <div class="btnrow"><button class="btn" onclick="regexSave('${runId}','${name.replace(/'/g,"\\'")}',${i==null?"null":i})">保存</button></div>`;
 tokCount("x_rep","x_tok");
@@ -2235,6 +2238,7 @@ const atb = CHAT.mode==="group"
 ? `<button id="atbtn" class="atbtn" onclick="toggleAtMenu(event)" title="＠ 指定角色：本轮点名 TA 先回">＠</button>` : "";
 return `<button id="narrbtn" class="narrbtn${CHAT.narrMode?" on":""}" onclick="toggleNarr()" title="旁白模式：发送场景/动作描写">${icon("scroll")}</button>`
 + `${atb}${spk}<input id="chat_in" placeholder="${CHAT.narrMode?"📜 旁白：写场景/动作/心理描写…":ph}" onkeydown="if(event.key==='Enter')sendChat()">`
++ `<button class="aifillbtn chatfill" onclick="RP_AIFILL.fillChat(this)" title="AI 帮我说一句（只填入，不发送）">✨</button>`
 + `<button class="sendbtn" onclick="sendChat()" title="发送">${icon("send")}</button>`;
 }
 window.toggleAtMenu = (ev)=>{
@@ -2725,7 +2729,7 @@ const cats = RP_MEM.FACT_CATS.map(c=>`<option value="${c}"${f&&f.cat===c?" selec
 view.innerHTML = `<button class="back" onclick="renderAlbum()">${icon("back")} 返回事件簿</button>
 <div class="card"><div class="alb-time">Select fact category · 选择事实分类</div>
 <div class="field"><label>分类</label><select id="f_cat">${cats}</select></div>
-<div class="field"><label>事实内容</label><input id="f_text" value="${esc(f?(f.text||""):"")}" placeholder="如：她左眉有一颗小痣"></div>
+<div class="field"><label>事实内容${RP_AIFILL.btn("f_text","关于"+nm+"的事实","一句话事实，如：她左眉有一颗小痣；可从最近聊天里提炼","角色"+nm+"；最近对话：\n"+RP_AIFILL._recentChatCtx(8,"nd_chat_"+runId+"_"+nm))}</label><input id="f_text" value="${esc(f?(f.text||""):"")}" placeholder="如：她左眉有一颗小痣"></div>
 <div class="hint">事实总字数上限 ${RP_MEM.FACTS_MAX_CHARS} 字，当前 ${RP_MEM.factsChars(st)} 字。</div>
 <div class="btnrow"><button class="btn" onclick="factSave(${fid==null?"null":fid})">保存</button></div></div>`;
 window.scrollTo(0,0);
@@ -3237,13 +3241,13 @@ document.body.classList.remove("chatmode");
 titleEl.innerHTML = icon("user")+" 我的人设";
 subEl.textContent = isOverride ? "仅本次聊天生效（覆盖全局人设）" : "全局生效：以后所有聊天都会告诉 AI 你是谁";
 view.innerHTML = `<button class="back" onclick="__backAction()">${icon("back")} 返回</button>
-<div class="field"><label>称呼 / 名字</label>
+<div class="field"><label>称呼 / 名字${RP_AIFILL.btn("p_name","玩家名字","2~4个字的名字或昵称","RP 应用的玩家人设")}</label>
 <input id="p_name" placeholder="希望 AI 怎么称呼你" value="${esc(p.name||"")}" oninput="tokCount(['p_name','p_called','p_desc','p_extra'],'p_tok')"></div>
-<div class="field"><label>TA 怎么称呼我</label>
+<div class="field"><label>TA 怎么称呼我${RP_AIFILL.btn("p_called","AI 对玩家的专属称呼","如：主人、小可爱、林先生，2~6个字","RP 应用的玩家人设")}</label>
 <input id="p_called" placeholder="如：主人、小可爱、林先生（TA 对你的专属称呼）" value="${esc(p.called||"")}" oninput="tokCount(['p_name','p_called','p_desc','p_extra'],'p_tok')"></div>
-<div class="field"><label>自我描述</label>
+<div class="field"><label>自我描述${RP_AIFILL.btn("p_desc","玩家自我描述","年龄、职业、性格、说话习惯，2~4句话，第一人称","RP 应用的玩家人设")}</label>
 <textarea id="p_desc" rows="4" placeholder="年龄、职业、性格、说话习惯……" oninput="tokCount(['p_name','p_called','p_desc','p_extra'],'p_tok')">${esc(p.desc||"")}</textarea></div>
-<div class="field"><label>补充说明（可选）</label>
+<div class="field"><label>补充说明（可选）${RP_AIFILL.btn("p_extra","玩家补充偏好","希望 AI 记住的偏好、和角色的关系设定，2~3句话","RP 应用的玩家人设")}</label>
 <textarea id="p_extra" rows="3" placeholder="希望 AI 记住的偏好、你们的关系设定……" oninput="tokCount(['p_name','p_called','p_desc','p_extra'],'p_tok')">${esc(p.extra||"")}</textarea></div>
 <div class="tokline" id="p_tok"></div>
 <div class="btnrow"><button class="btn" onclick="savePersonaUI(${isOverride?`'${scope}'`:"null"},'${from}')">保存</button>
@@ -3322,11 +3326,11 @@ const _iron = RP_MEM.getIronLaw(runId, nm, _dc.id || null);
 const _chatsum = RP_MEM.getChatSummary(runId, nm);
 /* Tier2 #15: 简洁回复开关 (Janitor "Snappier, more concise replies.") */
 const _copt = getChatOpt(runId, nm);
-body = `<div class="card"><div class="name" style="font-size:14px">铁律记忆 · 永远最先注入</div>`
+body = `<div class="card"><div class="name" style="font-size:14px">铁律记忆 · 永远最先注入${RP_AIFILL.btn("ironlaw_box","对"+nm+"的铁律","3~5条硬性要求，一条一行，如：绝不在人前提起穿越者的身份；对黛玉永远温柔","角色扮演：约束 AI 扮演 "+nm+" 时必须遵守的铁律")}</div>`
 + `<div class="meta">对${esc(nm)}的硬性要求（如绝不做的事、必须遵守的设定），400 字以内，每次对话必带</div>`
 + `<div class="field" style="margin:8px 0 0"><textarea id="ironlaw_box" rows="4" maxlength="400" placeholder="如：绝不在人前提起穿越者的身份；对黛玉永远温柔…" oninput="ironlawCount()">${esc(_iron)}</textarea></div>`
 + `<div class="btnrow"><span class="kv" id="ironlaw_cnt">${_iron.length}/400</span><span style="flex:1"></span><button class="btn" onclick="saveIronLawUI()">保存铁律</button></div></div>`
-+ `<div class="card"><div class="name" style="font-size:14px">本聊摘要 · 手写长期记忆</div>`
++ `<div class="card"><div class="name" style="font-size:14px">本聊摘要 · 手写长期记忆${RP_AIFILL.btn("chatsum_box","和"+nm+"的聊天摘要","2~3句话概括你和这个角色的当前关系与共同经历", "角色 "+nm+"；最近对话：\n"+RP_AIFILL._recentChatCtx(8,"nd_chat_"+runId+"_"+nm))}</div>`
 + `<div class="meta">一句话概括这段聊天（1000 字以内），每次对话会最先注入，作为长期记忆</div>`
 + `<div class="field" style="margin:8px 0 0"><textarea id="chatsum_box" rows="3" maxlength="1000" placeholder="如：我们是青梅竹马，正在一起调查家族旧事…" oninput="chatsumCount()">${esc(_chatsum)}</textarea></div>`
 + `<div class="btnrow"><span class="kv" id="chatsum_cnt">${_chatsum.length}/1000</span><span style="flex:1"></span><button class="btn" onclick="saveChatSumUI()">保存摘要</button></div></div>`
@@ -4710,11 +4714,12 @@ window.soulAnchors = (runId, name)=>{
   document.body.classList.remove("chatmode");
   titleEl.innerHTML = icon("user")+" 魂穿 · "+esc(name); subEl.textContent = "选择进入的剧情锚点";
   const anchors = RP_TRAVERSE.anchorsFor(soulOutlineFor(runId, name));
+  const _anchNovel = ((((window.__DATA__||{}).runs||{})[runId]||{}).novel)||"";
   view.innerHTML = `<button class="back" onclick="soulPickTarget()">${icon("back")} 返回</button>
   <h2 class="sec">你想从哪里开始成为${esc(name)}？</h2>
   <div class="card">${anchors.map((a,i)=>`
     <label class="kvline" style="display:block"><input type="radio" name="anchor" value="${i}"${i===0?" checked":""}> ${esc(a.title)}</label>`).join("")}
-    <label class="kvline" style="display:block"><input type="radio" name="anchor" value="custom"> 自定：<input id="anchorCustom" style="width:60%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px" placeholder="比如：黛玉初进贾府那天"></label>
+    <label class="kvline" style="display:block"><input type="radio" name="anchor" value="custom"> 自定：<input id="anchorCustom" style="width:55%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px" placeholder="比如：黛玉初进贾府那天">${RP_AIFILL.btn("anchorCustom","魂穿锚点","一句话描述想切入的剧情时间点，如：黛玉初进贾府那天","魂穿进"+(_anchNovel?("小说《"+_anchNovel+"》"):"异世界")+"成为"+name)}</label>
   </div>
   <div class="card"><label class="kvline" style="display:block"><input type="checkbox" id="oocRemind" checked> OOC 提醒：我说的话不符合身份/时代时，世界轻轻点我一下</label></div>
   <div class="btnrow"><button class="btn" style="flex:1" onclick='soulStart(${JSON.stringify(runId)},${JSON.stringify(name)})'>开始穿越</button></div>
@@ -4982,13 +4987,14 @@ window.travWsEditor = ()=>{
   document.body.classList.remove("chatmode");
   const st = RP_TRAVERSE.getState(trav.id);
   titleEl.innerHTML = icon("scroll")+" 世界状态"; subEl.textContent = trav.worldName;
+  const _wsCtx = "穿越世界「"+trav.worldName+"」的世界状态；最近剧情：\n"+RP_AIFILL._recentChatCtx(8,"nd_travchat_"+trav.id);
   const favRows = Object.keys(st.favor||{}).map(k=>
     `<div class="kvline">${esc(k)}：好感 ${st.favor[k]}</div>`).join("") || `<div class="meta">暂无</div>`;
   view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回</button>
   <div class="card">
-  <div class="field"><label>日期</label><input id="wsDate" style="width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px" value="${esc(st.date||"")}"></div>
-  <div class="field"><label>地点</label><input id="wsLoc" style="width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px" value="${esc(st.loc||"")}"></div>
-  <div class="field"><label>剧情进度</label><input id="wsProg" style="width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px" value="${esc(st.progress||"")}"></div>
+  <div class="field"><label>日期${RP_AIFILL.btn("wsDate","世界日期","如：某年八月十五；结合剧情进度推断",_wsCtx)}</label><input id="wsDate" style="width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px" value="${esc(st.date||"")}"></div>
+  <div class="field"><label>地点${RP_AIFILL.btn("wsLoc","当前地点","故事当前所在的地点名",_wsCtx)}</label><input id="wsLoc" style="width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px" value="${esc(st.loc||"")}"></div>
+  <div class="field"><label>剧情进度${RP_AIFILL.btn("wsProg","剧情进度","一句话概括当前剧情进展到哪了",_wsCtx)}</label><input id="wsProg" style="width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px" value="${esc(st.progress||"")}"></div>
   <div class="btnrow" style="margin-top:8px"><button class="btn" onclick="travWsSave()">保存</button></div>
   </div>
   <div class="card"><h3>${icon("clock",15)} 世界模拟</h3>
