@@ -148,6 +148,13 @@ function applyRegex(text, rules){
   return out;
 }
 
+/* P0-4: 消息唯一 id (摘要水位 msg_id 制)。只新增字段, 不改现有结构。 */
+var __msgSeq = 0;
+function nextMsgId(){
+__msgSeq = (__msgSeq + 1) % 1296;
+return "m" + Date.now().toString(36) + __msgSeq.toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
 /* 剧情选项卡指令: 让 AI 在回复末尾输出 Ny 式 <small> N 选项块, 由 App 原生渲染成可点击卡片
  * v21: 数量 2-6 可配 + 氛围可配 (对标猫箱剧情选项分段) */
 var OPT_NUM_EMOJI = ["1\uFE0F\u20E3","2\uFE0F\u20E3","3\uFE0F\u20E3","4\uFE0F\u20E3","5\uFE0F\u20E3","6\uFE0F\u20E3"];
@@ -233,8 +240,21 @@ function findCard(runId, name){
 }
 
 function newMsg(role, content){
-  return {role: role, content: content, ts: Date.now(),
+  return {mid: nextMsgId(), role: role, content: content, ts: Date.now(),
           candidates: role === "assistant" ? [content] : undefined, ci: 0};
+}
+
+/* P0-1: prompt.js 三池预算用的记忆上下文 (cardId 取不到则 renderBudgeted 内回退 runId_name) */
+function memCtxFor(runId, name, card){
+  return {runId: runId, name: name, cardId: (card && (card.id || card.cardId)) || null};
+}
+/* P0-3: 人物弧光 prompt 段 (无弧光卡返回空字符串, 注入层自行跳过) */
+function arcTextFor(card, runId){
+  try{
+    if(typeof RP_ARC !== "undefined" && RP_ARC.renderArcPrompt)
+      return RP_ARC.renderArcPrompt(card, runId) || "";
+  }catch(e){}
+  return "";
 }
 
 async function greeting(runId, name, cfg, novel){
@@ -281,10 +301,13 @@ async function send(runId, name, text, opts){
                   ((card.fields || {}).speech_style || "")).trim();
   await RP_MEM.maybeAnalyze(runId, name, h, cfg,
     function(c, ms, t){ return RP_NET.complete(c, ms, t); }, cardHint);
-  var memPrompt = RP_MEM.renderPrompt(RP_MEM.get(runId, name));
+  /* P0-1: 三池预算渲染由 prompt.js 完成; 这里只准备退化路径文本 */
+  var memPrompt = RP_MEM.renderBudgeted ? ""
+    : RP_MEM.renderPrompt(RP_MEM.get(runId, name));
   // 自定义分析任务（周期/关键词触发，失败不打断）
   await RP_TASKS.maybeRun(runId, name, h, cfg,
     function(c, ms, t){ return RP_NET.complete(c, ms, t); }, cardHint);
+  var memTasks = RP_TASKS.renderPrompt(runId, name, text);
 
   var budget = opts.budget || {};
   if(!budget.maxContext && cfg.maxContext) budget.maxContext = cfg.maxContext;
@@ -301,14 +324,17 @@ async function send(runId, name, text, opts){
   }catch(e){}
   var b = RP_PROMPT.buildMessages(card, {
     novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: run.relations,
-    memory: memPrompt + RP_TASKS.renderPrompt(runId, name, text),
+    memory: memPrompt, memTasks: memTasks,
+    memBudgeted: memCtxFor(runId, name, card),
+    arc: arcTextFor(runId, name, card),
     history: mapHistory(h),
     persona: RP_PERSONA.renderText(RP_PERSONA.resolve(runId)),
     pov: opts.pov, person: opts.person,
   }, budget);
+  var wsText = "";
   try{
     if(typeof RP_WORLDSIM !== "undefined"){
-      var wsText = RP_WORLDSIM.renderPrompt(wsId, wsHint);
+      wsText = RP_WORLDSIM.renderPrompt(wsId, wsHint);
       if(wsText && b.messages.length && b.messages[0].role === "system")
         b.messages[0].content += "\n\n" + wsText;
     }
@@ -318,6 +344,8 @@ async function send(runId, name, text, opts){
     if(dirText && b.messages.length && b.messages[0].role === "system")
       b.messages[0].content += "\n\n" + dirText;
   }catch(e){}
+  b.stats.hasWorldsim = !!wsText;   // P0-5: Prompt 诊断用
+  b.stats.hasDirector = !!dirText;
   if(opts.optCards && b.messages.length && b.messages[0].role === "system")
     b.messages[0].content += "\n\n" + optCardsInstr(opts.optCount, opts.optMood);
   if(opts.plotOutline && b.messages.length && b.messages[0].role === "system")
@@ -397,7 +425,10 @@ async function regenerate(runId, name, opts){
   }
   var b = RP_PROMPT.buildMessages(card, {
     novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: run.relations,
-    memory: RP_MEM.renderPrompt(mem) + RP_TASKS.renderPrompt(runId, name, lastUserText),
+    memory: RP_MEM.renderBudgeted ? "" : RP_MEM.renderPrompt(mem),
+    memTasks: RP_TASKS.renderPrompt(runId, name, lastUserText),
+    memBudgeted: memCtxFor(runId, name, card),
+    arc: arcTextFor(runId, name, card),
     history: mapHistory(h.slice(0, upto)),
     persona: RP_PERSONA.renderText(RP_PERSONA.resolve(runId)),
     pov: opts.pov, person: opts.person,
@@ -408,6 +439,8 @@ async function regenerate(runId, name, opts){
     b.messages[0].content += "\n\n" + plotRef(opts.plotOutline);
   if(opts.scenario && b.messages.length && b.messages[0].role === "system")
     b.messages[0].content += "\n\n" + opts.scenario;
+  b.stats.hasWorldsim = false;  // P0-5: regenerate 不跑世界模拟/导演
+  b.stats.hasDirector = false;
   if(opts.onSystem) opts.onSystem(b.preview, b.stats);
   var reply = await RP_NET.stream(cfg, b.messages,
     {temperature: (opts.temperature || 0.9) + 0.15, signal: opts.signal}, opts.onToken);
@@ -490,7 +523,10 @@ async function genOneSpeaker(runId, run, members, speaker, text, h, opts, budget
     function(c, ms, t){ return RP_NET.complete(c, ms, t); }, spHint);
   var b = RP_PROMPT.buildMessages(activeCard, {
     novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: run.relations,
-    memory: RP_MEM.renderPrompt(RP_MEM.get(runId, speaker)) + RP_TASKS.renderPrompt(runId, speaker, text),
+    memory: RP_MEM.renderBudgeted ? "" : RP_MEM.renderPrompt(RP_MEM.get(runId, speaker)),
+    memTasks: RP_TASKS.renderPrompt(runId, speaker, text),
+    memBudgeted: memCtxFor(runId, speaker, activeCard),
+    arc: arcTextFor(runId, speaker, activeCard),
     history: mapHistory(h),
     persona: RP_PERSONA.renderText(RP_PERSONA.resolve(runId)),
     pov: opts.pov, person: opts.person,
@@ -521,6 +557,8 @@ async function genOneSpeaker(runId, run, members, speaker, text, h, opts, budget
   }catch(e){}
   var gpost = RP_GROUP.groupPostInstructions(speaker, others, opts.pov, opts.person);
   b.messages[b.messages.length - 1].content = gpost;
+  b.stats.hasWorldsim = !!wsTextG;  // P0-5: Prompt 诊断用
+  b.stats.hasDirector = !!opts._dirText;
   if(opts.onSystem) opts.onSystem(b.messages[0].content + "\n\n" + gpost, b.stats);
 
   var reply = "";

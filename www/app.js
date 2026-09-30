@@ -713,13 +713,26 @@ const saveCfg = (c)=> localStorage.setItem(CFG_KEY, JSON.stringify(c));
 const getRpCfg = ()=> Object.assign({maxContext:8192, respTokens:512, summaryModel:"",
   temperature:0.9, topP:1, ooc:true, preset:"classic", optCards:false, optCount:4, optMood:"none", ttsAuto:false, typewriter:true,
   worldsim:true, wsPerMsg:3, wsStepMin:30, wsWxAuto:true, wsWxEvery:5,
+  memCycle:10, memPoolRatio:"50/30/20",
   director:true, directorTier:"sentinel", directorStyle:"slowburn", directorEvery:5, directorStale:8, directorModel:""}, JSON.parse(localStorage.getItem(RPCFG_KEY)||"{}"));
 const saveRpCfg = (c)=> localStorage.setItem(RPCFG_KEY, JSON.stringify(c));
 const chatKey = (runId, name)=> `nd_chat_${runId}_${name}`;
 const getHist = (k)=>{ try{
+  let h = [];
   /* P2: 优先读 IDB 内存镜像（localStorage 副本被清理后仍能命中），再回退 localStorage */
-  if(typeof RP_STORE!=="undefined"){ const c = RP_STORE.cacheGet(k); if(c!=null) return JSON.parse(c)||[]; }
-  return JSON.parse(localStorage.getItem(k))||[];
+  if(typeof RP_STORE!=="undefined"){ const c = RP_STORE.cacheGet(k); if(c!=null) h = JSON.parse(c)||[]; }
+  else h = JSON.parse(localStorage.getItem(k))||[];
+  /* P0-4: 老消息补 mid (摘要水位 msg_id 制), 只新增字段 */
+  let dirty = false;
+  for(const m of h){
+    if(m && !m.mid && !m.id){
+      m.mid = (typeof nextMsgId==="function") ? nextMsgId()
+        : ("m" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
+      dirty = true;
+    }
+  }
+  if(dirty) saveHist(k, h);
+  return h;
 }catch(e){return[]}};
 const saveHist = (k,h)=>{ const s = JSON.stringify(h.slice(-80));
   localStorage.setItem(k, s);
@@ -799,6 +812,7 @@ ${povChipsHTML()}
 <button class="ditem" onclick="toggleDrawer(false);loreEditor(CHAT.runId,'chat')">${icon("book-open")} 世界书管理</button>
 <button class="ditem" onclick="toggleDrawer(false);regexEditor(CHAT.runId,CHAT.name,'chat')">🔤 正则替换</button>
 <button class="ditem" onclick="toggleDrawer(false);showSystem()">${icon("settings")} 人设 prompt 预览</button>
+<button class="ditem" onclick="toggleDrawer(false);promptDiag()">${icon("chart")} Prompt 诊断</button>
 <button class="ditem" onclick="toggleDrawer(false);exportChat()">&#x1F4E4; 复制聊天记录</button>
 <button class="ditem danger" onclick="toggleDrawer(false);clearChat()">&#x1F5D1; 清空聊天记录</button>
 <h3>设置</h3>
@@ -812,7 +826,7 @@ const k = chatKey(CHAT.runId, CHAT.name);
 if(!getHist(k).length){
 RP.greeting(CHAT.runId, CHAT.name, cfg, run.novel).then(g=>{
 if(getHist(k).length) return;
-saveHist(k, [{role:"assistant", content:g, ts:Date.now()}]); renderChat();
+saveHist(k, [{mid:(typeof nextMsgId==="function"?nextMsgId():"m"+Date.now().toString(36)), role:"assistant", content:g, ts:Date.now()}]); renderChat();
 });
 }
 }
@@ -1586,7 +1600,7 @@ pov: CHAT.pov || "player", person: CHAT.person || "second",
 budget: {maxContext: rcfg.maxContext, response: rcfg.respTokens, preset: rcfg.preset},
 onToken: streamToken,
 signal: streamSignal(),
-onSystem: (preview, stats)=>{ LAST_SYSTEM = preview + "\n\n【预算】" + JSON.stringify(stats); LAST_STATS = stats; },
+onSystem: (preview, stats)=>{ LAST_SYSTEM = preview + "\n\n【预算】" + JSON.stringify(stats); LAST_STATS = stats; recordLastPrompt(stats); },
 });
 saveHist(k, r.history);
 achvUnlock("swipe_1");
@@ -1689,7 +1703,7 @@ onToken: streamToken,
 onSpeaker: (sp)=>{ STREAM_SPEAKER = sp; },
 onSpeakerDone: ()=>{ saveHist(k, h); renderChat(); },
 onPush: ()=>{ saveHist(k, h); },
-onSystem: (preview, stats)=>{ LAST_SYSTEM = preview + "\n\n【预算】" + JSON.stringify(stats); LAST_STATS = stats; },
+onSystem: (preview, stats)=>{ LAST_SYSTEM = preview + "\n\n【预算】" + JSON.stringify(stats); LAST_STATS = stats; recordLastPrompt(stats); },
 };
 /* P1: 出戏值检测（穿越模式下每次玩家发言都算一次） */
 if(isTrav) travOocCheck(CHAT.travId, text);
@@ -2039,6 +2053,19 @@ view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返�
 + `<div style="height:40px"></div>`;
 window.scrollTo(0,0);
 }
+/* P0-2: 铁律记忆框交互 */
+window.ironlawCount = ()=>{
+const ta = document.getElementById("ironlaw_box"), c = document.getElementById("ironlaw_cnt");
+if(ta && c) c.textContent = ta.value.length + "/400";
+};
+window.saveIronLawUI = ()=>{
+const ta = document.getElementById("ironlaw_box");
+const v = ta ? ta.value : "";
+const card = RP.findCard(DETAIL.runId, DETAIL.name) || {};
+const r = RP_MEM.saveIronLaw(DETAIL.runId, DETAIL.name, card.id || null, v);
+ironlawCount();
+alert(r.truncated ? "已保存（超 400 字部分已截断）" : "铁律记忆已保存，对话时会永远最先注入");
+};
 window.newSaveSlot = ()=>{
 const def = new Date().toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
 const name = prompt("存档名称", "存档 " + def);
@@ -2162,7 +2189,7 @@ document.body.classList.remove("chatmode");
 const card = RP.findCard(runId, nm) || {name:nm, fields:{}};
 const run = (window.__DATA__.runs||{})[runId] || {};
 titleEl.innerHTML = icon("user")+" "+esc(nm); subEl.textContent = run.novel || "";
-const tabs = [["info","资料"],["memory","记忆"],["chat","最近聊天"]];
+const tabs = [["info","资料"],["memory","记忆"],["chat","最近聊天"],["arc","人物弧光"]];
 let body = "";
 if(DETAIL.tab === "info"){
 const groups = [["identity","身份"],["core","内核"],["speech","说话方式"],["background","背景"]];
@@ -2174,9 +2201,18 @@ return txt ? `<h2 class="sec">${g[1]}</h2><div class="card">`
 } else if(DETAIL.tab === "memory"){
 const st = RP_MEM.get(runId, nm);
 const n = (st && st.short && st.short.length) || 0;
-body = `<div class="card"><div class="name" style="font-size:14px">${st&&st.mood&&st.mood.state?esc(st.mood.state):"还没有心境记录"}</div>`
+/* P0-2: 铁律记忆框 (400 字常驻, 进 important 池最高优先级) */
+const _dc = RP.findCard(runId, nm) || {};
+const _iron = RP_MEM.getIronLaw(runId, nm, _dc.id || null);
+body = `<div class="card"><div class="name" style="font-size:14px">铁律记忆 · 永远最先注入</div>`
++ `<div class="meta">对${esc(nm)}的硬性要求（如绝不做的事、必须遵守的设定），400 字以内，每次对话必带</div>`
++ `<div class="field" style="margin:8px 0 0"><textarea id="ironlaw_box" rows="4" maxlength="400" placeholder="如：绝不在人前提起穿越者的身份；对黛玉永远温柔…" oninput="ironlawCount()">${esc(_iron)}</textarea></div>`
++ `<div class="btnrow"><span class="kv" id="ironlaw_cnt">${_iron.length}/400</span><span style="flex:1"></span><button class="btn" onclick="saveIronLawUI()">保存铁律</button></div></div>`
++ `<div class="card"><div class="name" style="font-size:14px">${st&&st.mood&&st.mood.state?esc(st.mood.state):"还没有心境记录"}</div>`
 + `<div class="meta">${n} 条近期记忆${st&&st.long?" · 有长远印象":""}</div>`
 + `<div class="btnrow" style="margin-top:8px"><button class="btn" onclick="detailOpenAlbum()">${icon("books")} 打开记忆事件簿</button></div></div>`;
+} else if(DETAIL.tab === "arc"){
+body = renderArcBody(runId, nm, card, q);
 } else {
 const h = getHist(`nd_chat_${runId}_${nm}`).slice(-10);
 body = (h.map(m=>{
@@ -2190,12 +2226,78 @@ view.innerHTML = `<button class="back" onclick="detailBack()">${icon("back")} �
 ${body}<div style="height:40px"></div>`;
 window.scrollTo(0,0);
 }
+/* ============ P0-3 人物弧光展示区 ============ */
+function renderArcBody(runId, nm, card, q){
+if(typeof RP_ARC === "undefined") return `<div class="empty">弧光模块未加载</div>`;
+const s = RP_ARC.arcSummary(card, runId);
+if(!s.type && !s.start && !s.mids.length && !s.end) return `<div class="empty">该角色暂无人物弧光资料</div>`;
+const opts = [s.defaultStage].concat(RP_ARC.STAGES.filter(x=>x && x !== s.defaultStage));
+const stageSel = `<div class="field" style="margin:0"><label>当前阶段（切换后按本卡记住）</label>`
++ `<select id="arcstage_sel" onchange="arcStageChange('${runId}','${q}')">`
++ opts.map(o=>`<option value="${esc(o)}"${o===s.stage?" selected":""}>${esc(o)}</option>`).join("")
++ `</select></div>`;
+const mids = s.mids.map((m,i)=>`<div class="kvline"><span class="kv">${i+1}.</span> ${esc(m)}</div>`).join("");
+return `<div class="card"><div class="t">人物弧光 · ${esc(s.typeLabel || s.type || "")}${s.typeLabel ? "弧" : ""}</div>`
++ `<div class="meta">当前阶段：${esc(s.stage || "未定")}</div></div>`
++ `<div class="card">${stageSel}</div>`
++ (s.start ? `<h2 class="sec">起 · 开局</h2><div class="card"><div class="kvline">${esc(s.start)}</div></div>` : "")
++ (mids ? `<h2 class="sec">承转 · ${s.mids.length} 个转折</h2><div class="card">${mids}</div>` : "")
++ (s.end ? `<h2 class="sec">合 · 结局</h2><div class="card"><div class="kvline">${esc(s.end)}</div></div>` : "");
+}
+window.arcStageChange = (runId, nm)=>{
+const sel = document.getElementById("arcstage_sel");
+if(!sel || typeof RP_ARC === "undefined") return;
+const card = (typeof RP !== "undefined" && RP.findCard(runId, nm)) || {name:nm, fields:{}};
+RP_ARC.setStage(card, runId, sel.value);
+renderDetail();
+};
 window.showSystem = ()=>{
 if(!LAST_SYSTEM){ alert("先发一句话，引擎组装好人设 prompt 后这里才能预览。"); return; }
 __backAction = ()=>showChat();
 titleEl.textContent = "人设 prompt 预览"; subEl.textContent = CHAT.name||"";
 view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回聊天</button>
 <pre style="white-space:pre-wrap;font-size:13px;background:#fff;border:1px solid #e5e0d8;border-radius:10px;padding:12px">${esc(LAST_SYSTEM)}</pre>`;
+window.scrollTo(0,0);
+};
+
+/* ============ P0-5 Prompt 诊断 (简洁版: 分段条 + 列表, 非极客面板) ============ */
+function recordLastPrompt(stats){
+window.__LAST_PROMPT__ = {stats: stats || null,
+hasWorldsim: !!(stats && stats.hasWorldsim), hasDirector: !!(stats && stats.hasDirector),
+memPools: (stats && stats.memPools) || null};
+}
+const DIAG_SEG_LABELS = {identity:"身份", persona:"玩家人设", narrator:"叙事者模式", core:"核心人设",
+memory:"长期记忆", speech:"说话方式", examples:"对话示例", background:"背景", relations:"人物关系", lore:"世界书"};
+const DIAG_POOL_LABELS = {important:"重要池（铁律/置顶/心境）", recent:"近期池", similar:"长远池"};
+window.promptDiag = ()=>{
+const lp = window.__LAST_PROMPT__;
+if(!lp || !lp.stats){ alert("先发一句话，引擎组装好 prompt 后这里才能诊断。"); return; }
+const s = lp.stats;
+const sysPct = Math.min(100, (s.sysTokens || 0) / Math.max(1, s.avail || 1) * 100);
+const histPct = Math.min(100, (s.histTokens || 0) / Math.max(1, s.avail || 1) * 100);
+const segRows = Object.keys(s.segTokens || {}).map(k=>
+`<div class="storow"><span>${DIAG_SEG_LABELS[k] || k}</span><span>${s.segTokens[k]} tok</span></div>`).join("");
+const poolRows = Object.keys(lp.memPools || {}).map(k=>{
+const p = lp.memPools[k];
+return `<div class="storow"><span>${DIAG_POOL_LABELS[k] || k}</span><span>${p.tokens} tok · ${p.items} 条${p.dropped ? ` · 丢弃 ${p.dropped}` : ""}</span></div>`;
+}).join("");
+const dropped = (s.droppedSegs || []).map(k=>DIAG_SEG_LABELS[k] || k).join("、");
+__backAction = ()=>showChat();
+titleEl.innerHTML = icon("chart") + " Prompt 诊断"; subEl.textContent = CHAT.name || "";
+view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回聊天</button>
+<div class="card"><div class="name" style="font-size:14px">预设：${esc(s.preset || "")}</div>
+<div class="meta">上下文 ${s.maxCtx} · 可用预算 ${s.avail} tokens</div>
+<div class="storbar"><div class="storbar-fg" style="width:${sysPct.toFixed(1)}%"></div></div>
+<div class="storow"><span>系统段（含人设/记忆/世界书）</span><span>${s.sysTokens} tok</span></div>
+<div class="storow"><span>聊天历史（保留 ${s.histKept} 条）</span><span>${s.histTokens} tok${s.histDropped ? ` · 丢弃最早 ${s.histDropped} 条` : ""}</span></div></div>
+<div class="card"><div class="name" style="font-size:14px">各段 token</div>${segRows || '<div class="empty">无</div>'}</div>
+<div class="card"><div class="name" style="font-size:14px">记忆三池</div>${poolRows || '<div class="empty">本轮未注入记忆</div>'}
+<div class="storow"><span>世界模拟注入</span><span>${lp.hasWorldsim ? "有" : "无"}</span></div>
+<div class="storow"><span>导演指令注入</span><span>${lp.hasDirector ? "有" : "无"}</span></div></div>
+<div class="card"><div class="name" style="font-size:14px">丢弃情况</div>
+<div class="kv">${dropped ? "整段丢弃：" + esc(dropped) : "无整段丢弃"}</div>
+${(s.loreHits && s.loreHits.length) ? `<div class="kv" style="margin-top:6px">世界书命中：${s.loreHits.map(esc).join("、")}</div>` : ""}</div>
+<div style="height:40px"></div>`;
 window.scrollTo(0,0);
 };
 
@@ -2323,6 +2425,8 @@ view.innerHTML = renderStorageCard() + `
 <select id="r_font"></select></div>
 <div class="field"><label>记忆整理周期（每 N 条消息跑一次三层记忆分析）</label>
 <input id="r_memcycle" type="number" min="5" value=""></div>
+<div class="field"><label>记忆三池预算比例（近期 / 长远 / 重要，如 50/30/20）</label>
+<input id="r_mempool" placeholder="50/30/20" value=""></div>
 <div class="btnrow"><button class="btn" onclick="saveRpCfgUI()">保存 RP 设置</button><button class="btn ghost" onclick="importStPreset()">${icon("download")} 导入 ST 预设(采样参数)</button></div>
 <div class="hint">每 N 条消息，引擎自动整理一次三层记忆：当前心境 + 30 条近期记忆 + 长远印象（1 次模型调用），存在本机。</div>
 <div class="hint">Key 只保存在本机, 聊天时由手机直接请求你填的接口, 不经过任何中转。
@@ -2416,6 +2520,7 @@ window.storeCleanup = async ()=>{
 };
 })();
 document.getElementById("r_memcycle").value = rc.memCycle||10;
+document.getElementById("r_mempool").value = rc.memPoolRatio||"50/30/20";
 (function(){ const gp = RP_PERSONA.getGlobal();
 const el = document.getElementById("persona_sum");
 if(el) el.textContent = gp ? ("当前：" + (gp.name||"") + " " + String(gp.desc||"").slice(0,40)) : "未设置（建议填一下，AI 聊天时会知道你是谁）"; })();
@@ -2506,6 +2611,7 @@ optMood:$("#r_optmood").value||"none",
 ooc:$("#r_ooc").checked, preset:$("#r_preset").value,
 ttsAuto:$("#r_ttsauto").checked, typewriter:$("#r_typewriter").checked,
 memCycle:Math.max(5,parseInt($("#r_memcycle").value)||10),
+memPoolRatio:(($("#r_mempool")&&$("#r_mempool").value)||"50/30/20").trim()||"50/30/20",
 /* 世界模拟三件套 */
 worldsim:$("#r_ws_on")?$("#r_ws_on").checked:true,
 wsPerMsg:Math.max(1,parseInt($("#r_ws_permsg")?$("#r_ws_permsg").value:"3")||3),

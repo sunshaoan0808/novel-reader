@@ -193,16 +193,16 @@ var NARRATOR_INSTR = "【叙事者模式】你同时承担叙事与扮演双重�
 /* P1-1 预设: 分段顺序/开关/预算比例可配置 (Risu 式预设, 不做 ST 拖拽) */
 var PRESETS = {
   classic: {name: "经典序", desc: "完整人设，适合长上下文",
-    order: {identity: 5, persona: 6, core: 10, memory: 20, speech: 30, examples: 40, background: 50, relations: 60, lore: 70},
+    order: {identity: 5, persona: 6, core: 10, arc: 15, memory: 20, speech: 30, examples: 40, background: 50, relations: 60, lore: 70},
     loreRatio: 0.2},
   lite: {name: "精简序", desc: "去背景/示例，省 token，适合小上下文",
-    order: {identity: 5, persona: 6, core: 10, memory: 15, speech: 20, relations: 30, lore: 40},
+    order: {identity: 5, persona: 6, core: 10, arc: 15, memory: 15, speech: 20, relations: 30, lore: 40},
     loreRatio: 0.12},
   immers: {name: "沉浸序", desc: "说话方式优先，代入感最强",
-    order: {identity: 5, persona: 6, speech: 10, examples: 15, core: 20, memory: 25, background: 40, relations: 50, lore: 60},
+    order: {identity: 5, persona: 6, speech: 10, examples: 15, core: 20, arc: 22, memory: 25, background: 40, relations: 50, lore: 60},
     loreRatio: 0.15},
   narr: {name: "叙事者", desc: "双线叙事+角色主动推进剧情，适合跑剧情",
-    order: {identity: 5, persona: 6, narrator: 8, core: 10, speech: 15, memory: 20, examples: 30, relations: 40, background: 50, lore: 60},
+    order: {identity: 5, persona: 6, narrator: 8, core: 10, speech: 15, arc: 18, memory: 20, examples: 30, relations: 40, background: 50, lore: 60},
     loreRatio: 0.15},
 };
 
@@ -227,7 +227,20 @@ function buildMessages(card, ctx, budget){
   add("persona", ctx.persona ? "【玩家人设】\n" + ctx.persona : "");
   add("narrator", NARRATOR_INSTR);
   add("core", "【核心人设】\n" + renderFields(card, LAYERS.identity.concat(LAYERS.core)));
-  add("memory", ctx.memory ? "【长期记忆】\n" + ctx.memory : "");
+  /* P0-1: memory 段走三池预算 (RP_MEM.renderBudgeted); 退化路径用 ctx.memory 纯文本 */
+  var memBudget = (budget && budget.memBudget) || 1000;
+  var memRes = null;
+  if(ctx.memBudgeted && typeof RP_MEM !== "undefined" && RP_MEM.renderBudgeted){
+    memRes = RP_MEM.renderBudgeted(ctx.memBudgeted.runId, ctx.memBudgeted.name,
+      memBudget, {cardId: ctx.memBudgeted.cardId});
+  }
+  var memSeg = memRes ? memRes.text : (ctx.memory || "");
+  var memTasks = ctx.memTasks || "";
+  if(memSeg && memTasks) memSeg += "\n" + memTasks;
+  else if(memTasks) memSeg = memTasks;
+  add("memory", memSeg ? "【长期记忆】\n" + memSeg : "");
+  /* P0-3: 人物弧光段 (当前 timeline_stage, 无弧光卡为空) */
+  add("arc", ctx.arc ? "【人物弧光】\n" + ctx.arc : "");
   add("speech", "【说话方式】\n" + renderFields(card, LAYERS.speech));
   add("examples", buildExamples(card, name, 600));
   add("background", "【背景】\n" + renderFields(card, LAYERS.background));
@@ -240,12 +253,13 @@ function buildMessages(card, ctx, budget){
   add("lore", loreRes.text);
 
   perm.sort(function(a, b){ return a.pri - b.pri; });
-  var sysParts = [], used = 0, dropped = [];
+  var sysParts = [], used = 0, dropped = [], segTokens = {};
   for(var i = 0; i < perm.length; i++){
     var sg = perm[i], t = estTokens(sg.text);
     if(used + t > avail){ dropped.push(sg.kind); continue; }
     sysParts.push(sg.text);
     used += t;
+    segTokens[sg.kind] = t;  // P0-5: 各段 token 供 Prompt 诊断展示
   }
 
   var left = avail - used;
@@ -268,6 +282,7 @@ function buildMessages(card, ctx, budget){
     messages: messages,
     stats: {maxCtx: maxCtx, avail: avail, sysTokens: used, histTokens: hUsed,
             histKept: hist.length, histDropped: hDropped, droppedSegs: dropped,
+            segTokens: segTokens, memPools: memRes ? memRes.pools : null,
             loreHits: loreHitTitles, preset: preset.name},
     preview: sysParts.join("\n\n") + "\n\n" + post,
   };

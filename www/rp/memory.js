@@ -35,7 +35,144 @@ if(m.view) s += "【此刻看法: " + m.view + "】";
 return s;
 }
 
-/* 状态渲染成 prompt 段 (置顶记忆优先, 永不遗忘) */
+/* token 估算 (与 RP_PROMPT.estTokens 同公式: 1 汉字 ≈ 1.6 token) */
+function estTokens(s){
+s = String(s || "");
+var zh = (s.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) || []).length;
+var en = (s.match(/[A-Za-z]+/g) || []).length;
+var rest = Math.max(0, s.length - zh - en * 4);
+return Math.ceil(zh * 1.6 + en * 1.3 + rest * 0.5);
+}
+
+/* P0-1: 三池预算比例 (近期/长远/重要), 设置页 nd_rp_cfg_v1.memPoolRatio 可调, 默认 "50/30/20" */
+function memPoolRatio(){
+try {
+var rc = JSON.parse(localStorage.getItem("nd_rp_cfg_v1") || "{}");
+var s = String(rc.memPoolRatio || "50/30/20");
+var p = s.split("/").map(function(x){ return parseInt(x, 10); });
+if(p.length === 3 && p.every(function(x){ return x >= 0 && isFinite(x); }) && (p[0] + p[1] + p[2]) > 0)
+return {recent: p[0], similar: p[1], important: p[2]};
+} catch(e){}
+return {recent: 50, similar: 30, important: 20};
+}
+
+/* P0-2: 铁律记忆 (400 字常驻框): 按角色卡维度 nd_ironlaw_<cardId>, cardId 取不到则 runId_name */
+var IRONLAW_MAX = 400;
+function ironKey(runId, name, cardId){
+return "nd_ironlaw_" + (cardId || ((runId || "") + "_" + (name || "")));
+}
+function getIronLaw(runId, name, cardId){
+try { return String(localStorage.getItem(ironKey(runId, name, cardId)) || ""); }
+catch(e){ return ""; }
+}
+function saveIronLaw(runId, name, cardId, text){
+var raw = String(text || "");
+var truncated = raw.length > IRONLAW_MAX;
+var t = truncated ? raw.slice(0, IRONLAW_MAX) : raw;
+try { localStorage.setItem(ironKey(runId, name, cardId), t); } catch(e){}
+return {saved: t, truncated: truncated, len: t.length};
+}
+
+/* 按 token 预算截断一段文本 */
+function truncText(s, maxTokens){
+s = String(s || "");
+if(estTokens(s) <= maxTokens) return s;
+var approx = Math.max(1, Math.floor(maxTokens / 1.6));
+return s.slice(0, approx) + "…";
+}
+
+/* P0-1: 三池记忆预算渲染 (RisuAI 三池思想)。
+ * 分池: important = 铁律+置顶+心境 (永不整段丢弃, 超预算按优先级 铁律>置顶新→旧>心境 截断);
+ *       recent = 未置顶短期 (新→旧, 按条丢弃); similar = 长远印象 (占位, 超预算截断/整段丢弃)。
+ * 返回 {text, pools:{important:{tokens,items,dropped}, recent:{...}, similar:{...}}} */
+function renderBudgeted(runId, name, budgetTokens, opts){
+opts = opts || {};
+budgetTokens = Math.max(0, Math.floor(budgetTokens || 0));
+var st = get(runId, name) || {};
+var iron = getIronLaw(runId, name, opts.cardId);
+var short = (st.short || []).slice();
+var pinned = short.filter(function(m){ return m.pin; }).reverse();  // 新→旧
+var rest = short.filter(function(m){ return !m.pin; }).reverse();    // 新→旧
+var mood = (st.mood && st.mood.state) ? st.mood : null;
+var long = String(st.long || "");
+
+var ratio = memPoolRatio();
+var sum = ratio.recent + ratio.similar + ratio.important;
+var bImp = Math.floor(budgetTokens * ratio.important / sum);
+var bRec = Math.floor(budgetTokens * ratio.recent / sum);
+var bSim = budgetTokens - bImp - bRec;
+
+var pools = {
+important: {tokens: 0, items: 0, dropped: 0},
+recent: {tokens: 0, items: 0, dropped: 0},
+similar: {tokens: 0, items: 0, dropped: 0},
+};
+var secs = [];
+
+/* ---- important 池: 铁律 > 置顶(新→旧) > 心境; 永不整段丢弃 ---- */
+var ironSec = "", pinLines = [], moodSec = "";
+var impLeft = bImp;
+if(budgetTokens > 0 && (iron || pinned.length || mood)){
+if(impLeft <= 0) impLeft = Math.min(budgetTokens, 200); // 再小也要保住铁律
+var addImp = function(kind, text, mustKeep){
+var need = estTokens(text);
+if(need <= impLeft){
+impLeft -= need; pools.important.tokens += need; pools.important.items++;
+return text;
+}
+if(mustKeep || impLeft > 8){
+/* 铁律永不丢: 预算再小也截断塞入, 上限放宽到整段预算 */
+var cap = mustKeep ? Math.max(impLeft, Math.min(budgetTokens, 200)) : impLeft;
+var cut = truncText(text, cap);
+impLeft = 0; pools.important.tokens += estTokens(cut); pools.important.items++;
+return cut;
+}
+pools.important.dropped++;
+return "";
+};
+if(iron) ironSec = addImp("iron", "【铁律记忆】\n" + iron, true);
+for(var pi = 0; pi < pinned.length; pi++){
+var pl = addImp("pin", fmtItem(pinned[pi]), false);
+if(pl) pinLines.push(pl);
+}
+if(mood){
+var mt = "【当前心境】" + mood.state + (mood.filter ? "——" + mood.filter : "");
+moodSec = addImp("mood", mt, false);
+}
+}
+if(ironSec) secs.push(ironSec);
+if(pinLines.length)
+secs.push("【置顶记忆】(永不遗忘, 回答时优先参考)\n" + pinLines.join("\n"));
+if(moodSec) secs.push(moodSec);
+
+/* ---- recent 池: 未置顶短期, 新→旧, 按条丢弃 ---- */
+var recLines = [], recLeft = bRec;
+for(var ri = 0; ri < rest.length; ri++){
+var rt = fmtItem(rest[ri]);
+var rn = estTokens(rt);
+if(rn <= recLeft){ recLines.push(rt); recLeft -= rn;
+pools.recent.tokens += rn; pools.recent.items++; }
+else pools.recent.dropped++;
+}
+if(recLines.length) secs.push("【近期记忆】(新→旧)\n" + recLines.join("\n"));
+
+/* ---- similar 池: 长远印象 (向量召回以后再说, 先占位整段) ---- */
+var simLeft = bSim;
+if(long){
+var lt = "【长远印象】" + long;
+var ln = estTokens(lt);
+if(ln <= simLeft){ secs.push(lt); pools.similar.tokens = ln; pools.similar.items = 1; }
+else if(simLeft >= 20){
+var st2 = truncText(lt, simLeft);
+secs.push(st2); pools.similar.tokens = estTokens(st2); pools.similar.items = 1;
+}
+else pools.similar.dropped = 1;
+}
+
+return {text: secs.join("\n"), pools: pools};
+}
+
+/* 状态渲染成 prompt 段 (置顶记忆优先, 永不遗忘) [遗留路径: prompt.js 无 RP_MEM.renderBudgeted 时的兜底] */
 function renderPrompt(st){
 if(!st) return "";
 var out = "";
@@ -106,12 +243,25 @@ filter: String(o.mood.filter || "").slice(0, 150)}: ((prev && prev.mood) || null
 return {mood: mood, short: short, long: long, updatedAt: Date.now()};
 }
 
-/* 每周期跑一次分析。返回 {analyzed} */
+/* 每周期跑一次分析。返回 {analyzed}。
+ * P0-4: 水位改 msg_id 制 (up_to_msg_id): 新消息 = 该 id 之后的消息;
+ * 老 up_to(索引) 做一次性迁移; delMsg/历史裁剪后水位不错位。 */
 async function maybeAnalyze(runId, name, history, cfg, callChat, cardHint){
 var st = get(runId, name);
-var up_to = (st && st.up_to) || 0;
-if(history.length - up_to < cycle()) return {analyzed: false};
-var newMsgs = history.slice(up_to).map(function(m){
+var upId = (st && st.up_to_msg_id) || null;
+var idx = 0;
+if(upId){
+idx = -1;
+for(var f = 0; f < history.length; f++){
+var fmid = history[f] && (history[f].mid || history[f].id);
+if(fmid === upId){ idx = f + 1; break; }
+}
+if(idx < 0) idx = Math.min((st && st.up_to) || 0, history.length); // 水位消息被删: 回退旧索引水位
+} else {
+idx = Math.min((st && st.up_to) || 0, history.length); // 老状态一次性迁移
+}
+if(history.length - idx < cycle()) return {analyzed: false};
+var newMsgs = history.slice(idx).map(function(m){
 return (m.role === "user"? "我": (m.speaker || name)) + ": " + String(m.content).slice(0, 300);
 }).join("\n").slice(0, 8000);
 if(!newMsgs.trim()) return {analyzed: false};
@@ -124,7 +274,9 @@ raw = await callChat(sumCfg, [
 } catch(e){ return {analyzed: false};} // 失败: 不打断, 下次重试
 var next = parseState(raw, st);
 if(!next) return {analyzed: false};
+var lastM = history[history.length - 1];
 next.up_to = history.length;
+next.up_to_msg_id = (lastM && (lastM.mid || lastM.id)) || upId || null;
 save(runId, name, next);
 return {analyzed: true};
 }
@@ -161,6 +313,9 @@ longN: (st && st.long) ? 1 : 0, shortMax: SHORT_MAX, pinMax: PIN_MAX};
 }
 
 return {get: get, save: save, clear: clear, renderPrompt: renderPrompt,
+renderBudgeted: renderBudgeted, memPoolRatio: memPoolRatio,
+ironKey: ironKey, getIronLaw: getIronLaw, saveIronLaw: saveIronLaw,
+IRONLAW_MAX: IRONLAW_MAX, estTokens: estTokens,
 maybeAnalyze: maybeAnalyze, togglePin: togglePin, delItem: delItem,
 memStats: memStats, SHORT_MAX: SHORT_MAX, PIN_MAX: PIN_MAX};
 })();
