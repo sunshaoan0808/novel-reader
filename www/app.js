@@ -641,8 +641,8 @@ ${t.scope_chapters?`<div class="meta">章节: ${esc(t.scope_chapters)}</div>`:""
 ${t.scope_scenes?`<div class="meta">场景: ${esc(t.scope_scenes)}</div>`:""}
 ${t.note?`<div class="meta">备注: ${esc(t.note)}</div>`:""}
 <div class="btnrow">
-<button class="btn ghost" onclick="copyTask(${JSON.stringify(t.id)})">复制发给 Muse</button>
-<button class="btn danger" onclick="delTask(${JSON.stringify(t.id)})">删除</button>
+<button class="btn ghost" onclick='copyTask(${JSON.stringify(t.id)})'>复制发给 Muse</button>
+<button class="btn danger" onclick='delTask(${JSON.stringify(t.id)})'>删除</button>
 </div>
 </div>`).join("") || `<div class="empty">还没有任务, 点上面新建一个</div>`;
 }
@@ -2918,7 +2918,7 @@ function soulPickTarget(){
   const cs = allChars();
   view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
   <div class="chargrid">${cs.map(c=>`
-    <div class="charcard" onclick="soulAnchors(${JSON.stringify(c.runId)},${JSON.stringify(c.name)})">
+    <div class="charcard" onclick='soulAnchors(${JSON.stringify(c.runId)},${JSON.stringify(c.name)})'>
       <div class="avatar ${charCoverCls(c.name)}">${esc(c.name[0])}</div>
       <div class="ccname">${esc(c.name)}</div><div class="ccnovel">${esc(c.novel)}</div>
     </div>`).join("")}</div><div style="height:40px"></div>`;
@@ -2943,7 +2943,7 @@ window.soulAnchors = (runId, name)=>{
     <label class="kvline" style="display:block"><input type="radio" name="anchor" value="custom"> 自定：<input id="anchorCustom" style="width:60%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px" placeholder="比如：黛玉初进贾府那天"></label>
   </div>
   <div class="card"><label class="kvline" style="display:block"><input type="checkbox" id="oocRemind" checked> OOC 提醒：我说的话不符合身份/时代时，世界轻轻点我一下</label></div>
-  <div class="btnrow"><button class="btn" style="flex:1" onclick="soulStart(${JSON.stringify(runId)},${JSON.stringify(name)})">开始穿越</button></div>
+  <div class="btnrow"><button class="btn" style="flex:1" onclick='soulStart(${JSON.stringify(runId)},${JSON.stringify(name)})'>开始穿越</button></div>
   <div style="height:40px"></div>`;
   window.scrollTo(0,0);
 };
@@ -2982,9 +2982,9 @@ function bodyPickWorld(){
   const ws = travWorlds();
   view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
   ${ws.length ? ws.map(w=>`
-    <div class="card" onclick="bodyIdentity(${JSON.stringify(w.kind)},${JSON.stringify(w.id)})">
+    <div class="card" onclick='bodyIdentity(${JSON.stringify(w.kind)},${JSON.stringify(w.id)})'>
       <div class="name">${esc(w.name)}</div><div class="meta">${esc(w.sub)}</div>
-      ${w.kind==="card"?`<button class="linkbtn" style="margin-top:4px" onclick="event.stopPropagation();travWorldComplete(${JSON.stringify(w.kind)},${JSON.stringify(w.id)})">${icon("scroll",12)} AI 补完这个世界</button>`:""}
+      ${w.kind==="card"?`<button class="linkbtn" style="margin-top:4px" onclick='event.stopPropagation();travWorldComplete(${JSON.stringify(w.kind)},${JSON.stringify(w.id)})'>${icon("scroll",12)} AI 补完这个世界</button>`:""}
     </div>`).join("") : `<div class="empty">还没有可用世界：先导入角色卡，或等蒸馏任务产出</div>`}
   <div style="height:40px"></div>`;
   window.scrollTo(0,0);
@@ -2999,7 +2999,7 @@ function idtInp(fid, tag){ tag = tag||"input";
     : `<input id="${fid}" style="${style}">`;
 }
 function idtRow(kind, id, key, label, inputHtml){
-  return `<div class="field"><label>${label} <button class="linkbtn" onclick="bodyReroll(${JSON.stringify(kind)},${JSON.stringify(id)},${JSON.stringify(key)})">重随</button></label>${inputHtml}</div>`;
+  return `<div class="field"><label>${label} <button class="linkbtn" onclick='bodyReroll(${JSON.stringify(kind)},${JSON.stringify(id)},${JSON.stringify(key)})'>重随</button></label>${inputHtml}</div>`;
 }
 window.bodyIdentity = (kind, id)=>{
   __backAction = ()=>bodyPickWorld();
@@ -3012,7 +3012,7 @@ window.bodyIdentity = (kind, id)=>{
   view.innerHTML = `<button class="back" onclick="bodyPickWorld()">${icon("back")} 返回</button>
   <div class="card"><div class="kv">一句话愿望，AI 帮你捏身份（十项完整字段）</div>
   <div class="row" style="margin-top:8px"><input id="idWish" style="flex:1;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px" placeholder="比如：我想当个落魄书生混进贾府">
-  <button class="btn" style="white-space:nowrap" onclick="bodyAiGen(${JSON.stringify(kind)},${JSON.stringify(id)})">AI 生成</button></div></div>
+  <button class="btn" style="white-space:nowrap" onclick='bodyAiGen(${JSON.stringify(kind)},${JSON.stringify(id)})'>AI 生成</button></div></div>
   <div class="card"><label class="kvline" style="display:block"><input type="checkbox" id="idModern"> 现代人直穿：不捏古代身份，以现在的自己进去（携带手机/打火机/纸巾）</label></div>
   <h2 class="sec">身份卡 <span class="badge">P1</span></h2>
   <div class="card">
@@ -3027,7 +3027,7 @@ window.bodyIdentity = (kind, id)=>{
   ${idtRow(kind,id,"situation",lbl("situation"),idtInp("idSituation","textarea"))}
   ${idtRow(kind,id,"hooks",lbl("hooks"),idtInp("idHooks","textarea"))}
   </div>
-  <div class="btnrow"><button class="btn" style="flex:1" onclick="bodyStart(${JSON.stringify(kind)},${JSON.stringify(id)})">开始穿越</button></div>
+  <div class="btnrow"><button class="btn" style="flex:1" onclick='bodyStart(${JSON.stringify(kind)},${JSON.stringify(id)})'>开始穿越</button></div>
   <div style="height:40px"></div>`;
   window.scrollTo(0,0);
 };
@@ -3334,7 +3334,7 @@ window.travWorldComplete = (kind, id)=>{
   <div class="meta" style="white-space:pre-wrap;max-height:120px;overflow:hidden">${esc(seed.slice(0,300))}${seed.length>300?"…":""}</div></div>
   ${done?`<div class="card"><div class="kv">已补完 <span class="badge">AI 补完</span></div>
   <div class="hint">${esc((done.bg||"").slice(0,140))}…</div></div>`:""}
-  <div class="btnrow"><button class="btn" style="flex:1" onclick="travWorldCompleteGen(${JSON.stringify(kind)},${JSON.stringify(id)})">${done?"重新补完":"AI 补完世界"}</button></div>
+  <div class="btnrow"><button class="btn" style="flex:1" onclick='travWorldCompleteGen(${JSON.stringify(kind)},${JSON.stringify(id)})'>${done?"重新补完":"AI 补完世界"}</button></div>
   <div class="hint">AI 只补：时代背景、势力/门派、关键地点、当前局势、3–5 个剧情锚点。补完内容会标注「AI 补完」来源，你确认后才生效。</div>
   <div style="height:40px"></div>`;
   window.scrollTo(0,0);
@@ -3353,7 +3353,7 @@ function travWorldCompleteView(){
   const d = window._wbDraft; if(!d) return;
   __backAction = ()=>travWorldComplete(d.kind, d.id);
   titleEl.innerHTML = icon("scroll")+" 世界补完"; subEl.textContent = RP_TRAVERSE.worldDisplayName(d.kind, d.id);
-  view.innerHTML = `<button class="back" onclick="travWorldComplete(${JSON.stringify(d.kind)},${JSON.stringify(d.id)})">${icon("back")} 返回</button>
+  view.innerHTML = `<button class="back" onclick='travWorldComplete(${JSON.stringify(d.kind)},${JSON.stringify(d.id)})'>${icon("back")} 返回</button>
   <div class="card"><div class="kv">补完结果（可编辑，确认后生效）</div>
   <div class="field"><label>世界设定 <span class="badge">AI 补完</span></label>
   <textarea id="wbBg" style="width:100%;min-height:180px;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px">${esc(d.bg)}</textarea></div>
@@ -3382,7 +3382,7 @@ window.isekaiPickSrc = ()=>{
   view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
   <div class="hint">把这个角色送进另一部作品的世界。</div>
   <div class="chargrid">${cs.map(c=>`
-    <div class="charcard" onclick="isekaiPickDst(${JSON.stringify(c.runId)},${JSON.stringify(c.name)})">
+    <div class="charcard" onclick='isekaiPickDst(${JSON.stringify(c.runId)},${JSON.stringify(c.name)})'>
       <div class="avatar ${charCoverCls(c.name)}">${esc(c.name[0])}</div>
       <div class="ccname">${esc(c.name)}</div><div class="ccnovel">${esc(c.novel)}</div>
     </div>`).join("")}</div><div style="height:40px"></div>`;
@@ -3396,7 +3396,7 @@ window.isekaiPickDst = (srcRunId, srcName)=>{
   view.innerHTML = `<button class="back" onclick="isekaiPickSrc()">${icon("back")} 返回</button>
   <div class="hint">穿越者：${esc(srcName)}</div>
   ${worlds.map(w=>`
-  <div class="card" onclick="isekaiFusion(${JSON.stringify(srcRunId)},${JSON.stringify(srcName)},${JSON.stringify(w.key)})">
+  <div class="card" onclick='isekaiFusion(${JSON.stringify(srcRunId)},${JSON.stringify(srcName)},${JSON.stringify(w.key)})'>
     <div class="name">《${esc(w.title)}》 ${w.status==="pending"?'<span class="badge">数据待接入</span>':'<span class="badge">已接入</span>'}</div>
     <div class="meta">${esc(w.note||"")}</div>
   </div>`).join("")}
@@ -3409,12 +3409,12 @@ window.isekaiFusion = (srcRunId, srcName, dstKey)=>{
   __backAction = ()=>isekaiPickDst(srcRunId, srcName);
   document.body.classList.remove("chatmode");
   titleEl.innerHTML = icon("repeat")+" 异世界穿越"; subEl.textContent = "第三步：选择融合方式";
-  view.innerHTML = `<button class="back" onclick="isekaiPickDst(${JSON.stringify(srcRunId)},${JSON.stringify(srcName)})">${icon("back")} 返回</button>
+  view.innerHTML = `<button class="back" onclick='isekaiPickDst(${JSON.stringify(srcRunId)},${JSON.stringify(srcName)})'>${icon("back")} 返回</button>
   <div class="card"><div class="name">${esc(srcName)} → 《${esc(w.title)}》</div>
   <div class="row" style="margin-top:8px">
   <label class="kvline" style="display:block"><input type="radio" name="fusion" value="outsider" checked> 异乡人：完整保留原身份与记忆，目标世界视你为异人</label>
   <label class="kvline" style="display:block;margin-top:6px"><input type="radio" name="fusion" value="reborn"> 转生：AI 安排目标世界新身份，保留性格与记忆</label></div></div>
-  <div class="btnrow"><button class="btn" style="flex:1" onclick="isekaiStart(${JSON.stringify(srcRunId)},${JSON.stringify(srcName)},${JSON.stringify(dstKey)})">开始穿越</button></div>
+  <div class="btnrow"><button class="btn" style="flex:1" onclick='isekaiStart(${JSON.stringify(srcRunId)},${JSON.stringify(srcName)},${JSON.stringify(dstKey)})'>开始穿越</button></div>
   <div style="height:40px"></div>`;
   window.scrollTo(0,0);
 };
@@ -3448,7 +3448,7 @@ window.partySetup = ()=>{
   view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
   <div class="hint">2–4 人小队：你 + 最多 3 名队友。AI 按 talkativeness 调度发言，被你点名的队友一定发言。</div>
   ${ws.map(w=>`
-    <div class="card" onclick="partyPickMain(${JSON.stringify(w.kind)},${JSON.stringify(w.id)})">
+    <div class="card" onclick='partyPickMain(${JSON.stringify(w.kind)},${JSON.stringify(w.id)})'>
       <div class="name">${esc(w.name)}</div><div class="meta">${esc(w.sub)}</div>
     </div>`).join("")}<div style="height:40px"></div>`;
   window.scrollTo(0,0);
@@ -3461,8 +3461,8 @@ window.partyPickMain = (kind, id)=>{
   view.innerHTML = `<button class="back" onclick="partySetup()">${icon("back")} 返回</button>
   <div class="card"><div class="kv">${esc(wname)}</div>
   <div class="btnrow" style="margin-top:8px">
-  <button class="btn" style="flex:1" onclick="partyPickMainSoul(${JSON.stringify(kind)},${JSON.stringify(id)})">魂穿：选一个角色</button>
-  <button class="btn ghost" style="flex:1" onclick="partyPickMainBody(${JSON.stringify(kind)},${JSON.stringify(id)})">肉身：快速捏身份</button></div></div>
+  <button class="btn" style="flex:1" onclick='partyPickMainSoul(${JSON.stringify(kind)},${JSON.stringify(id)})'>魂穿：选一个角色</button>
+  <button class="btn ghost" style="flex:1" onclick='partyPickMainBody(${JSON.stringify(kind)},${JSON.stringify(id)})'>肉身：快速捏身份</button></div></div>
   <div style="height:40px"></div>`;
   window.scrollTo(0,0);
 };
@@ -3472,9 +3472,9 @@ window.partyPickMainSoul = (kind, id)=>{
   titleEl.innerHTML = icon("chat")+" 组团穿越"; subEl.textContent = "选择你要扮演的角色";
   const cs = allChars();
   window._partyCands = cs;
-  view.innerHTML = `<button class="back" onclick="partyPickMain(${JSON.stringify(kind)},${JSON.stringify(id)})">${icon("back")} 返回</button>
+  view.innerHTML = `<button class="back" onclick='partyPickMain(${JSON.stringify(kind)},${JSON.stringify(id)})'>${icon("back")} 返回</button>
   <div class="chargrid">${cs.map((c,ix)=>`
-    <div class="charcard" onclick="partyPickMainSoulGo(${JSON.stringify(kind)},${JSON.stringify(id)},${ix})">
+    <div class="charcard" onclick='partyPickMainSoulGo(${JSON.stringify(kind)},${JSON.stringify(id)},${ix})'>
       <div class="avatar ${charCoverCls(c.name)}">${esc(c.name[0])}</div>
       <div class="ccname">${esc(c.name)}</div><div class="ccnovel">${esc(c.novel)}</div>
     </div>`).join("")}</div><div style="height:40px"></div>`;
@@ -3488,11 +3488,11 @@ window.partyPickMainBody = (kind, id)=>{
   __backAction = ()=>partyPickMain(kind, id);
   document.body.classList.remove("chatmode");
   titleEl.innerHTML = icon("chat")+" 组团穿越"; subEl.textContent = "肉身：快速捏身份";
-  view.innerHTML = `<button class="back" onclick="partyPickMain(${JSON.stringify(kind)},${JSON.stringify(id)})">${icon("back")} 返回</button>
+  view.innerHTML = `<button class="back" onclick='partyPickMain(${JSON.stringify(kind)},${JSON.stringify(id)})'>${icon("back")} 返回</button>
   <div class="card"><div class="field"><label>一句话设定你的身份/开场</label>
   <input id="pbWish" style="width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px" placeholder="比如：现代大学生，带着手机穿进大观园"></div>
   <label class="kvline"><input type="checkbox" id="pbModern" checked> 现代人直穿（携带手机/打火机/纸巾）</label>
-  <div class="btnrow" style="margin-top:8px"><button class="btn" style="flex:1" onclick="partyBodyNext(${JSON.stringify(kind)},${JSON.stringify(id)})">下一步：选队友</button></div></div>
+  <div class="btnrow" style="margin-top:8px"><button class="btn" style="flex:1" onclick='partyBodyNext(${JSON.stringify(kind)},${JSON.stringify(id)})'>下一步：选队友</button></div></div>
   <div style="height:40px"></div>`;
   window.scrollTo(0,0);
 };
@@ -3506,14 +3506,14 @@ window.partyPickComps = (kind, id, main)=>{
   titleEl.innerHTML = icon("chat")+" 组团穿越"; subEl.textContent = "第三步：选择队友（最多3人）";
   const cs = allChars().filter(c=>!(main.mode==="soul" && c.name===main.name));
   window._partyCands = cs; window._partySel = []; window._partyMain = main;
-  view.innerHTML = `<button class="back" onclick="partyPickMain(${JSON.stringify(kind)},${JSON.stringify(id)})">${icon("back")} 返回</button>
+  view.innerHTML = `<button class="back" onclick='partyPickMain(${JSON.stringify(kind)},${JSON.stringify(id)})'>${icon("back")} 返回</button>
   <div class="hint">主身份：${esc(main.mode==="soul"?main.name:((main.wish||"")+"（肉身）")||"肉身")}</div>
   <div class="chargrid">${cs.map((c,ix)=>`
     <div class="charcard" id="pc_${ix}" onclick="partyToggleComp(${ix})">
       <div class="avatar ${charCoverCls(c.name)}">${esc(c.name[0])}</div>
       <div class="ccname">${esc(c.name)}</div><div class="ccnovel">${esc(c.novel)}</div>
     </div>`).join("")}</div>
-  <div class="btnrow" style="position:sticky;bottom:70px"><button class="btn" style="flex:1" onclick="partyStart(${JSON.stringify(kind)},${JSON.stringify(id)})">出发！</button></div>
+  <div class="btnrow" style="position:sticky;bottom:70px"><button class="btn" style="flex:1" onclick='partyStart(${JSON.stringify(kind)},${JSON.stringify(id)})'>出发！</button></div>
   <div style="height:40px"></div>`;
   window.scrollTo(0,0);
 };

@@ -9,6 +9,7 @@ import android.util.Base64;
 import android.webkit.JavascriptInterface;
 import android.webkit.JsPromptResult;
 import android.webkit.JsResult;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -20,6 +21,10 @@ import java.io.FileOutputStream;
 
 public class MainActivity extends Activity {
     private WebView web;
+    /** <input type=file> 回调: WebView 自身打不开系统文件选择器, 必须由原生端实现,
+     *  否则 JS 点 input.click() 会被静默吞掉(导入角色卡没反应就是这个原因)。 */
+    private ValueCallback<Uri[]> filePathCallback;
+    private static final int REQ_FILE_CHOOSER = 1001;
 
     /** JS 桥: 分享 PNG 角色卡。base64 解码后写 cache/shared, 经 SharedFileProvider
      *  以 content:// URI 调起系统分享面板。文件名做白名单过滤, 防路径穿越。 */
@@ -100,12 +105,47 @@ public class MainActivity extends Activity {
                     .show();
                 return true;
             }
+
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+                if (MainActivity.this.filePathCallback != null) {
+                    MainActivity.this.filePathCallback.onReceiveValue(null);
+                }
+                MainActivity.this.filePathCallback = filePathCallback;
+                try {
+                    startActivityForResult(fileChooserParams.createIntent(), REQ_FILE_CHOOSER);
+                } catch (Exception e) {
+                    MainActivity.this.filePathCallback = null;
+                    android.util.Log.e("novelreader", "open file chooser failed", e);
+                    return false;
+                }
+                return true;
+            }
         });
         setContentView(web);
         if (savedInstanceState != null) {
             web.restoreState(savedInstanceState);
         } else {
             web.loadUrl("file:///android_asset/www/index.html");
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_FILE_CHOOSER && filePathCallback != null) {
+            Uri[] results = null;
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                if (data.getClipData() != null) {
+                    int n = data.getClipData().getItemCount();
+                    results = new Uri[n];
+                    for (int i = 0; i < n; i++) results[i] = data.getClipData().getItemAt(i).getUri();
+                } else if (data.getData() != null) {
+                    results = new Uri[]{ data.getData() };
+                }
+            }
+            filePathCallback.onReceiveValue(results);
+            filePathCallback = null;
         }
     }
 
