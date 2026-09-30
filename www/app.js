@@ -1851,7 +1851,7 @@ const isHit = SEARCH.active && SEARCH.hits.indexOf(idx)>=0;
 const isCur = isHit && SEARCH.hits[SEARCH.cur]===idx;
 return `<div class="msg ${m.role==="user"?"me":""}${mtype==="narr"?" narr":""}${mtype==="npc"?" npc":""}${isCur?" curhit":""}" id="smsg-${idx}" onclick="toggleTools(event,${idx})" oncontextmenu="event.preventDefault();msgMenu(${idx});return false;" ontouchstart="msgPressStart(event,${idx})" ontouchend="msgPressEnd()" ontouchmove="msgPressEnd()">`
 + `<div class="avatar sm">${esc((who||"?")[0])}</div>`
-+ `<div><div class="who">${esc(who)}</div><div class="bubble">${hlRestore(md(hlSearchRaw(body)))}${cardHTML}</div>${extra}${ts}</div>`
++ `<div class="msgcol"><div class="who">${esc(who)}</div><div class="bubble">${hlRestore(md(hlSearchRaw(body)))}${cardHTML}</div>${extra}${ts}</div>`
 + `</div>`;
 }).join("") || `<div class="empty">还没有对话，打个招呼吧<br><span style="font-size:12px">试试：你是谁？</span></div>`;
 renderCtxBar();

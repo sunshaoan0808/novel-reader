@@ -313,7 +313,8 @@ body.chatmode .chatbar{
 }
 
 /* 消息工具条（点按浮现） */
-.msgtools{ display:none; gap:6px; margin-top:6px; }
+.msgcol{ min-width:0; }
+.msgtools{ display:none; gap:6px; margin-top:6px; flex-wrap:wrap; }
 .msg.show-tools .msgtools{ display:flex; }
 .msgtools button{
   background:rgba(212,162,78,.10); border:1px solid var(--line); color:var(--ink-dim);
