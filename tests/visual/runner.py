@@ -4,7 +4,7 @@
 用例（TDD 还债：每个用例都能在 v31/v32/v33 的 bug 代码上失败）：
   1. ctxbar-no-stray   顶栏上下文条无游离 0/NaN（v32 一元正号 bug）
   2. scroll-no-jitter   上滑看历史时流式输出/打字机不拽回底部（v33 抖动 bug）
-  3. scroll-hidebars    下滑顶栏/底栏联动隐藏且正文补位；上滑恢复（v33 底栏不隐藏）
+  3. scroll-hidebars    上滑看历史进沉浸式(顶栏/底栏/场景条联动隐藏,正文补位无黑条)；只有滑到底才退出
   4. layout-no-overlap  关键页面 360x800 无文字重叠/横向溢出（抽样）
 
 用法： bash tests/visual/run.sh
@@ -130,49 +130,52 @@ async def case_jitter(c):
 
 
 async def case_hidebars(c):
-    """下滑超 140：顶栏+底栏联动隐藏，正文补位无黑条；小幅上滑保持隐藏；大幅上滑恢复。"""
+    """上滑看历史（离底>140）进入沉浸式：顶栏收起+底栏移出+场景条收起+顶罩减弱；
+       未滑到底保持隐藏；只有滑到底（离底<24）才退出沉浸式。"""
     await c.ev(SHOW_CHAT, await_promise=True)
     await asyncio.sleep(0.6)
     js = '''(async()=>{
       var log = document.getElementById("chatlog");
       var head = document.getElementById("chathead");
       var bar = document.querySelector(".chatbar");
+      var scen = document.getElementById("scenbar");
       var out = {};
       out.maxST = log.scrollHeight - log.clientHeight;
       if (out.maxST < 160) return {skip: true, reason: "滚动空间不足"};
       var h0 = log.clientHeight;
-      /* 先回到顶部再滑到底：模拟真实用户下滑手势。注意不能直接设到底部，
-         showChat 进来时本来就在底部，那样是 no-op，测不到隐藏逻辑 */
-      log.scrollTop = 0;
-      await new Promise(function(r){ setTimeout(r, 400); });
       out.preHidden = bar.classList.contains("hidebar") || head.classList.contains("hide");
-      log.scrollTop = out.maxST;
+      log.scrollTop = 0;
       await new Promise(function(r){ setTimeout(r, 500); });
-      var st1 = log.scrollTop;
+      out.dist = Math.round(log.scrollHeight - log.scrollTop - log.clientHeight);
       out.hidden = bar.classList.contains("hidebar") && head.classList.contains("hide")
         && bar.style.transform === "translateY(110%)"
         && bar.style.position === "fixed"
-        && parseFloat(head.style.marginTop) < 0;
+        && parseFloat(head.style.marginTop) < 0
+        && document.body.classList.contains("immersive");
+      out.scenGone = getComputedStyle(scen).maxHeight === "0px"
+        && getComputedStyle(scen).opacity === "0";
       out.h0 = h0; out.h1 = log.clientHeight;
       out.grown = out.h1 > h0 + 40;
       var brect = bar.getBoundingClientRect();
       out.barTop = Math.round(brect.top); out.winH = window.innerHeight;
-      /* 核心需求：隐藏后底栏必须整体移出视口（v33 用户原话"底栏不隐藏"） */
       out.barGone = brect.top >= window.innerHeight - 8;
-      log.scrollTop = Math.max(0, st1 - 20);   /* 小幅上滑：迟滞区，保持隐藏 */
+      log.scrollTop = out.maxST - 300;
       await new Promise(function(r){ setTimeout(r, 400); });
-      out.stillHidden = bar.classList.contains("hidebar");
-      log.scrollTop = 0;                        /* 大幅上滑：恢复 */
+      out.stillHidden = bar.classList.contains("hidebar")
+        && document.body.classList.contains("immersive");
+      log.scrollTop = out.maxST;
       await new Promise(function(r){ setTimeout(r, 400); });
       out.shown = !bar.classList.contains("hidebar") && !head.classList.contains("hide")
-        && !bar.style.transform && !bar.style.position && !head.style.marginTop;
+        && !bar.style.transform && !bar.style.position && !head.style.marginTop
+        && !document.body.classList.contains("immersive");
+      out.scenBack = getComputedStyle(scen).opacity === "1";
       return out;
     })()'''
     r = await c.ev(js, await_promise=True)
     if r.get("skip"):
         return False, r
-    ok = (r["hidden"] and r["grown"] and r["barGone"] and r["stillHidden"]
-          and r["shown"] and not r["preHidden"])
+    ok = (r["hidden"] and r["scenGone"] and r["grown"] and r["barGone"] and r["stillHidden"]
+          and r["shown"] and r["scenBack"] and not r["preHidden"])
     return ok, r
 
 

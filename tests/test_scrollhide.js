@@ -65,7 +65,7 @@ document.getElementById = ()=>null;
 t("nearBottom: 无chatlog默认true", run("chatNearBottom()") === true);
 document.getElementById = _origGet;
 
-// ---------- attachHeadHide: 顶栏+底栏联动, 迟滞 ----------
+// ---------- attachHeadHide: 顶栏+底栏+场景条联动, 只有滑到底才退出沉浸式 ----------
 (function(){
 const toggles = [];
 const head = mkEl(); head.offsetHeight = 65;
@@ -73,52 +73,55 @@ head.classList = {add(){}, remove(){}, toggle(c, on){ toggles.push(["head", c, !
 const bar = mkEl(); bar.offsetHeight = 69;
 bar.classList = {add(){}, remove(){}, toggle(c, on){ toggles.push(["bar", c, !!on]); }, contains(){ return false; }};
 const log = mkEl();
-Object.assign(log, {scrollHeight: 3000, scrollTop: 0, clientHeight: 600});
+Object.assign(log, {scrollHeight: 3000, scrollTop: 2400, clientHeight: 600}); /* 初始钉在底部 */
 els["chathead"] = head; els["chatlog"] = log; els["__chatbar"] = bar;
+const bodyToggles = [];
+document.body = {classList: {add(){}, remove(){}, toggle(c, on){ bodyToggles.push([c, !!on]); }, contains(){ return false; }}};
 document.activeElement = null;
 run("attachHeadHide()");
 const scrollTo = (st)=>{ log.scrollTop = st; log.onscroll(); };
 
-scrollTo(500); // 下滑过140 -> 隐藏
-t("hide: 顶栏marginTop收起", head.style.marginTop === "-65px");
+t("init: 底部默认显示", !head.style.marginTop && !bar.style.position);
+
+scrollTo(2000); // 上滑看历史: dist 0->400, 拉开超140 -> 进入沉浸式
+t("hide: 上滑看历史顶栏收起", head.style.marginTop === "-65px");
+t("hide: 顶栏hide类(视觉兜底)", toggles.some(x=>x[0]==="head"&&x[1]==="hide"&&x[2]));
 t("hide: 底栏fixed脱离文档流", bar.style.position === "fixed" && bar.style.bottom === "0" && bar.style.left === "0" && bar.style.right === "0");
 t("hide: 底栏transform移出", bar.style.transform === "translateY(110%)");
 t("hide: 底栏hidebar类", toggles.some(x=>x[0]==="bar"&&x[1]==="hidebar"&&x[2]));
+t("hide: body挂immersive", bodyToggles.some(x=>x[0]==="immersive"&&x[1]));
 
-scrollTo(480); // 小幅上滑, 在迟滞带内 -> 保持隐藏
-t("hysteresis: 小幅上滑不反复显示", head.style.marginTop === "-65px" && bar.style.position === "fixed");
+scrollTo(1900); // 小幅下滑但没到底(dist=500): 保持隐藏，不到滑到底不退出
+t("hysteresis: 未滑到底保持隐藏", head.style.marginTop === "-65px" && bar.style.position === "fixed");
 
-scrollTo(400); // 自隐藏点上行超64 -> 显示
-t("hysteresis: 上行超64恢复顶栏", head.style.marginTop === "");
-t("hysteresis: 上行超64恢复底栏", bar.style.position === "" && bar.style.transform === "");
+scrollTo(2100); // 小幅上滑(dist=300): 保持隐藏（旧逻辑这里会上滑64就误显示）
+t("hysteresis: 历史区内上滑不退出", head.style.marginTop === "-65px");
 
-scrollTo(500); // 再隐藏
-t("rehide: 再次下滑隐藏", head.style.marginTop === "-65px");
-scrollTo(100); // 回到110以内 -> 显示
-t("rehide: 回顶110以内恢复", head.style.marginTop === "" && bar.style.position === "");
+scrollTo(2380); // 滑到底: dist=20<24 -> 退出沉浸式
+t("show: 滑到底恢复顶栏", head.style.marginTop === "");
+t("show: 滑到底恢复底栏", bar.style.position === "" && bar.style.transform === "");
+t("show: 滑到底摘immersive", bodyToggles.filter(x=>x[0]==="immersive").pop()[1] === false);
 
-// 输入聚焦时不藏底栏
+// 输入聚焦时不藏底栏（顶栏照藏）
 document.activeElement = {tagName: "INPUT"};
-scrollTo(600);
+scrollTo(2000);
 t("typing: 输入时顶栏仍可藏", head.style.marginTop === "-65px");
 t("typing: 输入时底栏不藏", bar.style.position === "" && bar.style.transform === "");
 document.activeElement = null;
+scrollTo(2380); // 回到底部恢复，供后续用例干净状态
 
 /* 深层回归: 隐藏后浏览器因布局变化钳制 scrollTop(绝对值变小但离底距离不变),
-   状态机不得把它当成用户上滑而误显示 (v33 视觉回归抓到的根因) */
-scrollTo(0);                         /* 先回到已知状态: 显示 */
-scrollTo(500);                       /* 隐藏, distHide = 2400-500 = 1900 */
+   状态机不得把它当成用户操作而误显示 (v33 视觉回归抓到的根因) */
+scrollTo(2000);                      /* 隐藏, dist=400 */
 log.scrollHeight = 2900;             /* 模拟: chatlog 变高, maxST 2400->2300 */
-scrollTo(400);                       /* 浏览器钳制: 绝对值掉了100, 但离底距离仍是1900 */
+scrollTo(1900);                      /* 钳制: 绝对值掉了100, 但离底距离仍是400 */
 t("clamp: 布局钳制不误显示", head.style.marginTop === "-65px" && bar.style.position === "fixed");
-scrollTo(380);                       /* 用户真上滑20: 离底距离 1920, 差值20<64 */
-t("clamp: 小幅上滑仍保持隐藏", head.style.marginTop === "-65px" && bar.style.position === "fixed");
-scrollTo(300);                       /* 上滑100: 离底距离 2000, 差值100>64 */
-t("clamp: 上滑超64恢复", head.style.marginTop === "" && bar.style.position === "");
+scrollTo(2280);                      /* 滑到底附近: dist=20<24 -> 显示 */
+t("clamp: 滑到底恢复", head.style.marginTop === "" && bar.style.position === "");
 log.scrollHeight = 3000;
 
 /* 新回归: 打开聊天页后约1s内字体/布局沉降让 scrollTop 原地抖动
-   (实测 ±84px), 但离底距离不变; 不得误判成用户下滑而隐藏 */
+   (实测 ±84px), 但离底距离不变; 不得误判成用户滚动而隐藏 */
 (function(){
 const head2 = mkEl(); head2.offsetHeight = 65;
 head2.classList = {add(){}, remove(){}, toggle(c, on){ if(on) head2["_h_"+c]=1; else delete head2["_h_"+c]; }, contains(c){ return !!head2["_h_"+c]; }};

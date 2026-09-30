@@ -1207,12 +1207,14 @@ const log = document.getElementById("chatlog");
 if(!log) return;
 const head = document.getElementById("chathead");
 const bar = document.querySelector(".chatbar");
-let hidden = false, distHide = 0, headH = 0, ticking = false;
+let hidden = false, headH = 0, ticking = false;
 /* 离底距离 */
 const distNow = ()=>Math.max(0, ((log.scrollHeight || 0) - (log.clientHeight || 0)) - log.scrollTop);
 let lastDist = distNow();
 const raf = (typeof requestAnimationFrame !== "undefined") ? requestAnimationFrame : (fn)=>fn();
-/* 顶栏/底栏联动显隐: 下滑阅读时一起收起让出空间, 上滑/回顶时恢复;
+/* 顶栏/底栏/场景条联动显隐：
+   - 进入沉浸式：上滑看历史、离底距离拉开超 140 才藏（阅读历史时让出空间）；
+   - 退出沉浸式：只有滑到底（离底距离 < 24）才显。
    输入框聚焦(键盘弹起)时不藏底栏 */
 function setHidden(hide){
 if(hide === hidden) return;
@@ -1235,29 +1237,31 @@ bar.style.right = hide ? "0" : "";
 bar.style.bottom = hide ? "0" : "";
 bar.style.transform = hide ? "translateY(110%)" : "";
 }
+/* 沉浸式总开关挂到 body：场景条收起、顶部压暗罩减弱、顶部死区收窄（CSS 侧） */
+if(typeof document !== "undefined" && document.body && document.body.classList)
+document.body.classList.toggle("immersive", hide);
 }
 window.__setHeadHidden = setHidden; /* 测试钩子 */
 function onScroll(){
 ticking = false;
-const st = log.scrollTop;
 /* 方向判定必须用离底距离, 不能用绝对 scrollTop：打开聊天页后约 1s 内
    字体加载/布局沉降会让 scrollTop 原地抖动（实测 ±84px），但离底距离
    恒为 0；用绝对值判 down/up 会把这次抖动当成用户下滑而误隐藏，
    导致进聊天页顶栏/底栏就是藏起来的。只有离底距离真的变了，
    才说明是用户手指在滚动 */
-const dist = distNow();
-const movingDown = (lastDist - dist) > 1; /* 离底距离缩小 = 手指往下滑（看新消息） */
-const movingUp = (dist - lastDist) > 1;   /* 离底距离拉大 = 手指往上滑（看历史） */
 /* 离底距离判定: 显隐改变 chatlog 高度时浏览器会钳制 scrollTop(把用户保持在底部),
    钳制/滚动锚定只改变绝对 scrollTop, 不改变离底距离; 只有用户真正上滑才会拉开
-   离底距离。用它做显示阈值天然免疫布局变化引发的 scroll 事件, 状态机不会被
+   离底距离。用它做阈值天然免疫布局变化引发的 scroll 事件, 状态机不会被
    自己的显隐反复横跳(v33 视觉回归抓到的深层根因) */
-/* 迟滞阈值: 下滑过 140 藏; 上滑回到 110 以内、或离底距离比隐藏时拉开超 64 才显示 */
-if(!hidden && movingDown && st > 140){ distHide = dist; setHidden(true); }
-else if(hidden && movingUp && (st < 110 || dist - distHide > 64)){ setHidden(false); }
+const dist = distNow();
+const movingUp = (dist - lastDist) > 1;   /* 离底距离拉大 = 手指往上滑（看历史） */
+if(!hidden && movingUp && dist > 140){ setHidden(true); }
+else if(hidden && dist < 24){ setHidden(false); }
 lastDist = dist;
 }
 log.onscroll = ()=>{ if(!ticking){ ticking = true; raf(onScroll); } };
+if(typeof document !== "undefined" && document.body && document.body.classList)
+document.body.classList.remove("immersive"); /* 新开聊天页先清掉旧状态 */
 }
 window.exportChat = ()=>{
 const h = getHist(chatHistKey());

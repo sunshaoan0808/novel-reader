@@ -212,13 +212,13 @@ const head = mkEl();
 head.offsetHeight = 65;
 head.classList = {add(){}, remove(){},
 toggle(c, on){ toggles.push([c, !!on]); }, contains(){ return false; }};
-const log = mkEl(); log.scrollTop = 0; log.scrollHeight = 3000; log.clientHeight = 600;
+const log = mkEl(); log.scrollTop = 2400; log.scrollHeight = 3000; log.clientHeight = 600;
 els["chathead"] = head; els["chatlog"] = log;
 vm.runInContext("attachHeadHide()", ctx);
-log.scrollTop = 500; log.onscroll();           // 下滑过 140 -> 隐藏
+log.scrollTop = 2000; log.onscroll();           // 上滑看历史(dist 0->400) -> 隐藏
 t("headhide: 加上hide类", toggles.some(x=>x[0]==="hide"&&x[1]));
 t("headhide: 收起占位marginTop=-65px", head.style.marginTop === "-65px");
-log.scrollTop = 100; log.onscroll();           // 回滚 -> 显示
+log.scrollTop = 2380; log.onscroll();           // 滑到底(dist=20) -> 显示
 t("headhide: 去掉hide类", toggles.some(x=>x[0]==="hide"&&!x[1]));
 t("headhide: 恢复marginTop", head.style.marginTop === "");
 })();
