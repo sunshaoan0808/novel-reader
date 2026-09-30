@@ -111,11 +111,19 @@ function normalizeTavern(d){
     });
   });
   var tags = d.tags || [];
+  /* P1-2: 保留多开场白与示例对话(之前归一化会丢, 导出也写空) */
+  var altGreetings = Array.isArray(d.alternate_greetings) ? d.alternate_greetings
+    .map(function(g){ return String(g == null ? "" : g).trim(); })
+    .filter(function(g){ return g; }).slice(0, 8) : [];
+  var ext = (d.extensions && typeof d.extensions === "object") ? d.extensions : {};
+  var exampleDialogue = String(ext.example_dialogue == null ? "" : ext.example_dialogue).trim();
   return {
     id: "imp" + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36),
     name: name,
     novel: tags[0] || "导入角色卡",
     fields: fields,
+    altGreetings: altGreetings,
+    exampleDialogue: exampleDialogue,
     scenario: String(d.scenario || "").trim(),
     sysNote: sysNote.join("\n"),
     worldbook: worldbook,
@@ -150,6 +158,11 @@ function add(card){
 function del(id){
   save(list().filter(function(c){ return c.id !== id; }));
 }
+/* P1-2: 原位更新(保留顺序), 供卡片编辑页使用 */
+function update(card){
+  save(list().map(function(c){ return c.id === card.id ? card : c; }));
+  return card;
+}
 
 /* 文件 -> 归一化卡片（不入库，供预览确认） */
 async function fromFile(file){
@@ -167,7 +180,7 @@ async function fromFile(file){
 return {
   extractChara: extractChara, parseCardJson: parseCardJson,
   normalizeTavern: normalizeTavern, exampleLines: exampleLines,
-  list: list, find: find, findById: findById, add: add, del: del,
+  list: list, find: find, findById: findById, add: add, del: del, update: update,
   fromFile: fromFile,
 };
 })();

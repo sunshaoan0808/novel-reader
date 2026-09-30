@@ -207,11 +207,13 @@ const RP = (function(){
 function findCard(runId, name){
   if(runId === "custom" && typeof RP_WRITER !== "undefined"){
     var cc = RP_WRITER.findCustom(name);
-    if(cc) return {name: cc.name, fields: cc.fields || {}};
+    if(cc) return {name: cc.name, fields: cc.fields || {},
+      altGreetings: cc.altGreetings || [], exampleDialogue: cc.exampleDialogue || ""};
   }
   if(runId === "imported" && typeof RP_CARDIMPORT !== "undefined"){
     var ic = RP_CARDIMPORT.find(name);
-    if(ic) return {name: ic.name, fields: ic.fields || {}};
+    if(ic) return {name: ic.name, fields: ic.fields || {},
+      altGreetings: ic.altGreetings || [], exampleDialogue: ic.exampleDialogue || ""};
   }
   var cards = (window.__DATA__ && window.__DATA__.rp_cards || {})[runId] || [];
   for(var i = 0; i < cards.length; i++) if(cards[i].name === name) return cards[i];
@@ -225,6 +227,10 @@ function newMsg(role, content){
 
 async function greeting(runId, name, cfg, novel){
   var card = findCard(runId, name);
+  /* P1-2: 卡片自带多开场白 -> 随机挑一条, 省一次模型调用 */
+  if(card && card.altGreetings && card.altGreetings.length){
+    return card.altGreetings[Math.floor(Math.random() * card.altGreetings.length)];
+  }
   if(!cfg || !cfg.key){
     var lines = card ? RP_PROMPT.renderFields(card, ["typical_lines"]) : "";
     var first = (lines.split("\n")[0] || "").replace(/^- [^：]+：/, "").slice(0, 60);

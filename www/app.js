@@ -310,17 +310,55 @@ document.body.appendChild(a); a.click(); a.remove();
 };
 };
 
-/* ================= TTS 朗读 ================= */
+/* ============ TTS 朗读 + 语音气泡 (对标商业 App: 可播放的气泡, 含时长/进度; 默认不存音频进历史) ============ */
 const ttsCache = {};
-let curAudio = null, curAudioKey = null;
+let TTS_PLAY = null; // {key, idx, audio, local, startTs, estDur, prog, timer}
+window.ttsEstDur = (text)=>{ // 中文约 4 字/秒, 保底 2 秒
+const n = String(text||"").replace(/\s/g,"").length;
+return Math.max(2, Math.ceil(n/4));
+};
+window.fmtDur = (s)=>{ s = Math.max(0, Math.round(s)); return Math.floor(s/60) + ":" + String(s%60).padStart(2,"0"); };
+window.ttsKey = (idx)=> chatHistKey() + "#" + idx;
+function ttsClean(m){ return String((m&&m.content)||"").replace(/[*#`>\-\[\]()]/g,"").slice(0,800); }
+function ttsPaint(){ // 只更新气泡 DOM, 不整页重绘(避免滚动跳动)
+if(!TTS_PLAY) return;
+const fg = document.getElementById("vbfg-"+TTS_PLAY.idx);
+if(fg) fg.style.width = Math.round((TTS_PLAY.prog||0)*100) + "%";
+const ic = document.getElementById("vbico-"+TTS_PLAY.idx);
+if(ic) ic.innerHTML = icon("pause",13);
+const b = document.getElementById("vb-"+TTS_PLAY.idx);
+if(b) b.classList.add("playing");
+}
+function ttsPaintStopped(idx){
+const fg = document.getElementById("vbfg-"+idx);
+if(fg) fg.style.width = "0%";
+const ic = document.getElementById("vbico-"+idx);
+if(ic) ic.innerHTML = icon("play",13);
+const b = document.getElementById("vb-"+idx);
+if(b) b.classList.remove("playing");
+}
+function ttsTickStart(){ // 本地语音用计时器推进进度; 远端走 audio.timeupdate
+if(TTS_PLAY && TTS_PLAY.timer) clearInterval(TTS_PLAY.timer);
+if(!TTS_PLAY) return;
+TTS_PLAY.timer = setInterval(()=>{
+if(!TTS_PLAY) return;
+if(TTS_PLAY.local){
+const el = (Date.now()-TTS_PLAY.startTs)/1000/TTS_PLAY.estDur;
+TTS_PLAY.prog = Math.min(0.99, el);
+if(el >= 1){ const i = TTS_PLAY.idx; ttsStop(); ttsPaintStopped(i); return; }
+}
+ttsPaint();
+}, 500);
+}
 window.ttsMsg = async (idx)=>{
-const cfg = getCfg();
-const k = chatHistKey() + "#" + idx;
-if(curAudioKey===k){ ttsStop(); return; }
+const k = window.ttsKey(idx);
+if(TTS_PLAY && TTS_PLAY.key===k){ const i = TTS_PLAY.idx; ttsStop(); ttsPaintStopped(i); return; }
 ttsStop();
 const h = getHist(chatHistKey());
 const m = h[idx]; if(!m || m.role!=="assistant") return;
-const text = String(m.content).replace(/[*#`>\-\[\]()]/g, "").slice(0, 800);
+const cfg = getCfg();
+const text = ttsClean(m);
+const estDur = window.ttsEstDur(text);
 if(cfg.key && cfg.base && cfg.ttsModel){
 try{
 let url = ttsCache[k];
@@ -328,10 +366,14 @@ if(!url){
 url = await RP_NET.tts(cfg, text, cfg.ttsModel, cfg.ttsVoice||"alloy");
 ttsCache[k] = url;
 }
-curAudio = new Audio(url); curAudioKey = k;
-curAudio.onended = ()=>{ curAudio = null; curAudioKey = null; };
-await curAudio.play();
-}catch(e){ alert("TTS 失败：" + e.message); }
+const a = new Audio(url);
+TTS_PLAY = {key:k, idx:idx, audio:a, local:false, startTs:Date.now(), estDur:estDur, prog:0};
+a.onended = ()=>{ const i = TTS_PLAY?TTS_PLAY.idx:idx; ttsStop(); ttsPaintStopped(i); };
+a.ontimeupdate = ()=>{ if(TTS_PLAY && TTS_PLAY.key===k && a.duration) { TTS_PLAY.prog = a.currentTime/a.duration; ttsPaint(); } };
+ttsPaint(); ttsTickStart();
+achvUnlock("tts_1");
+await a.play();
+}catch(e){ TTS_PLAY = null; alert("TTS 失败：" + e.message); }
 return;
 }
 /* 无远端 TTS 配置: 用手机自带免费语音兜底（对标猫箱端侧语音参考） */
@@ -339,16 +381,32 @@ if(!("speechSynthesis" in window)){ alert("先去「设置」填 API 地址/Key 
 try{
 const u = new SpeechSynthesisUtterance(text);
 u.lang = "zh-CN";
-window._localTtsOn = true; curAudioKey = k;
-u.onend = u.onerror = ()=>{ window._localTtsOn = false; curAudioKey = null; };
+window._localTtsOn = true;
+TTS_PLAY = {key:k, idx:idx, audio:null, local:true, startTs:Date.now(), estDur:estDur, prog:0};
+u.onend = u.onerror = ()=>{ if(TTS_PLAY && TTS_PLAY.key===k){ const i = TTS_PLAY.idx; ttsStop(); ttsPaintStopped(i); } };
+ttsPaint(); ttsTickStart();
+achvUnlock("tts_1");
 speechSynthesis.speak(u);
-}catch(e){ alert("本地语音失败：" + e.message); }
+}catch(e){ TTS_PLAY = null; window._localTtsOn = false; alert("本地语音失败：" + e.message); }
 };
 function ttsStop(){
-if(curAudio){ try{curAudio.pause();}catch(e){} curAudio = null; }
-if(window._localTtsOn && ("speechSynthesis" in window)){ speechSynthesis.cancel(); window._localTtsOn = false; }
-curAudioKey = null;
+if(TTS_PLAY){
+if(TTS_PLAY.timer){ try{clearInterval(TTS_PLAY.timer);}catch(e){} }
+if(TTS_PLAY.audio){ try{TTS_PLAY.audio.pause();}catch(e){} }
+TTS_PLAY = null;
 }
+if(window._localTtsOn && ("speechSynthesis" in window)){ try{speechSynthesis.cancel();}catch(e){} window._localTtsOn = false; }
+}
+/* 语音气泡: 替代原来的小喇叭按钮, 含播放/暂停、进度条、预估时长 */
+window.voiceBubbleHTML = (idx, m)=>{
+const k = window.ttsKey(idx);
+const playing = !!(TTS_PLAY && TTS_PLAY.key===k);
+const dur = window.ttsEstDur(ttsClean(m));
+return `<button class="voicebub${playing?" playing":""}" id="vb-${idx}" onclick="event.stopPropagation();ttsMsg(${idx})" title="点击播放/暂停">`
++ `<span class="vb-ico" id="vbico-${idx}">${icon(playing?"pause":"play",13)}</span>`
++ `<span class="vb-bar"><span class="vb-fg" id="vbfg-${idx}" style="width:${playing?Math.round((TTS_PLAY.prog||0)*100):0}%"></span></span>`
++ `<span class="vb-dur">${window.fmtDur(dur)}</span></button>`;
+};
 
 /* ================= 世界书编辑 ================= */
 /* ============ 编辑器 token 计数器 (对标 C.AI/Janitor: 实时用量条, 80%/100% 两档告警) ============ */
@@ -459,6 +517,7 @@ if(!e.content){ alert("内容不能为空"); return; }
 const a = getLore(runId);
 if(i==null) a.push(e); else { e.id = a[i].id||e.id; a[i] = e; }
 saveLore(runId, a); renderLoreList(runId);
+if(i==null) achvUnlock("lore_1");
 };
 
 /* ================= 正则替换 ================= */
@@ -652,7 +711,7 @@ const RPCFG_KEY = "nd_rp_cfg_v1";
 const getCfg = ()=>{ try{return JSON.parse(localStorage.getItem(CFG_KEY))||{}}catch(e){return{}}};
 const saveCfg = (c)=> localStorage.setItem(CFG_KEY, JSON.stringify(c));
 const getRpCfg = ()=> Object.assign({maxContext:8192, respTokens:512, summaryModel:"",
-  temperature:0.9, topP:1, ooc:true, preset:"classic", optCards:false, optCount:4, optMood:"none"}, JSON.parse(localStorage.getItem(RPCFG_KEY)||"{}"));
+  temperature:0.9, topP:1, ooc:true, preset:"classic", optCards:false, optCount:4, optMood:"none", ttsAuto:false}, JSON.parse(localStorage.getItem(RPCFG_KEY)||"{}"));
 const saveRpCfg = (c)=> localStorage.setItem(RPCFG_KEY, JSON.stringify(c));
 const chatKey = (runId, name)=> `nd_chat_${runId}_${name}`;
 const getHist = (k)=>{ try{return JSON.parse(localStorage.getItem(k))||[]}catch(e){return[]}};
@@ -701,10 +760,12 @@ view.innerHTML = `
 <div class="avatar">${esc((CHAT.name||"?")[0])}</div>
 <div class="chead-main"><div class="cname">${esc(CHAT.name)}</div>
 <div class="cstat">${run.novel?`<span>${esc(run.novel)}</span>`:""}<button onclick="toggleDrawer(false);openAlbum(CHAT.runId,CHAT.name)"><span class="mement">${icon("brain",15)} ${memN}条记忆</span>›</button></div></div>
+<button class="menubtn" onclick="toggleChatSearch()" title="搜索聊天记录">${icon("search")}</button>
 <button class="menubtn" onclick="toggleDrawer(true)" title="菜单">${icon("menu")}</button>
 </div>
 <div class="chatwrap">
 <div id="ctxbar"></div>
+<div id="chatsearch"></div>
 <div id="chatlog"></div>
 <div id="scenbar" class="scenbar"></div>
 <div class="chatbar">${chatbarInner(false)}</div>
@@ -759,10 +820,12 @@ view.innerHTML = `
 <button class="backbtn" onclick="exitChat()">‹</button>
 <div class="stack">${stack}</div>
 <div class="cname">群聊 · ${ms.length} 人<small>${esc(ms.join("、"))}</small></div>
+<button class="menubtn" onclick="toggleChatSearch()" title="搜索聊天记录">${icon("search")}</button>
 <button class="menubtn" onclick="toggleDrawer(true)" title="菜单">${icon("menu")}</button>
 </div>
 <div class="chatwrap">
 <div id="ctxbar"></div>
+<div id="chatsearch"></div>
 <div id="chatlog"></div>
 <div id="scenbar" class="scenbar"></div>
 <div class="chatbar">${chatbarInner(false)}</div>
@@ -836,7 +899,7 @@ ops:`<button class="go" onclick="event.stopPropagation();chatWith('${c.runId}','
 +`<button onclick="event.stopPropagation();charDetail('${c.runId}','${qn}','picker')">详情</button>`});
 }).join("") + `</div>` : `<div class="empty"><span class="big">🎭</span>还没有角色<br><span style="font-size:12px">去「写卡」创建你的第一个角色</span><br><button class="btn" style="margin-top:10px" onclick="setNav('writer')">去写卡</button></div>`);
 }
-window.exitChat = ()=>{ showChatPicker(); };
+window.exitChat = ()=>{ SEARCH.active=false; SEARCH.q=""; SEARCH.hits=[]; SEARCH.cur=-1; showChatPicker(); };
 window.exitChatTo = (n)=>{ document.body.classList.remove("chatmode"); setNav(n); };
 window.toggleDrawer = (on)=>{
 document.getElementById("drawer").classList.toggle("on", !!on);
@@ -921,6 +984,8 @@ view: "", pin: true});
 st.updatedAt = Date.now();
 RP_MEM.save(CHAT.runId, CHAT.name, st);
 msgSheet(false);
+achvUnlock("pin_1");
+pinNudge(CHAT.runId, CHAT.name);
 alert("已 Pin 为长期记忆 📌");
 };
 let _pressT = null, _pressFired = false;
@@ -977,6 +1042,7 @@ if(!nv.trim()){ alert("内容不能为空"); return; }
 const k = chatHistKey();
 const h = getHist(k);
 const m = h[idx]; if(!m) return;
+achvUnlock("edit_1");
 if(m.role !== "user"){
 // AI 消息: 只改文本, 不触发重生成; 保留 swipe 变体数组/评分
 m.content = nv;
@@ -1018,10 +1084,216 @@ LAST_STATS = null;
 localStorage.setItem("nd_chat_last", `${runId}|${name}`);
 setNav("chat");
 };
+/* ============ P1-6: 轻量本地成就 ============ */
+window.achvUnlock = (id)=>{
+if(typeof RP_ACHV==="undefined") return;
+if(RP_ACHV.unlock(id)) achvToast(id);
+};
+let ACHV_TOAST_TIMER = null;
+function achvToast(id){
+const def = RP_ACHV.DEFS.find(d=>d.id===id); if(!def) return;
+let el = document.getElementById("achvToast");
+if(!el){ el = document.createElement("div"); el.id = "achvToast"; el.className = "achv-toast"; document.body.appendChild(el); }
+el.innerHTML = `${icon("check",14)} 成就解锁: <b>${esc(def.name)}</b><br><span class="dim">${esc(def.desc)}</span>`;
+el.classList.add("show");
+if(ACHV_TOAST_TIMER) clearTimeout(ACHV_TOAST_TIMER);
+ACHV_TOAST_TIMER = setTimeout(()=>el.classList.remove("show"), 2600);
+}
+window.showAchv = ()=>{
+__backAction = ()=>showSettings();
+titleEl.textContent = "成就"; subEl.textContent = `已解锁 ${RP_ACHV.count()}/${RP_ACHV.DEFS.length}`;
+document.body.classList.remove("chatmode");
+view.innerHTML = `<button class="back" onclick="showSettings()">${icon("back")} 返回设置</button>
+<div class="hint">本地记录, 无数值无排行, 纯粹纪念。</div>`
++ RP_ACHV.list().map(a=>`<div class="card ${a.unlocked?"":"dimmed"}"><div class="row"><div class="avatar">${icon(a.icon,20)}</div>
+<div><div class="name">${esc(a.name)} ${a.unlocked?"":`<span class="badge">未解锁</span>`}</div>
+<div class="kv">${esc(a.desc)}${a.unlocked&&a.ts?` · ${new Date(a.ts).toLocaleDateString("zh-CN")}`:""}</div></div></div></div>`).join("")
++ `<div style="height:40px"></div>`;
+window.scrollTo(0,0);
+};
+
+/* ============ P1-7: 纯前端 PIN 应用锁 ============ */
+window.pinUnlockScreen = ()=>{
+return new Promise((resolve)=>{
+if(typeof RP_PIN==="undefined" || !RP_PIN.has()){ resolve(true); return; }
+const ov = document.createElement("div");
+ov.id = "pinlock"; ov.className = "pinlock";
+let digits = "";
+const dots = ()=> [0,1,2,3].map(i=>`<span class="pdot${i<digits.length?" on":""}"></span>`).join("");
+const render = ()=>{
+ov.innerHTML = `<div class="pin-box">
+<div class="pin-title">${icon("check",18)} 应用已锁定</div>
+<div class="pin-dots">${dots()}</div>
+<div class="pin-pad">${[1,2,3,4,5,6,7,8,9,"",0,"del"].map(k=>
+k==="" ? `<span></span>`
+: k==="del" ? `<button class="pkey" data-k="del">⌫</button>`
+: `<button class="pkey" data-k="${k}">${k}</button>`).join("")}</div>
+<div class="pin-msg" id="pinMsg"></div>
+<div class="pin-warn">忘记 PIN 只能清除全部数据, 没有找回途径</div>
+<button class="pin-wipe" id="pinWipe">清除全部数据</button>
+</div>`;
+ov.querySelectorAll(".pkey").forEach(b=>b.addEventListener("click", ()=>press(b.getAttribute("data-k"))));
+const w = ov.querySelector("#pinWipe"); if(w) w.addEventListener("click", wipe);
+};
+const msg = (t)=>{ const m = ov.querySelector("#pinMsg"); if(m) m.textContent = t; };
+const press = async (k)=>{
+if(RP_PIN.lockRemain() > 0) return;
+if(k==="del"){ digits = digits.slice(0,-1); render(); return; }
+if(digits.length >= 4) return;
+digits += k;
+if(digits.length < 4){ render(); return; }
+render();
+const ok = await RP_PIN.verify(digits);
+if(ok){ RP_PIN.resetFails(); document.body.classList.remove("pinlocked"); ov.remove(); resolve(true); return; }
+const r = RP_PIN.fail();
+digits = "";
+if(r.locked){ msg("连续错误 5 次, 锁定 1 分钟"); lockCount(); }
+else { msg(`PIN 错误, 还剩 ${r.left} 次机会`); render(); }
+};
+const lockCount = ()=>{
+const remain = RP_PIN.lockRemain();
+if(remain <= 0){ msg(""); render(); return; }
+msg(`已锁定, ${Math.ceil(remain/1000)} 秒后重试`);
+setTimeout(lockCount, 1000);
+};
+const wipe = ()=>{
+if(!confirm("确定清除全部数据吗？\n所有聊天记录、记忆、角色卡、存档都会被删除, 不可恢复！")) return;
+if(!confirm("最后确认: 真的要清空一切吗？")) return;
+try{ localStorage.clear(); }catch(e){}
+location.reload();
+};
+document.body.appendChild(ov);
+document.body.classList.add("pinlocked");
+render();
+if(RP_PIN.lockRemain() > 0) lockCount();
+});
+};
+function renderPinSettings(){
+const box = document.getElementById("pinset"); if(!box) return;
+if(typeof RP_PIN==="undefined"){ box.innerHTML = `<div class="hint">PIN 模块未加载</div>`; return; }
+if(!RP_PIN.has()){
+box.innerHTML = `<div class="field"><label>设置 4 位数字 PIN</label>
+<div class="pinrow"><input id="pin_new1" type="password" inputmode="numeric" maxlength="4" placeholder="••••">
+<input id="pin_new2" type="password" inputmode="numeric" maxlength="4" placeholder="再输一次"></div></div>
+<div class="btnrow"><button class="btn" onclick="pinSet()">设置 PIN 锁</button></div>
+<div class="hint">忘记 PIN 只能清除全部数据, 没有找回途径。</div>`;
+}else{
+box.innerHTML = `<div class="kv">应用锁已开启${RP_PIN.lockRemain()>0?" · 当前锁定中":""}</div>
+<div class="btnrow" style="margin-top:8px"><button class="btn ghost" onclick="pinChangeUI()">修改 PIN</button>
+<button class="btn ghost" onclick="pinRemoveUI()">关闭应用锁</button></div>
+<div id="pinchange" style="margin-top:8px"></div>`;
+}
+}
+window.pinSet = async ()=>{
+const a = (document.getElementById("pin_new1").value||"").trim();
+const b = (document.getElementById("pin_new2").value||"").trim();
+if(a !== b){ alert("两次输入不一致"); return; }
+try{ await RP_PIN.set(a); alert("应用锁已开启"); renderPinSettings(); }
+catch(e){ alert(e.message); }
+};
+window.pinChangeUI = ()=>{
+const box = document.getElementById("pinchange"); if(!box) return;
+box.innerHTML = `<div class="field"><label>旧 PIN</label>
+<input id="pin_old" type="password" inputmode="numeric" maxlength="4" placeholder="••••" style="width:90px"></div>
+<div class="field"><label>新 PIN</label>
+<div class="pinrow"><input id="pin_ch1" type="password" inputmode="numeric" maxlength="4" placeholder="••••">
+<input id="pin_ch2" type="password" inputmode="numeric" maxlength="4" placeholder="再输一次"></div></div>
+<div class="btnrow"><button class="btn" onclick="pinChangeDo()">确认修改</button></div>`;
+};
+window.pinChangeDo = async ()=>{
+const old = (document.getElementById("pin_old").value||"").trim();
+const a = (document.getElementById("pin_ch1").value||"").trim();
+const b = (document.getElementById("pin_ch2").value||"").trim();
+if(!(await RP_PIN.verify(old))){ alert("旧 PIN 不正确"); return; }
+if(a !== b){ alert("两次输入不一致"); return; }
+try{ await RP_PIN.set(a); alert("PIN 已修改"); renderPinSettings(); }
+catch(e){ alert(e.message); }
+};
+window.pinRemoveUI = async ()=>{
+const old = prompt("输入当前 PIN 以关闭应用锁:");
+if(old === null) return;
+if(await RP_PIN.verify(old)){ RP_PIN.clear(); alert("应用锁已关闭"); renderPinSettings(); }
+else alert("PIN 不正确");
+};
+
+/* ============ P1-4: 聊天记录搜索(单聊/群聊/穿越通用, 大小写不敏感, 关键词高亮, n/总数, 上下跳转) ============ */
+let SEARCH = {active:false, q:"", hits:[], cur:-1};
+window.toggleChatSearch = (force)=>{
+SEARCH.active = force!=null ? !!force : !SEARCH.active;
+if(!SEARCH.active){ SEARCH.q=""; SEARCH.hits=[]; SEARCH.cur=-1; }
+renderChatSearch();
+if(SEARCH.active){ const i = document.getElementById("cs_input"); if(i) i.focus(); }
+else renderChat();
+};
+function searchHits(){
+const h = getHist(chatHistKey());
+const q = SEARCH.q.trim().toLowerCase();
+SEARCH.hits = [];
+if(!q) return;
+for(let i=0;i<h.length;i++){
+const m = h[i];
+const txt = ((m.speaker?m.speaker+"：":"") + String(m.content||"")).toLowerCase();
+if(txt.indexOf(q)>=0) SEARCH.hits.push(i);
+}
+}
+function hlSearchRaw(text){ // 先在原文里插占位符, md() 之后再还原成 <mark>(避免破坏 HTML 标签)
+if(!SEARCH.active || !SEARCH.q.trim()) return text;
+try{
+const q = SEARCH.q.trim().replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+return String(text).replace(new RegExp(q,"gi"), m=>"\u0001"+m+"\u0002");
+}catch(e){ return text; }
+}
+function hlRestore(html){
+if(!SEARCH.active || !SEARCH.q.trim()) return html;
+return String(html).split("\u0001").join("<mark>").split("\u0002").join("</mark>");
+}
+window.chatSearchInput = (v)=>{
+SEARCH.q = v;
+searchHits();
+SEARCH.cur = SEARCH.hits.length ? 0 : -1;
+renderChat();
+updateSearchBar();
+if(SEARCH.cur>=0) scrollToHit();
+};
+window.chatSearchGo = (dir)=>{
+if(!SEARCH.hits.length) return;
+SEARCH.cur = (SEARCH.cur + dir + SEARCH.hits.length) % SEARCH.hits.length;
+renderChat();
+updateSearchBar();
+scrollToHit();
+};
+function scrollToHit(){
+const idx = SEARCH.hits[SEARCH.cur];
+if(idx==null) return;
+const el = document.getElementById("smsg-"+idx);
+if(el && el.scrollIntoView) el.scrollIntoView({block:"center"});
+}
+function updateSearchBar(){
+const n = document.getElementById("cs_num");
+if(n) n.textContent = (SEARCH.cur>=0?SEARCH.cur+1:0) + "/" + SEARCH.hits.length;
+}
+function renderChatSearch(){
+const bar = document.getElementById("chatsearch");
+if(!bar) return;
+if(!SEARCH.active){ bar.innerHTML = ""; return; }
+if(bar.innerHTML.indexOf("cs_input")>=0) return; // 输入中不重建, 保住焦点
+bar.innerHTML = `<div class="csbar">`
++ `<input id="cs_input" placeholder="搜索聊天记录" value="${esc(SEARCH.q)}" oninput="chatSearchInput(this.value)">`
++ `<span class="cs-num" id="cs_num">0/0</span>`
++ `<button onclick="chatSearchGo(-1)" title="上一个">‹</button>`
++ `<button onclick="chatSearchGo(1)" title="下一个">›</button>`
++ `<button onclick="toggleChatSearch(false)" title="关闭">${icon("x",14)}</button></div>`;
+}
 function renderChat(){
 const h = getHist(chatHistKey());
 const log = $("#chatlog");
 if(!log) return;
+renderChatSearch();
+if(SEARCH.active && SEARCH.q.trim()){ // 新消息进来时重算命中
+searchHits();
+if(SEARCH.cur>=SEARCH.hits.length) SEARCH.cur = SEARCH.hits.length-1;
+updateSearchBar();
+}
 let lastAI = -1;
 h.forEach((m, i)=>{
 if(m.role==="assistant" && m.content.indexOf("⚠️")!==0
@@ -1044,14 +1316,14 @@ extra += `<div class="swipe" onclick="event.stopPropagation()"><button onclick="
 + `<button onclick="swipeMsg(${idx},1)">›</button></div>`;
 }
 extra += `<div class="msgtools">` + rateBtns
-+ `<button onclick="event.stopPropagation();ttsMsg(${idx})">${icon("volume",15)}</button>`
++ voiceBubbleHTML(idx, m)
 + `<button onclick="event.stopPropagation();editMsg(${idx})">编辑</button>`
 + `<button onclick="event.stopPropagation();copyMsg(${idx})">复制</button>`
 + `<button onclick="event.stopPropagation();regenMsg()">↻ 重生</button>`
 + `<button onclick="event.stopPropagation();delMsg(${idx})">删除</button></div>`;
 } else {
 extra = `<div class="msgtools">` + rateBtns
-+ (m.role==="assistant"?`<button onclick="event.stopPropagation();ttsMsg(${idx})">${icon("volume",15)}</button>`:"")
++ (m.role==="assistant"?voiceBubbleHTML(idx,m):"")
 + `<button onclick="event.stopPropagation();editMsg(${idx})">编辑</button>`
 + `<button onclick="event.stopPropagation();copyMsg(${idx})">复制</button>`
 + `<button onclick="event.stopPropagation();delMsg(${idx})">删除</button></div>`;
@@ -1061,9 +1333,11 @@ if(m.role==="assistant"){
 const oc = parseOptCard(m.content);
 if(oc){ body = m.content.replace(oc.full, "").trim(); cardHTML = optCardHTML(oc, idx===lastAI, idx); }
 }
-return `<div class="msg ${m.role==="user"?"me":""}${mtype==="narr"?" narr":""}${mtype==="npc"?" npc":""}" onclick="toggleTools(event,${idx})" oncontextmenu="event.preventDefault();msgMenu(${idx});return false;" ontouchstart="msgPressStart(event,${idx})" ontouchend="msgPressEnd()" ontouchmove="msgPressEnd()">`
+const isHit = SEARCH.active && SEARCH.hits.indexOf(idx)>=0;
+const isCur = isHit && SEARCH.hits[SEARCH.cur]===idx;
+return `<div class="msg ${m.role==="user"?"me":""}${mtype==="narr"?" narr":""}${mtype==="npc"?" npc":""}${isCur?" curhit":""}" id="smsg-${idx}" onclick="toggleTools(event,${idx})" oncontextmenu="event.preventDefault();msgMenu(${idx});return false;" ontouchstart="msgPressStart(event,${idx})" ontouchend="msgPressEnd()" ontouchmove="msgPressEnd()">`
 + `<div class="avatar sm">${esc((who||"?")[0])}</div>`
-+ `<div><div class="who">${esc(who)}</div><div class="bubble">${md(body)}${cardHTML}</div>${extra}${ts}</div>`
++ `<div><div class="who">${esc(who)}</div><div class="bubble">${hlRestore(md(hlSearchRaw(body)))}${cardHTML}</div>${extra}${ts}</div>`
 + `</div>`;
 }).join("") || `<div class="empty">还没有对话，打个招呼吧<br><span style="font-size:12px">试试：你是谁？</span></div>`;
 renderCtxBar();
@@ -1152,7 +1426,7 @@ window.pickOption = async (idx, oi)=>{
 window.swipeMsg = (idx, dir)=>{
 const k = chatKey(CHAT.runId, CHAT.name);
 const h = getHist(k);
-if(RP.swipe(h[idx], dir)){ saveHist(k, h); renderChat(); }
+if(RP.swipe(h[idx], dir)){ saveHist(k, h); renderChat(); achvUnlock("swipe_1"); }
 };
 window.regenMsg = async ()=>{
 const cfg = getCfg();
@@ -1177,6 +1451,7 @@ signal: streamSignal(),
 onSystem: (preview, stats)=>{ LAST_SYSTEM = preview + "\n\n【预算】" + JSON.stringify(stats); LAST_STATS = stats; },
 });
 saveHist(k, r.history);
+achvUnlock("swipe_1");
 }catch(e){}
 setStreaming(false);
 renderChat();
@@ -1288,10 +1563,15 @@ const r = isGroup
   onUserMsg: sendOpts.onUserMsg, onSystem: sendOpts.onSystem})
 : await RP.send(CHAT.runId, CHAT.name, text, sendOpts);
 saveHist(k, r.history);
+achvUnlock("first_chat");
 if(r.aborted){
 const hh = getHist(k);
 hh.push({role:"assistant", content:"（已停止生成）", ts:Date.now()});
 saveHist(k, hh);
+}else if(getRpCfg().ttsAuto){
+/* P1-1: 自动朗读 AI 回复 */
+const li = r.history.length-1;
+if(r.history[li] && r.history[li].role==="assistant"){ try{ ttsMsg(li); }catch(e){} }
 }
 }catch(e){
 const hh = getHist(k);
@@ -1429,10 +1709,16 @@ const h = getHist(`nd_chat_${runId}_${nm}`);
 let up = 0, dn = 0;
 h.forEach(m=>{ if(m.role==="assistant"){ if(m.rating===1) up++; else if(m.rating===-1) dn++; } });
 titleEl.innerHTML = icon("books")+" 记忆事件簿"; subEl.textContent = nm + " · 事件时间线";
+/* P1-8: 长期记忆库用量条 */
+const ms = RP_MEM.memStats(runId, nm);
+const muPct = Math.min(100, Math.round(ms.events / Math.max(1, ms.shortMax) * 100));
+const muBar = `<div class="mem-usage"><div class="mu-bar"><div class="mu-fill" style="width:${muPct}%"></div></div>
+<div class="mu-label">长期记忆 ${ms.events}/${ms.shortMax} · 置顶 ${ms.pinned}/${ms.pinMax} · 长远印象 ${ms.longN}/1</div></div>`
++ (ms.pinned >= ms.pinMax ? `<div class="hint warn">置顶已达 ${ms.pinned} 条, 建议整理：取消不重要的置顶, 让最重要的记忆排在前面。（只是提醒, 不会禁止继续置顶）</div>` : "");
 const evCard = (m)=>{
 const id = m.id;
 return `<div class="tl-item${m.pin?" gold":""}"><div class="card alb-event${m.pin?" pinned":""}">`
-+ `<div class="alb-time">${esc(m.time||"往事")}${m.pin?' <span class="badge warn">${icon("pin",13)} 置顶</span>':""}</div>`
++ `<div class="alb-time">${esc(m.time||"往事")}${m.pin ? ' <span class="badge warn">' + icon("pin",13) + ' 置顶</span>' : ""}</div>`
 + `<div class="alb-fact">${esc(m.fact||"")}</div>`
 + (m.view?`<div class="alb-view">此刻看法：${esc(m.view)}</div>`:"")
 + `<div class="btnrow" style="margin-top:8px">`
@@ -1442,6 +1728,7 @@ return `<div class="tl-item${m.pin?" gold":""}"><div class="card alb-event${m.pi
 + `</div></div></div>`;
 };
 view.innerHTML = `<button class="back" onclick="albumBack()">${icon("back")} 返回</button>
+${muBar}
 <div class="alb-stats">${icon("brain",14)} ${short.length} 条记忆 · ${icon("pin",13)} ${pinned.length} 置顶 · ${icon("thumb-up",13)} ${up} ${icon("thumb-down",13)} ${dn}</div>`
 + (st && st.mood && st.mood.state
 ? `<div class="card alb-mood"><div class="alb-time">当前心境</div><div class="alb-fact">${esc(st.mood.state)}${st.mood.filter?" —— "+esc(st.mood.filter):""}</div></div>` : "")
@@ -1453,8 +1740,17 @@ view.innerHTML = `<button class="back" onclick="albumBack()">${icon("back")} 返
 <div style="height:40px"></div>`;
 window.scrollTo(0,0);
 }
+/* P1-8: Pin 达 30 条时软提示, 不禁止 */
+function pinNudge(runId, name){
+try{
+const ms = RP_MEM.memStats(runId, name);
+if(ms.pinned === ms.pinMax)
+alert(`置顶记忆已达 ${ms.pinMax} 条, 建议整理不重要的置顶。\n（只是提醒, 不会禁止继续置顶）`);
+}catch(e){}
+}
 window.memPin = (id)=>{
-RP_MEM.togglePin(ALBUM.runId, ALBUM.name, id);
+const cur = RP_MEM.togglePin(ALBUM.runId, ALBUM.name, id);
+if(cur) pinNudge(ALBUM.runId, ALBUM.name);
 renderAlbum();
 };
 window.memDel = (id)=>{
@@ -1517,21 +1813,42 @@ function getSaves(){
 try{ const s = JSON.parse(localStorage.getItem(savesKey())||"[]"); return Array.isArray(s)?s:[]; }
 catch(e){ return []; }
 }
+/* ============ P1-5: 平行存档故事树: 分支来源(按聊天维度记) ============ */
+const BRANCH_KEY = "nd_branchsrc";
+const getBranchSrc = ()=>{ try{ return JSON.parse(localStorage.getItem(BRANCH_KEY)) || {}; }catch(e){ return {}; } };
+const setBranchSrc = (chatKey, saveId)=>{ const m = getBranchSrc(); m[chatKey] = saveId; try{ localStorage.setItem(BRANCH_KEY, JSON.stringify(m)); }catch(e){} };
+/* 存档树: parentId 指向存在的存档才算父子, 否则按根节点平铺(兼容旧存档) */
+function saveTree(){
+const ss = getSaves();
+const byId = {}; ss.forEach(s=>{ byId[s.id] = s; });
+const children = {}, roots = [];
+ss.forEach(s=>{
+const pid = (s.parentId!=null && byId[s.parentId]) ? s.parentId : null;
+if(pid==null) roots.push(s);
+else (children[pid] = children[pid] || []).push(s);
+});
+roots.sort((a,b)=>b.ts-a.ts);
+Object.keys(children).forEach(k=>children[k].sort((a,b)=>a.ts-b.ts));
+return {roots, children};
+}
 window.openSaves = ()=>{ renderSaves(); };
 function renderSaves(){
 __backAction = ()=>showChat();
 document.body.classList.remove("chatmode");
 const label = CHAT.mode==="group" ? ("群聊·"+CHAT.members.length+"人") : CHAT.name;
 titleEl.innerHTML = icon("save")+" 平行存档"; subEl.textContent = label + " · 多时间线快照";
-const ss = getSaves().slice().sort((a,b)=>b.ts-a.ts);
 const fmtT = (ts)=> new Date(ts).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
-view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回</button>
-<div class="btnrow" style="margin-bottom:10px"><button class="btn" onclick="newSaveSlot()">＋ 新建存档</button></div>`
-+ (ss.length ? `<div class="timeline">` + ss.map(s=>{
+/* P1-5: 故事树渲染(树形缩进 + 连线, 旧存档无 parentId 按平铺显示) */
+const tree = saveTree();
+let rows = "";
+const walk = (s, depth, conn)=>{
 const n = (s.history||[]).length;
 const last = (s.history||[]).filter(m=>m.role==="assistant").slice(-1)[0];
 const prev = last ? esc(String(last.content||"").slice(0,60)) : "（空）";
-return `<div class="tl-item"><div class="card save-card"><div class="save-name">${esc(s.name||"未命名存档")}</div>`
+const badge = s.parentId ? ` <span class="badge">分支</span>` : "";
+rows += `<div class="snode" style="margin-left:${depth*20}px">`
++ (depth?`<div class="stree">${conn}</div>`:"")
++ `<div class="card save-card"><div class="save-name">${esc(s.name||"未命名存档")}${badge}</div>`
 + `<div class="meta">${fmtT(s.ts)} · ${n} 条消息</div>`
 + `<div class="save-prev">${prev}</div>`
 + `<div class="btnrow" style="margin-top:8px">`
@@ -1539,7 +1856,13 @@ return `<div class="tl-item"><div class="card save-card"><div class="save-name">
 + `<button class="btn ghost" onclick="renameSaveSlot(${s.id})">改名</button>`
 + `<button class="btn danger" onclick="delSaveSlot(${s.id})">删除</button>`
 + `</div></div></div>`;
-}).join("") + `</div>` : `<div class="empty"><span class="big">${icon("save",44)}</span>还没有存档<br><span style="font-size:12px">在关键剧情点存个档，就能随时回到这条时间线，或从这里分出新的平行剧情</span></div>`)
+(tree.children[s.id]||[]).forEach((c,i,arr)=>walk(c, depth+1, i===arr.length-1?"└─":"├─"));
+};
+tree.roots.forEach(s=>walk(s, 0, ""));
+view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回</button>
+<div class="btnrow" style="margin-bottom:10px"><button class="btn" onclick="newSaveSlot()">＋ 新建存档</button></div>
+<div class="hint">加载某个存档后, 新建的存档会从它分出一条分支, 形成故事树。</div>`
++ (rows ? `<div class="timeline">` + rows + `</div>` : `<div class="empty"><span class="big">${icon("save",44)}</span>还没有存档<br><span style="font-size:12px">在关键剧情点存个档，就能随时回到这条时间线，或从这里分出新的平行剧情</span></div>`)
 + `<div style="height:40px"></div>`;
 window.scrollTo(0,0);
 }
@@ -1549,12 +1872,18 @@ const name = prompt("存档名称", "存档 " + def);
 if(name === null) return;
 const k = chatHistKey();
 const ss = getSaves();
-ss.push({id: Date.now(), name: (name||"").trim() || ("存档"+(ss.length+1)), ts: Date.now(),
+const id = Date.now();
+const slot = {id: id, name: (name||"").trim() || ("存档"+(ss.length+1)), ts: Date.now(),
+parentId: getBranchSrc()[k] || null, /* P1-5: 记录分支来源 */
 history: getHist(k),
 mem: CHAT.mode==="single" ? RP_MEM.get(CHAT.runId, CHAT.name) : null,
-plot: getPlot()});
+plot: getPlot()};
+ss.push(slot);
 try{ localStorage.setItem(savesKey(), JSON.stringify(ss)); }
 catch(e){ alert("存档失败：存储空间不足，试试删除旧存档"); return; }
+setBranchSrc(k, id); /* 新存档成为当前分支位置, 下次存档继续从这里分叉 */
+achvUnlock("save_1");
+if(slot.parentId) achvUnlock("branch_1");
 renderSaves();
 };
 window.loadSaveSlot = (id)=>{
@@ -1566,6 +1895,7 @@ saveHist(k, s.history || []);
 if(CHAT.mode==="single" && s.mem) RP_MEM.save(CHAT.runId, CHAT.name, s.mem);
 try{ savePlot(s.plot === undefined ? null : s.plot); }catch(e){}
 LAST_STATS = null;
+setBranchSrc(k, s.id); /* P1-5: 加载后, 后续存档从这里分叉 */
 showChat();
 };
 window.renameSaveSlot = (id)=>{
@@ -1582,6 +1912,9 @@ window.delSaveSlot = (id)=>{
 const s = getSaves().find(x=>x.id==id);
 if(!confirm(`删除存档「${s?s.name:""}」？`)) return;
 localStorage.setItem(savesKey(), JSON.stringify(getSaves().filter(x=>x.id!=id)));
+/* P1-5: 删掉的是当前分支源 -> 清掉, 避免新存档挂到悬空节点 */
+const k = chatHistKey();
+if(getBranchSrc()[k]==id){ const m = getBranchSrc(); delete m[k]; try{localStorage.setItem(BRANCH_KEY, JSON.stringify(m));}catch(e){} }
 renderSaves();
 };
 /* ============ Persona: 全局用户人设 + 按聊天覆盖 ============ */
@@ -1747,6 +2080,12 @@ titleEl.textContent = "设置";
 subEl.textContent = "";
 const c = getCfg();
 view.innerHTML = renderStorageCard() + `
+<div class="setcard"><h3>${icon("check",15)} 成就</h3>
+<div class="kv">${typeof RP_ACHV!=="undefined" ? `已解锁 ${RP_ACHV.count()}/${RP_ACHV.DEFS.length}` : ""}</div>
+<div class="btnrow" style="margin-top:8px"><button class="btn ghost" onclick="showAchv()">查看成就</button></div></div>` + `
+<div class="setcard"><h3>${icon("check",15)} 应用锁</h3>
+<div class="kv">纯前端 PIN 锁。忘记 PIN 只能清除全部数据, 没有找回途径。</div>
+<div id="pinset" style="margin-top:8px"></div></div>` + `
 <div class="setcard"><h3>大模型接口 · RP 聊天用 (OpenAI 兼容)</h3>
 <div class="field"><label>API 地址</label>
 <input id="c_base" placeholder="https://api.openai.com/v1" value="${esc(c.base||"")}"></div>
@@ -1800,6 +2139,7 @@ view.innerHTML = renderStorageCard() + `
 <option value="flirty">暧昧拉扯</option>
 </select></div>
 <div class="field"><label><input id="r_ooc" type="checkbox" style="width:auto"> OOC 自动纠正（跳出角色时重试一次）</label></div>
+<div class="field"><label><input id="r_ttsauto" type="checkbox" style="width:auto"> ${icon("volume",14)} 自动朗读 AI 回复（TTS 语音气泡播放）</label></div>
 <div class="field"><label>记忆整理周期（每 N 条消息跑一次三层记忆分析）</label>
 <input id="r_memcycle" type="number" min="5" value=""></div>
 <div class="btnrow"><button class="btn" onclick="saveRpCfgUI()">保存 RP 设置</button><button class="btn ghost" onclick="importStPreset()">${icon("download")} 导入 ST 预设(采样参数)</button></div>
@@ -1823,10 +2163,12 @@ document.getElementById("r_optcards").checked = !!rc.optCards;
 document.getElementById("r_optcount").value = rc.optCount||4;
 document.getElementById("r_optmood").value = rc.optMood||"none";
 document.getElementById("r_ooc").checked = !!rc.ooc;
+document.getElementById("r_ttsauto").checked = !!rc.ttsAuto;
 document.getElementById("r_memcycle").value = rc.memCycle||10;
 (function(){ const gp = RP_PERSONA.getGlobal();
 const el = document.getElementById("persona_sum");
 if(el) el.textContent = gp ? ("当前：" + (gp.name||"") + " " + String(gp.desc||"").slice(0,40)) : "未设置（建议填一下，AI 聊天时会知道你是谁）"; })();
+renderPinSettings();
 const c = getCfg();
 if(c.base && c.key){ fetchModels(true); }
 else {
@@ -1911,6 +2253,7 @@ optCards:$("#r_optcards").checked,
 optCount:Math.min(6,Math.max(2,parseInt($("#r_optcount").value)||4)),
 optMood:$("#r_optmood").value||"none",
 ooc:$("#r_ooc").checked, preset:$("#r_preset").value,
+ttsAuto:$("#r_ttsauto").checked,
 memCycle:Math.max(5,parseInt($("#r_memcycle").value)||10)});
 alert("RP 设置已保存");
 };
@@ -2064,6 +2407,13 @@ const ss = RP_WRITER.listSessions();
 const cs = RP_WRITER.getCustomChars();
 const q = x=>String(x).replace(/'/g,"\\'");
 view.innerHTML = `
+<div class="card"><div class="secttl">${icon("dice")} 一键生成角色卡</div>
+<div class="kv">只填名字和一句话设定, 一次调用生成完整卡。可重试、可中断, 失败不影响现有流程。</div>
+<div class="field"><label>名字</label><input id="qg_name" placeholder="如: 沈清辞"></div>
+<div class="field"><label>一句话设定</label><textarea id="qg_premise" rows="2" placeholder="如: 落魄书生, 表面清高实则渴望被需要, 说话刻薄但心软"></textarea></div>
+<div class="btnrow"><button class="btn" id="qg_btn" onclick="quickGenCard()">${icon("play")} 生成</button>
+<button id="qg_cancel" style="display:none" onclick="quickGenAbort()">中断</button></div>
+<div id="qg_status" class="hint"></div></div>
 ${ss.length?`<h2 class="sec">未完成的写卡 (${ss.length})</h2>`+ss.map(x=>`
 <div class="card"><div class="row"><div><div class="name">${esc(RP_WRITER.STEPS[x.step].name)} · 进行中</div>
 <div class="kv">${new Date(x.updatedAt).toLocaleString()} · ${x.history.length} 轮对话</div></div></div>
@@ -2074,11 +2424,95 @@ ${cs.length?`<div class="chargrid">`+cs.map(c=>charCardHTML({
 name:c.name, tag:c.novel, sum:String((c.fields&&c.fields.core_identity)||"").slice(0,46)||"自创角色 · 点我直接开聊",
 oncard:`chatWith('custom','${q(c.name)}')`,
 ops:`<button class="go" onclick="event.stopPropagation();chatWith('custom','${q(c.name)}')">开聊</button>`
++`<button onclick="event.stopPropagation();editCard('custom','${c.id}')">编辑</button>`
 +`<button onclick="event.stopPropagation();exportCard('${c.id}')">导出</button>`
 +`<button class="danger" onclick="event.stopPropagation();if(confirm('删除这张角色卡?')){RP_WRITER.delCustom('${c.id}');showWriter();}">删</button>`
 })).join("")+`</div>`:`<div class="empty"><span class="big">🎭</span>还没有自创角色<br><span style="font-size:12px">点下面「新建写卡」，和 Ruby 一起创作</span></div>`}
 <div class="btnrow"><button class="btn" onclick="newWriter()">${icon("plus")} 新建写卡</button></div>
 <div class="hint">写卡全程走你在设置里配的大模型接口, 每步约 1-3 次调用。写完的角色可直接开聊, 也能配分析任务。</div>`;
+};
+
+/* ============ P1-3: 一键生成角色卡 ============ */
+let QG_ABORT = null;
+window.quickGenAbort = ()=>{ if(QG_ABORT){ QG_ABORT.aborted = true; } };
+window.quickGenCard = async ()=>{
+const cfg = getCfg();
+if(!cfg.key || !cfg.base){ alert("先去「设置」填 API 地址和 Key"); return; }
+const get = (i)=>document.getElementById(i);
+const name = get("qg_name").value.trim(), premise = get("qg_premise").value.trim();
+if(!name){ alert("填个名字"); return; }
+if(!premise){ alert("填一句话设定"); return; }
+const btn = get("qg_btn"), cancel = get("qg_cancel"), status = get("qg_status");
+const signal = {aborted:false}; QG_ABORT = signal;
+btn.disabled = true; cancel.style.display = ""; status.textContent = "生成中…(可中断)";
+try{
+const parsed = await RP_WRITER.quickGen(name, premise, cfg,
+function(c, ms, t){ return RP_NET.complete(c, ms, t); }, signal);
+RP_WRITER.quickFinish(name, parsed);
+achvUnlock("card_1");
+QG_ABORT = null;
+showWriter();
+return;
+}catch(e){
+status.textContent = signal.aborted ? "已中断" : "生成失败: " + e.message + " (可重试)";
+}
+btn.disabled = false; cancel.style.display = "none"; QG_ABORT = null;
+};
+
+/* ============ P1-2: 角色卡编辑器(自创卡/导入卡通用) ============ */
+window.editCard = (src, id)=>{
+const card = src==="custom"
+? (RP_WRITER.getCustomChars()||[]).find(c=>c.id===id)
+: RP_CARDIMPORT.findById(id);
+if(!card){ alert("卡片不存在"); return; }
+__backAction = ()=>{ src==="custom" ? showWriter() : showTraverse(); };
+titleEl.textContent = "编辑角色卡";
+subEl.textContent = esc(card.name) + (src==="custom"?" · 自创卡":" · 导入卡");
+document.body.classList.remove("chatmode");
+const f = card.fields || {};
+const rows = Object.keys(RP_PROMPT.LABELS).map(k=>{
+const v = f[k]==null?"":String(f[k]);
+return `<div class="field"><label>${esc(RP_PROMPT.LABELS[k])} <span class="dim">${esc(k)}</span></label>`
++ `<textarea id="cef_${k}" rows="2" oninput="tokCount('cef_${k}','ce_tok')">${esc(v)}</textarea></div>`;
+}).join("");
+const alt = (card.altGreetings||[]).join("\n");
+const exd = card.exampleDialogue||"";
+view.innerHTML = `
+<div class="hint">修改后点「保存」写回, prompt 注入、开场白、导出都用新内容。<span id="ce_tok" class="dim"></span></div>
+<div class="setcard">
+<div class="field"><label>名字</label><input id="ce_name" value="${esc(card.name)}"></div>
+<div class="field"><label>多开场白 <span class="dim">alternate_greetings · 每行一条, 开聊时随机挑</span></label>
+<textarea id="ce_alt" rows="3" oninput="tokCount('ce_alt','ce_tok')">${esc(alt)}</textarea></div>
+<div class="field"><label>示例对话 <span class="dim">extensions.example_dialogue · 进 prompt 的 few-shot</span></label>
+<textarea id="ce_exd" rows="4" oninput="tokCount('ce_exd','ce_tok')">${esc(exd)}</textarea></div>
+</div>
+<div class="setcard"><div class="secttl">角色字段</div>${rows}</div>
+<div class="btnrow"><button class="btn" onclick="saveCardEdit('${src}','${id}')">${icon("save")} 保存</button>
+<button onclick="__backAction()">取消</button></div>`;
+};
+window.saveCardEdit = (src, id)=>{
+const get = (i)=>document.getElementById(i);
+const name = get("ce_name").value.trim() || "未命名";
+const f = {};
+Object.keys(RP_PROMPT.LABELS).forEach(k=>{
+const v = get("cef_"+k).value.trim();
+if(v) f[k] = v;
+});
+const alt = get("ce_alt").value.split("\n").map(s=>s.trim()).filter(Boolean).slice(0,8);
+const exd = get("ce_exd").value.trim();
+if(src==="custom"){
+const list = RP_WRITER.getCustomChars()||[];
+const i = list.findIndex(c=>c.id===id);
+if(i<0){ alert("卡片不存在"); return; }
+list[i] = Object.assign({}, list[i], {name, fields:f, altGreetings:alt, exampleDialogue:exd});
+RP_WRITER.saveCustomChars(list);
+}else{
+const c = RP_CARDIMPORT.findById(id);
+if(!c){ alert("卡片不存在"); return; }
+RP_CARDIMPORT.update(Object.assign({}, c, {name, fields:f, altGreetings:alt, exampleDialogue:exd}));
+}
+alert("已保存");
+if(src==="custom") showWriter(); else showTraverse();
 };
 window.newWriter = ()=>{
 __backAction = ()=>showWriter();
@@ -2230,8 +2664,13 @@ if(ob) ob.classList.remove("on");
 /* ---------- 启动 ---------- */
 window.setNav = setNav; window.showTasks = showTasks; window.showChat = showChat;
 window.setTab = setTab; window.openRun = openRun;
-boot();
+(async function startApp(){
+if(typeof RP_PIN!=="undefined" && RP_PIN.has()){
+await pinUnlockScreen(); /* P1-7: PIN 未验证通过前不进主界面 */
+}
+await boot();
 if(!localStorage.getItem("nd_onboarded")) showOnboard(1);
+})();
 
 /* ================= 穿越 P0: 魂穿 / 肉身穿越 ================= */
 function travPlayerName(){
@@ -2287,6 +2726,7 @@ function importedListHTML(){
   if(!list.length) return `<div class="meta">还没有导入过角色卡</div>`;
   return list.map(c=>`<div class="kvline" style="display:flex;align-items:center;gap:8px"><span>${esc(c.name)}</span>
   <span class="meta"> ${esc(c.novel)}</span><span style="flex:1"></span>
+  <button class="btn ghost sm" onclick="event.stopPropagation();editCard('imported','${c.id}')">编辑</button>
   <button class="btn ghost sm" onclick="event.stopPropagation();travDelImport('${c.id}')">删除</button></div>`).join("");
 }
 function travRecentHTML(t){
@@ -2313,6 +2753,7 @@ window.travImportFile = async (inp)=>{
     const card = await RP_CARDIMPORT.fromFile(file);
     if(!confirm(`导入角色卡「${card.name}」？\n${(card.scenario||card.fields.core_identity||"").slice(0,80)}`)) return;
     RP_CARDIMPORT.add(card);
+    achvUnlock("card_1");
     alert(`已导入「${card.name}」：魂穿目标和卡片世界里都能选到`);
     showTraverse();
   }catch(e){ alert("导入失败："+e.message); }
@@ -2461,6 +2902,7 @@ window.bodyStart = (kind, id)=>{
 function travBegin(sess){
   CHAT = {mode:"traverse", travId: sess.id};
   LAST_STATS = null;
+  achvUnlock("traverse_1");
   setNav("chat");
 }
 async function showTraverseChat(cfg){
@@ -2476,10 +2918,12 @@ async function showTraverseChat(cfg){
   <div class="avatar">${esc((title||"穿")[0])}</div>
   <div class="chead-main"><div class="cname">${esc(title)} <span class="badge">${modeName}</span></div>
   <div class="cstat"><span>${esc(trav.worldName)}</span></div></div>
-  <button class="menubtn" onclick="toggleDrawer(true)" title="菜单">${icon("menu")}</button>
+  <button class="menubtn" onclick="toggleChatSearch()" title="搜索聊天记录">${icon("search")}</button>
+<button class="menubtn" onclick="toggleDrawer(true)" title="菜单">${icon("menu")}</button>
   </div>
   <div class="chatwrap">
   <div id="ctxbar"></div>
+  <div id="chatsearch"></div>
   <div id="wsbar" class="wsbar" onclick="travWsEditor()"></div>
   <div id="chatlog"></div>
   <div class="chatbar">${chatbarInner(false)}</div>

@@ -150,10 +150,51 @@ function finish(id, name, novel){
   return name;
 }
 
+/* ---- P1-3: 一键生成角色卡(轻量入口: 名字 + 一句话设定, 一次 LLM 调用) ---- */
+function quickPrompt(name, premise){
+  return "你是角色卡书记员。根据下面的一句话设定, 为角色「" + name + "」生成完整角色卡, 只输出一个 JSON 对象。\n" +
+    "键从下面列表里选(缺的就省略, 不要编造):\n" + CARD_FIELDS.join(", ") +
+    "\ntypical_lines 是 3 句典型台词的数组(每句带角色口吻)。要求: 具体、有细节, 禁止八股词(非常/极其/深深地)。\n" +
+    "另给 2-3 条多开场白, 放在键 \"altGreetings\"(字符串数组); 再给一段示例对话, 放在键 \"exampleDialogue\"(字符串, 用 <START> 分隔轮次, 含 {{user}}/{{char}})。\n\n一句话设定: " + premise;
+}
+function parseCardJson(raw){
+  var t = String(raw || "").replace(/```json|```/g, "");
+  var a = t.indexOf("{"), b = t.lastIndexOf("}");
+  if(a < 0 || b <= a) throw new Error("卡片解析失败");
+  var o = JSON.parse(t.slice(a, b + 1));
+  var fields = {};
+  CARD_FIELDS.forEach(function(k){ if(o[k] != null && o[k] !== "") fields[k] = o[k]; });
+  var alt = Array.isArray(o.altGreetings) ? o.altGreetings
+    .map(function(g){ return String(g == null ? "" : g).trim(); })
+    .filter(function(g){ return g; }).slice(0, 8) : [];
+  return {fields: fields, altGreetings: alt,
+    exampleDialogue: String(o.exampleDialogue == null ? "" : o.exampleDialogue).trim()};
+}
+async function quickGen(name, premise, cfg, callChat, signal){
+  var scfg = {base: cfg.base, key: cfg.key, model: cfg.summaryModel || cfg.model};
+  if(signal && signal.aborted) throw new Error("已取消");
+  var raw = await callChat(scfg, [{role: "user", content: quickPrompt(name, premise)}], 0.7);
+  if(signal && signal.aborted) throw new Error("已取消");
+  return parseCardJson(raw);
+}
+function quickFinish(name, parsed){
+  var list = getCustomChars();
+  list.unshift({id: "c" + Date.now().toString(36), name: name,
+    novel: "自定义", worldRunId: "",
+    fields: (parsed && parsed.fields) || {},
+    altGreetings: (parsed && parsed.altGreetings) || [],
+    exampleDialogue: (parsed && parsed.exampleDialogue) || "",
+    createdAt: Date.now()});
+  saveCustomChars(list);
+  return name;
+}
+
 return {STEPS: STEPS, listSessions: listSessions, getSession: getSession,
   saveSession: saveSession, delSession: delSession, newSession: newSession,
   getCustomChars: getCustomChars, findCustom: findCustom, delCustom: delCustom,
+  saveCustomChars: saveCustomChars,
   interviewPrompt: interviewPrompt, summarize: summarize,
   genCard: genCard, selfCheck: selfCheck, finish: finish,
+  quickGen: quickGen, quickFinish: quickFinish, quickPrompt: quickPrompt, parseCardJson: parseCardJson,
   CARD_FIELDS: CARD_FIELDS};
 })();

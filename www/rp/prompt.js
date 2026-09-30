@@ -80,10 +80,11 @@ function itemsOf(card, name){
   return out;
 }
 
-/* P0-4: few-shot 对话示例, 从 typical_lines 生成 */
+/* P0-4: few-shot 对话示例, 从 typical_lines 生成; P1-2: 卡片自带 example_dialogue 追加拼入 */
 function buildExamples(card, name, budgetTokens){
   var lines = itemsOf(card, "typical_lines").slice(0, 3);
-  if(!lines.length) return "";
+  var extra = String((card && card.exampleDialogue) || "").trim();
+  if(!lines.length && !extra) return "";
   var openers = [
     "在园子里迎面碰见你，你会说什么？",
     "有人惹你不痛快了，你会说什么？",
@@ -97,6 +98,10 @@ function buildExamples(card, name, budgetTokens){
     if(used + t > budgetTokens) break;
     parts.push(blk);
     used += t;
+  }
+  if(extra){
+    var xt = estTokens(extra);
+    if(used + xt <= budgetTokens) parts.push("【卡片自带对话示例】\n" + extra.slice(0, 800));
   }
   return parts.length > 1 ? parts.join("\n") : "";
 }
@@ -271,6 +276,6 @@ function buildMessages(card, ctx, budget){
 return {
   buildMessages: buildMessages, postInstructions: postInstructions, PRESETS: PRESETS,
   estTokens: estTokens, renderFields: renderFields, LAYERS: LAYERS, matchLore: matchLore,
-  buildLore: buildLore,
+  buildLore: buildLore, LABELS: LABELS, buildExamples: buildExamples,
 };
 })();

@@ -23,6 +23,11 @@ function buildTavernCard(c){
   if(nonEmpty(f.moral_bottom_line)) sys.push("道德底线: " + f.moral_bottom_line);
   if(nonEmpty(f.action_pattern)) sys.push("行动模式: " + f.action_pattern);
   var lines = f.typical_lines || [];
+  /* P1-2: 多开场白与示例对话写回(之前写死空值, roundtrip 会丢) */
+  var ext = {};
+  try{ ext = Object.assign({}, ((c && c.raw && c.raw.extensions) || {})); }catch(e){}
+  if(c && c.exampleDialogue) ext.example_dialogue = c.exampleDialogue;
+  else delete ext.example_dialogue;
   return {
     spec: "chara_card_v2", spec_version: "2.0",
     data: {
@@ -37,11 +42,11 @@ function buildTavernCard(c){
       creator_notes: nonEmpty(f.taboo_topics) ? ("taboos: " + str(f.taboo_topics)) : "",
       system_prompt: sys.join("\n"),
       post_history_instructions: "",
-      alternate_greetings: [],
+      alternate_greetings: (c && c.altGreetings) || [],
       tags: [((c && c.novel) || "自定义")],
       creator: "novel-reader",
       character_version: "1.0",
-      extensions: {}
+      extensions: ext
     }
   };
 }

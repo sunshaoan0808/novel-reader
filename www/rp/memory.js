@@ -149,7 +149,18 @@ save(runId, name, st);
 return true;
 }
 
+/* P1-8: 长期记忆库用量统计 {events, pinned, shortN, longN, shortMax, pinMax} */
+var PIN_MAX = 30;
+function memStats(runId, name){
+var st = get(runId, name);
+var short = (st && st.short) || [];
+var pinned = 0;
+short.forEach(function(m){ if(m.pin) pinned++; });
+return {events: short.length, pinned: pinned, shortN: short.length,
+longN: (st && st.long) ? 1 : 0, shortMax: SHORT_MAX, pinMax: PIN_MAX};
+}
+
 return {get: get, save: save, clear: clear, renderPrompt: renderPrompt,
 maybeAnalyze: maybeAnalyze, togglePin: togglePin, delItem: delItem,
-SHORT_MAX: SHORT_MAX};
+memStats: memStats, SHORT_MAX: SHORT_MAX, PIN_MAX: PIN_MAX};
 })();

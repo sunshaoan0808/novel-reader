@@ -42,9 +42,11 @@ const ctx = {
   alert: ()=>{},
   renderSaves: ()=>{}, showChat: ()=>{},
   titleEl: {}, subEl: {}, view: {},
+  BRANCH_KEY: "nd_branchsrc",
+  achvUnlock: ()=>{},
 };
 vm.createContext(ctx);
-for(const f of ["savesKey","getSaves","newSaveSlot","loadSaveSlot","delSaveSlot","renameSaveSlot"])
+for(const f of ["savesKey","getSaves","getBranchSrc","setBranchSrc","newSaveSlot","loadSaveSlot","delSaveSlot","renameSaveSlot"])
   vm.runInContext(extract(src, f), ctx);
 // window.X 赋值需要挂到 ctx.window
 ctx.window = ctx;
@@ -88,6 +90,17 @@ t("prompt cancel no slot", E("getSaves()").length === 0);
 
 // savesKey 按聊天隔离
 t("savesKey scoped", E("savesKey()") === "nd_saves_nd_chat_r1_阿绫");
+
+// P1-5: parentId 分支链
+ctx.prompt = ()=>"分支存档";
+E("newSaveSlot()");
+E("newSaveSlot()");
+const chain = E("getSaves()");
+t("首存档parentId null", chain[0].parentId === null);
+t("次存档parentId指向上一个", chain[1].parentId === chain[0].id);
+// 删除分支源 -> 分支源记录被清理
+E(`delSaveSlot(${chain[1].id})`);
+t("删分支源后清理记录", E("getBranchSrc()['nd_chat_r1_阿绫']") === undefined);
 
 console.log(`\nsaves: ${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);

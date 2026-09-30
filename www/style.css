@@ -250,6 +250,86 @@ body.chatmode #chatlog{ min-height:0; }
 }
 .msg.me .msgtools{ justify-content:flex-end; }
 
+/* ===== P1-6: 成就 toast + 成就页 ===== */
+.achv-toast{
+  position:fixed; left:50%; bottom:96px; transform:translateX(-50%) translateY(16px);
+  background:#1a1512; border:1px solid var(--gold); color:var(--ink);
+  border-radius:12px; padding:10px 18px; font-size:13px; z-index:9999;
+  opacity:0; transition:all .3s; pointer-events:none; max-width:82vw; text-align:center;
+}
+.achv-toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+.achv-toast .dim{ font-size:12px; color:var(--ink-faint); }
+.card.dimmed{ opacity:.55; }
+
+/* ===== P1-8: 记忆库用量条 ===== */
+.mem-usage{ margin:10px 0; }
+.mu-bar{ height:8px; border-radius:4px; background:#241d17; overflow:hidden; }
+.mu-fill{ height:100%; border-radius:4px; background:linear-gradient(90deg,#c9a35c,#e8c876); transition:width .3s; }
+.mu-label{ font-size:11px; color:var(--ink-faint); margin-top:4px; }
+.hint.warn{ color:#e8a49a; }
+
+/* ===== P1-7: PIN 应用锁 ===== */
+.pinlock{
+  position:fixed; inset:0; z-index:99999; background:#0d0b09;
+  display:flex; align-items:center; justify-content:center;
+}
+.pin-box{ width:min(320px,88vw); text-align:center; }
+.pin-title{ font-size:18px; margin-bottom:18px; display:flex; align-items:center; justify-content:center; gap:8px; }
+.pin-dots{ display:flex; gap:14px; justify-content:center; margin-bottom:22px; }
+.pdot{ width:14px; height:14px; border-radius:50%; border:1px solid var(--gold); }
+.pdot.on{ background:var(--gold); }
+.pin-pad{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:14px; }
+.pkey{
+  height:56px; border-radius:12px; background:#1a1512;
+  border:1px solid var(--line); color:var(--ink); font-size:20px;
+}
+.pkey:active{ background:#241d17; }
+.pin-msg{ min-height:20px; font-size:13px; color:#e8a49a; margin-bottom:8px; }
+.pin-warn{ font-size:11px; color:var(--ink-faint); margin:12px 0 8px; }
+.pin-wipe{
+  background:transparent; border:1px solid #5a2f28; color:#e8a49a;
+  border-radius:999px; padding:6px 16px; font-size:12px;
+}
+body.pinlocked #tabs{ display:none !important; }
+.pinrow{ display:flex; gap:8px; }
+.pinrow input{ width:80px; text-align:center; letter-spacing:4px; }
+
+/* ===== P1-5: 存档故事树 ===== */
+.snode{ margin-bottom:10px; }
+.stree{ color:var(--gold); font-size:13px; line-height:1; margin:0 0 2px 4px; letter-spacing:2px; }
+.save-card .badge{ font-size:10px; border:1px solid var(--gold); color:var(--gold); border-radius:999px; padding:1px 7px; }
+
+/* ===== P1-4: 聊天记录搜索 ===== */
+#chatsearch:empty{ display:none; }
+.csbar{
+  display:flex; align-items:center; gap:6px;
+  background:#100e0b; border:1px solid var(--line); border-radius:999px;
+  padding:6px 8px 6px 14px; margin:6px 0;
+}
+.csbar input{
+  flex:1; background:transparent; border:none; outline:none;
+  color:var(--ink); font-size:14px; min-width:0;
+}
+.cs-num{ font-size:12px; color:var(--ink-faint); white-space:nowrap; }
+.csbar button{
+  background:rgba(212,162,78,.10); border:1px solid var(--line); color:var(--ink-dim);
+  border-radius:999px; min-width:28px; height:28px; font-size:15px; cursor:pointer;
+}
+mark{ background:rgba(212,162,78,.45); color:inherit; border-radius:2px; padding:0 1px; }
+.msg.curhit{ background:rgba(212,162,78,.10); border-radius:10px; }
+
+/* ===== P1-1: TTS 语音气泡 ===== */
+.voicebub{
+  display:inline-flex; align-items:center; gap:8px;
+  background:rgba(212,162,78,.10); border:1px solid var(--line); color:var(--ink-dim);
+  border-radius:999px; padding:4px 12px; font-size:12px; cursor:pointer;
+}
+.voicebub .vb-ico{ display:inline-flex; color:var(--gold); }
+.voicebub .vb-bar{ width:64px; height:4px; border-radius:2px; background:rgba(255,255,255,.12); overflow:hidden; }
+.voicebub .vb-fg{ display:block; height:100%; width:0%; background:var(--gold); border-radius:2px; transition:width .4s linear; }
+.voicebub .vb-dur{ font-size:11px; color:var(--ink-faint); min-width:28px; }
+.voicebub.playing{ border-color:var(--gold); color:var(--ink); }
+
 /* ===== v8: 发现页 ===== */
 .badge.warn{ color:#e8a49a; border-color:#5a2f28; background:rgba(208,120,100,.08); }
 .sec-item .r{ font-size:12px; color:var(--ink-faint); margin-top:2px; }
