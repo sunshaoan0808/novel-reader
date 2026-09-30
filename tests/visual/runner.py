@@ -130,10 +130,13 @@ async def case_jitter(c):
 
 
 async def case_hidebars(c):
-    """上滑看历史（离底>140）进入沉浸式：顶栏收起+底栏移出+场景条收起+世界条收起+顶罩减弱；
-       未滑到底保持隐藏；只有滑到底（离底<24）才退出沉浸式。"""
+    """慢滑立刻沉浸（离底>8px）：顶栏收起+底栏移出+场景条收起+世界条收起+顶罩减弱；
+       慢滑/顶部停留不闪烁；未滑到底保持隐藏；只有滑到底（离底<6px）才退出沉浸式。
+       显隐是即时的（2026-10-01 起无 CSS 过渡），setHidden 内同步补偿 scrollTop。
+       注：headless 下 rAF 慢（scroll 事件延迟可达 500ms+），一律轮询等待不用固定 sleep。"""
+    await c.ev(SEED_JS)  # 用例隔离：jitter 用例会留下隐藏状态，重布种子+重进聊天页拿干净状态机
     await c.ev(SHOW_CHAT, await_promise=True)
-    await asyncio.sleep(0.6)
+    await asyncio.sleep(1.0)
     js = '''(async()=>{
       var log = document.getElementById("chatlog");
       var head = document.getElementById("chathead");
@@ -141,47 +144,84 @@ async def case_hidebars(c):
       var scen = document.getElementById("scenbar");
       var sim = document.getElementById("simbar");
       var out = {};
-      out.maxST = log.scrollHeight - log.clientHeight;
-      if (out.maxST < 160) return {skip: true, reason: "滚动空间不足"};
-      var h0 = log.clientHeight;
-      out.preHidden = bar.classList.contains("hidebar") || head.classList.contains("hide");
+      var imm = function(){ return document.body.classList.contains("immersive"); };
+      var dist = function(){ return Math.max(0, log.scrollHeight - log.clientHeight - log.scrollTop); };
+      async function waitImm(want, ms){
+        var t0 = Date.now();
+        while(Date.now() - t0 < ms){
+          if(imm() === want) return true;
+          await new Promise(function(r){ setTimeout(r, 120); });
+        }
+        return imm() === want;
+      }
+      out.preHidden = imm();
+      /* 回到底部清状态 */
+      log.scrollTop = log.scrollHeight - log.clientHeight;
+      out.cleanStart = await waitImm(false, 4000);
+      var maxST = log.scrollHeight - log.clientHeight;
+      if(maxST < 160) return {skip: true, reason: "滚动空间不足"};
+      out.maxST = Math.round(maxST);
+      var h0 = log.clientHeight; /* 未隐藏态的高度：后面滚到顶隐藏后对比，正文应补位长高 */
+      /* 1) 轻滑 20px 必须立刻进入沉浸式（旧逻辑要 140px） */
+      log.scrollTop = maxST - 20;
+      out.immediate = await waitImm(true, 4000);
+      out.distAfter20 = Math.round(dist());
+      /* 2) 慢滑 6 步（每步 20px 相对滚动），期间沉浸态不得变 false（无闪烁） */
+      out.trace = [];
+      for(var i = 0; i < 6; i++){
+        log.scrollTop = log.scrollTop - 20;
+        await new Promise(function(r){ setTimeout(r, 300); });
+        out.trace.push(imm());
+      }
+      out.noFlickerSlow = out.trace.every(function(v){ return v; });
+      /* 3) 滚到顶：几何断言（即时显隐，无过渡，直接量最终态） */
       log.scrollTop = 0;
-      await new Promise(function(r){ setTimeout(r, 500); });
-      out.dist = Math.round(log.scrollHeight - log.scrollTop - log.clientHeight);
-      out.hidden = bar.classList.contains("hidebar") && head.classList.contains("hide")
-        && bar.style.transform === "translateY(110%)"
-        && bar.style.position === "fixed"
-        && parseFloat(head.style.marginTop) < 0
-        && document.body.classList.contains("immersive");
+      await waitImm(true, 4000);
+      await new Promise(function(r){ setTimeout(r, 300); });
+      var h1 = log.clientHeight;
+      out.hidden = imm()
+        && bar.classList.contains("hidebar") && head.classList.contains("hide")
+        && bar.style.transform === "translateY(110%)" && bar.style.position === "fixed"
+        && parseFloat(head.style.marginTop) < 0;
       out.scenGone = getComputedStyle(scen).maxHeight === "0px"
         && getComputedStyle(scen).opacity === "0";
       out.simGone = !!sim && parseFloat(sim.style.marginTop) < 0
-        && sim.style.transform === "translateY(-105%)"
-        && sim.getBoundingClientRect().bottom <= 2;
-      out.h0 = h0; out.h1 = log.clientHeight;
-      out.grown = out.h1 > h0 + 40;
+        && sim.style.transform === "translateY(-105%)";
+      out.h0 = Math.round(h0); out.h1 = Math.round(h1);
+      out.grown = (h1 - h0) > 100;
       var brect = bar.getBoundingClientRect();
       out.barTop = Math.round(brect.top); out.winH = window.innerHeight;
       out.barGone = brect.top >= window.innerHeight - 8;
-      log.scrollTop = out.maxST - 300;
+      /* 4) 顶部停留 900ms，每 150ms 采样：不得闪烁 */
+      out.flick = [];
+      for(var k = 0; k < 6; k++){
+        out.flick.push(imm());
+        await new Promise(function(r){ setTimeout(r, 150); });
+      }
+      out.noFlickerTop = out.flick.every(function(v){ return v; });
+      /* 5) 未滑到底保持隐藏 */
+      log.scrollTop = maxST - 300;
       await new Promise(function(r){ setTimeout(r, 400); });
-      out.stillHidden = bar.classList.contains("hidebar")
-        && document.body.classList.contains("immersive");
-      log.scrollTop = out.maxST;
-      await new Promise(function(r){ setTimeout(r, 400); });
-      out.shown = !bar.classList.contains("hidebar") && !head.classList.contains("hide")
-        && !bar.style.transform && !bar.style.position && !head.style.marginTop
-        && !document.body.classList.contains("immersive");
+      out.stillHidden = imm() && bar.classList.contains("hidebar");
+      /* 6) 滑到底（用进入时记的 maxST，比当前真值大，浏览器钳制到真底，dist=0）-> 退出 */
+      log.scrollTop = maxST;
+      out.shown = await waitImm(false, 4000);
+      await new Promise(function(r){ setTimeout(r, 300); });
+      out.shownGeo = !bar.classList.contains("hidebar") && !head.classList.contains("hide")
+        && !bar.style.transform && !bar.style.position && !head.style.marginTop;
       out.scenBack = getComputedStyle(scen).opacity === "1";
-      out.simBack = !!sim && !sim.style.marginTop && !sim.style.transform
-        && sim.getBoundingClientRect().bottom > 20;
+      out.simBack = !!sim && !sim.style.marginTop && !sim.style.transform;
+      out.distEnd = Math.round(dist());
       return out;
     })()'''
     r = await c.ev(js, await_promise=True)
     if r.get("skip"):
         return False, r
-    ok = (r["hidden"] and r["scenGone"] and r["simGone"] and r["grown"] and r["barGone"] and r["stillHidden"]
-          and r["shown"] and r["scenBack"] and r["simBack"] and not r["preHidden"])
+    ok = (r["cleanStart"] and r["immediate"] and r["noFlickerSlow"]
+          and r["hidden"] and r["scenGone"] and r["simGone"] and r["grown"] and r["barGone"]
+          and r["noFlickerTop"] and r["stillHidden"]
+          and r["shown"] and r["shownGeo"] and r["scenBack"] and r["simBack"]
+          and not r["preHidden"])
     return ok, r
 
 

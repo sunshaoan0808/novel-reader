@@ -218,7 +218,7 @@ vm.runInContext("attachHeadHide()", ctx);
 log.scrollTop = 2000; log.onscroll();           // 上滑看历史(dist 0->400) -> 隐藏
 t("headhide: 加上hide类", toggles.some(x=>x[0]==="hide"&&x[1]));
 t("headhide: 收起占位marginTop=-65px", head.style.marginTop === "-65px");
-log.scrollTop = 2380; log.onscroll();           // 滑到底(dist=20) -> 显示
+log.scrollTop = 2395; log.onscroll();           // 滑到底(dist=5<6) -> 显示
 t("headhide: 去掉hide类", toggles.some(x=>x[0]==="hide"&&!x[1]));
 t("headhide: 恢复marginTop", head.style.marginTop === "");
 })();

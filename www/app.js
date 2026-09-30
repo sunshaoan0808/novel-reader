@@ -1243,13 +1243,21 @@ let hidden = false, headH = 0, simH = 0, ticking = false;
 const distNow = ()=>Math.max(0, ((log.scrollHeight || 0) - (log.clientHeight || 0)) - log.scrollTop);
 let lastDist = distNow();
 const raf = (typeof requestAnimationFrame !== "undefined") ? requestAnimationFrame : (fn)=>fn();
-/* 顶栏/底栏/场景条联动显隐：
-   - 进入沉浸式：上滑看历史、离底距离拉开超 140 才藏（阅读历史时让出空间）；
-   - 退出沉浸式：只有滑到底（离底距离 < 24）才显。
+/* 顶栏/底栏/场景条/世界条联动显隐：
+   - 进入沉浸式：检测到上滑离底（> 8px）立刻藏，不再等 140px；
+   - 退出沉浸式：只有真正滑到底（离底距离 < 6px）才显；
+   - [6px, 8px] 为迟滞区间，进入还要求方向向上，手指在边界抖动不反跳。
    输入框聚焦(键盘弹起)时不藏底栏 */
 function setHidden(hide){
 if(hide === hidden) return;
 hidden = hide;
+/* 先记基线：改样式之前的离底距离。显隐是即时的（无 CSS 过渡，见下），
+   样式应用后强制一次同步 layout，直接把 scrollTop 设到"离底距离不变"
+   的位置，单任务内完成。2026-10-01 教训：曾用 rAF 逐帧补偿 .28s 过渡，
+   但 rAF 在弱环境（headless --disable-gpu、 scroll 事件延迟 300ms+）下
+   不可靠，且过渡是"即时回流+渐变"混合体，永远追不齐，实测反复 re-hide
+   闪烁。即时显隐+同步补偿是唯一确定性正确的方案。 */
+const targetDist = distNow();
 const ae = (typeof document !== "undefined") ? document.activeElement : null;
 const typing = !!ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName || "");
 if(head){
@@ -1278,6 +1286,20 @@ bar.style.transform = hide ? "translateY(110%)" : "";
 /* 沉浸式总开关挂到 body：场景条收起、顶部压暗罩减弱、顶部死区收窄（CSS 侧） */
 if(typeof document !== "undefined" && document.body && document.body.classList)
 document.body.classList.toggle("immersive", hide);
+/* 同步补偿：样式已全部应用（含 body.immersive），强制一次同步 layout 拿到
+   最终高度，直接把 scrollTop 设到离底距离 == targetDist 的位置。
+   加 noanchor 关掉这次强制 layout 里浏览器滚动锚定的干扰，设完即摘掉。
+   之后只会触发一次 scroll 事件，状态机看到的 dist 就是用户手势的 dist，
+   自己的显隐不产生状态迁移，不可能闪烁。 */
+log.classList.add("noanchor");
+const chNow = log.clientHeight || 0;
+const shNow = log.scrollHeight || 0;
+const maxST = Math.max(0, shNow - chNow);
+log.scrollTop = Math.min(Math.max(0, shNow - chNow - targetDist), maxST);
+log.classList.remove("noanchor");
+lastDist = targetDist;
+const tb = document.getElementById("tobottom");
+if(tb) tb.classList.toggle("show", targetDist > 200);
 }
 window.__setHeadHidden = setHidden; /* 测试钩子 */
 function onScroll(){
@@ -1287,14 +1309,18 @@ ticking = false;
    恒为 0；用绝对值判 down/up 会把这次抖动当成用户下滑而误隐藏，
    导致进聊天页顶栏/底栏就是藏起来的。只有离底距离真的变了，
    才说明是用户手指在滚动 */
-/* 离底距离判定: 显隐改变 chatlog 高度时浏览器会钳制 scrollTop(把用户保持在底部),
-   钳制/滚动锚定只改变绝对 scrollTop, 不改变离底距离; 只有用户真正上滑才会拉开
-   离底距离。用它做阈值天然免疫布局变化引发的 scroll 事件, 状态机不会被
-   自己的显隐反复横跳(v33 视觉回归抓到的深层根因) */
+/* 离底距离判定: 必须用离底距离而不用绝对 scrollTop——打开聊天页后约 1s 内
+   字体加载/布局沉降会让 scrollTop 原地抖动（实测 ±84px），但离底距离
+   恒为 0；用绝对值判 down/up 会把这次抖动当成用户下滑而误隐藏，
+   导致进聊天页顶栏/底栏就是藏起来的。只有离底距离真的变了，
+   才说明是用户手指在滚动。
+   注意：显隐自身的布局过渡也会扰动离底距离（v33 曾误以为浏览器钳制能保持
+   离底距离不变，实测过渡中 183→26），这部分由 setHidden 的逐帧补偿解决，
+   状态机这里只看用户手势。 */
 const dist = distNow();
 const movingUp = (dist - lastDist) > 1;   /* 离底距离拉大 = 手指往上滑（看历史） */
-if(!hidden && movingUp && dist > 140){ setHidden(true); }
-else if(hidden && dist < 24){ setHidden(false); }
+if(!hidden && movingUp && dist > 8){ setHidden(true); }
+else if(hidden && dist < 6){ setHidden(false); }
 lastDist = dist;
 /* M3: 回到底部悬浮按钮（Talkie 式）：离底拉开才出现 */
 const tb = document.getElementById("tobottom");

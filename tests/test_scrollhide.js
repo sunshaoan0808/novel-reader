@@ -84,7 +84,7 @@ const scrollTo = (st)=>{ log.scrollTop = st; log.onscroll(); };
 
 t("init: 底部默认显示", !head.style.marginTop && !bar.style.position);
 
-scrollTo(2000); // 上滑看历史: dist 0->400, 拉开超140 -> 进入沉浸式
+scrollTo(2000); // 上滑看历史: dist 0->400, 检测到上滑离底(>8) -> 立刻进入沉浸式
 t("hide: 上滑看历史顶栏收起", head.style.marginTop === "-65px");
 t("hide: 顶栏hide类(视觉兜底)", toggles.some(x=>x[0]==="head"&&x[1]==="hide"&&x[2]));
 t("hide: 底栏fixed脱离文档流", bar.style.position === "fixed" && bar.style.bottom === "0" && bar.style.left === "0" && bar.style.right === "0");
@@ -99,7 +99,7 @@ t("hysteresis: 未滑到底保持隐藏", head.style.marginTop === "-65px" && ba
 scrollTo(2100); // 小幅上滑(dist=300): 保持隐藏（旧逻辑这里会上滑64就误显示）
 t("hysteresis: 历史区内上滑不退出", head.style.marginTop === "-65px");
 
-scrollTo(2380); // 滑到底: dist=20<24 -> 退出沉浸式
+scrollTo(2395); // 滑到底: dist=5<6 -> 退出沉浸式
 t("show: 滑到底恢复顶栏", head.style.marginTop === "");
 t("show: 滑到底恢复底栏", bar.style.position === "" && bar.style.transform === "");
 t("show: 滑到底恢复世界条", sim.style.marginTop === "" && sim.style.transform === "");
@@ -111,7 +111,7 @@ scrollTo(2000);
 t("typing: 输入时顶栏仍可藏", head.style.marginTop === "-65px");
 t("typing: 输入时底栏不藏", bar.style.position === "" && bar.style.transform === "");
 document.activeElement = null;
-scrollTo(2380); // 回到底部恢复，供后续用例干净状态
+scrollTo(2395); // 回到底部恢复，供后续用例干净状态
 
 /* 深层回归: 隐藏后浏览器因布局变化钳制 scrollTop(绝对值变小但离底距离不变),
    状态机不得把它当成用户操作而误显示 (v33 视觉回归抓到的根因) */
@@ -119,7 +119,7 @@ scrollTo(2000);                      /* 隐藏, dist=400 */
 log.scrollHeight = 2900;             /* 模拟: chatlog 变高, maxST 2400->2300 */
 scrollTo(1900);                      /* 钳制: 绝对值掉了100, 但离底距离仍是400 */
 t("clamp: 布局钳制不误显示", head.style.marginTop === "-65px" && bar.style.position === "fixed");
-scrollTo(2280);                      /* 滑到底附近: dist=20<24 -> 显示 */
+scrollTo(2295);                      /* 滑到底: dist=5<6 -> 显示 */
 t("clamp: 滑到底恢复", head.style.marginTop === "" && bar.style.position === "");
 log.scrollHeight = 3000;
 
@@ -145,6 +145,53 @@ t("settle: 布局抖动不误隐藏顶栏", !head2.classList.contains("hide"));
 t("settle: 布局抖动不误隐藏底栏", !bar2.classList.contains("hidebar"));
 els["chathead"] = head; els["chatlog"] = log; els["__chatbar"] = bar;
 })();
+})();
+
+// ---------- 沉浸式 v36: 立刻进入(>8px)+滑到底退出(<6px)+同步补偿防闪烁 ----------
+(function(){
+const head3 = mkEl(); head3.offsetHeight = 65;
+head3.classList = {add(){}, remove(){}, toggle(){}, contains(){ return false; }};
+const bar3 = mkEl();
+const sim3 = mkEl(); sim3.offsetHeight = 32;
+const log3 = mkEl();
+/* 模拟真实布局：隐藏时 chatlog 从 600 变高到 836（顶栏65+世界条32+底栏余量）；
+   mock 的 clientHeight 跟随隐藏状态变，setHidden 里的同步补偿能真实跑起来 */
+Object.defineProperty(log3, "clientHeight", {
+  get(){ return head3.style.marginTop ? 836 : 600; }, configurable: true});
+const clsCalls = [];
+log3.classList = {add(c){ clsCalls.push("+"+c); }, remove(c){ clsCalls.push("-"+c); },
+  toggle(){}, contains(){ return false; }};
+Object.assign(log3, {scrollHeight: 3000, scrollTop: 2400});
+els["chathead"] = head3; els["chatlog"] = log3; els["__chatbar"] = bar3; els["simbar"] = sim3;
+document.body = {classList: {add(){}, remove(){}, toggle(){}, contains(){ return false; }}};
+document.activeElement = null;
+run("attachHeadHide()");
+const scrollTo3 = (st)=>{ log3.scrollTop = st; log3.onscroll(); };
+const dist3 = ()=> 3000 - log3.scrollTop - log3.clientHeight;
+
+scrollTo3(2380); // 轻滑 20px: dist=20>8 且向上 -> 立刻沉浸（旧逻辑要 140px 才藏）
+t("immediate: 轻滑20px即沉浸", head3.style.marginTop === "-65px");
+t("immediate: 世界条同步收起", sim3.style.marginTop === "-32px");
+t("sync: 隐藏时scrollTop被同步补偿", log3.scrollTop === 2144); /* 3000-836-20 */
+t("sync: 离底距离保持20", dist3() === 20);
+t("sync: noanchor同步加脱", clsCalls.join(",") === "+noanchor,-noanchor");
+log3.onscroll(); /* 补偿是程序性滚动，浏览器会再触发 scroll 事件 */
+t("sync: 补偿触发的scroll不误判滑到底", head3.style.marginTop === "-65px");
+t("sync: 补偿触发的scroll不误判上滑", sim3.style.marginTop === "-32px");
+
+scrollTo3(2157); // dist=7: 迟滞区间，已隐藏时不退出
+t("hyst: dist=7已隐藏不退出", head3.style.marginTop === "-65px");
+scrollTo3(2164); // dist=0<6: 用户真正滑到底 -> 退出
+t("exit: 滑到底退出沉浸", head3.style.marginTop === "");
+t("exit: 退出后scrollTop同步回到真底", log3.scrollTop === 2400); /* 3000-600-0 */
+t("exit: 离底距离为0", dist3() === 0);
+log3.onscroll();
+t("exit: 退出后的scroll不重入沉浸", head3.style.marginTop === "");
+
+scrollTo3(2393); // dist=7: 未隐藏+向上，但没过8 -> 不进入
+t("hyst: dist=7未隐藏不进入", head3.style.marginTop === "");
+scrollTo3(2391); // dist=9>8 且向上 -> 进入
+t("hyst: dist=9进入沉浸", head3.style.marginTop === "-65px");
 })();
 
 // ---------- streamToken: 上滑时不拽回底部 ----------
