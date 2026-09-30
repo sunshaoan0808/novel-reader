@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>蒸馏工坊</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header id="topbar"><span id="title">蒸馏工坊</span><span id="sub"></span></header>
+  <nav id="tabs" class="hidden">
+    <button data-tab="chars" class="active">人物</button>
+    <button data-tab="outline">大纲</button>
+    <button data-tab="relations">关系</button>
+    <button data-tab="more">更多</button>
+  </nav>
+  <main id="view"></main>
+  <nav id="mainnav">
+    <button data-nav="product" class="active">产物</button>
+    <button data-nav="tasks">任务</button>
+    <button data-nav="chat">聊天</button>
+    <button data-nav="writer">写卡</button>
+    <button data-nav="settings">设置</button>
+  </nav>
+</div>
+<script src="data.js"></script>
+<script src="icons.js"></script>
+<script src="data/char_plots.js"></script>
+<script src="rp/prompt.js"></script>
+<script src="rp/persona.js"></script>
+<script src="rp/memory.js"></script>
+<script src="rp/tasks.js"></script>
+<script src="rp/cardwriter.js"></script>
+<script src="rp/ooc.js"></script>
+<script src="rp/chat.js"></script>
+<script src="rp/group.js"></script>
+<script src="rp/cardexport.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

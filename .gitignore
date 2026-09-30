@@ -1,0 +1,7 @@
+*.apk
+*.apk.idsig
+*.keystore
+android/build/
+android/out/
+node_modules/
+.DS_Store

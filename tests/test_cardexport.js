@@ -1,0 +1,101 @@
+const fs = require("fs"), vm = require("vm");
+// rp/cardexport.js: Tavern v2 卡构建 + chara tEXt 嵌入 (纯函数部分)
+const src = fs.readFileSync("assets/www/rp/cardexport.js", "utf8");
+const ctx = {console, btoa: (s)=>Buffer.from(s, "binary").toString("base64"), atob: (s)=>Buffer.from(s, "base64").toString("binary")};
+vm.createContext(ctx);
+vm.runInContext(src, ctx); // 加载时不碰 document/window, 安全
+const X = ctx.RP_CARDEXPORT;
+
+let pass = 0, fail = 0;
+const t = (n, c)=>{ c ? pass++ : (fail++, console.log("FAIL:", n)); };
+
+// --- buildTavernCard ---
+const c = {name: "林黛玉", novel: "红楼梦", fields: {
+  core_identity: "林如海之女",
+  appearance_feature: "两弯似蹙非蹙烟眉",
+  core_traits: "敏感细腻",
+  speech_style: "言辞锋利",
+  typical_lines: ["你这话说得好没意思", "我不过是多说几句罢了", "第三句"],
+  taboo_topics: "宝玉娶亲",
+}};
+const card = X.buildTavernCard(c);
+t("spec v2", card.spec === "chara_card_v2" && card.spec_version === "2.0");
+t("name", card.data.name === "林黛玉");
+t("description has identity", card.data.description.indexOf("林如海之女") >= 0);
+t("personality", card.data.personality.indexOf("敏感细腻") >= 0);
+t("first_mes", card.data.first_mes === "你这话说得好没意思");
+t("mes_example has rest", card.data.mes_example.indexOf("我不过是多说几句罢了") >= 0
+  && card.data.mes_example.indexOf("{{char}}") >= 0);
+t("system_prompt", card.data.system_prompt.indexOf("言辞锋利") >= 0);
+t("tags", card.data.tags[0] === "红楼梦");
+t("empty card safe",
+  X.buildTavernCard({}).data.name === "未命名" && X.buildTavernCard(null).spec === "chara_card_v2");
+
+// --- b64 unicode roundtrip (CJK) ---
+const jb64 = X.b64encodeUnicode(JSON.stringify(card));
+const back = JSON.parse(Buffer.from(jb64, "base64").toString("utf8"));
+t("b64 cjk roundtrip", back.data.name === "林黛玉");
+
+// --- crc32 已知值 ---
+t("crc32 known", X.crc32(Buffer.from("123456789")) === 0xCBF43926);
+
+// --- embedChara: 1x1 PNG 嵌入后结构校验 ---
+const tinyPngB64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+const _b0 = Buffer.from(tinyPngB64, "base64");
+const pngBuf = _b0.buffer.slice(_b0.byteOffset, _b0.byteOffset + _b0.byteLength);
+const outBuf = X.embedChara(pngBuf, jb64);
+const out = Buffer.from(outBuf);
+// 解析 chunks
+function parseChunks(buf){
+  const chunks = [];
+  let p = 8;
+  while(p + 8 <= buf.length){
+    const len = buf.readUInt32BE(p);
+    const type = buf.toString("ascii", p + 4, p + 8);
+    chunks.push({type, len, dataPos: p + 8, crcPos: p + 8 + len});
+    p += 12 + len;
+    if(type === "IEND") break;
+  }
+  return chunks;
+}
+const chunks = parseChunks(out);
+t("png sig kept", out[0] === 137 && out[1] === 80 && out[2] === 78 && out[3] === 71);
+t("IEND last", chunks[chunks.length - 1].type === "IEND");
+const txt = chunks.find((k)=> k.type === "tEXt");
+t("tEXt present", !!txt);
+let kwOk = false, payloadOk = false, crcOk = false;
+if(txt){
+  const raw = out.subarray(txt.dataPos, txt.dataPos + txt.len);
+  const nul = raw.indexOf(0);
+  kwOk = raw.toString("ascii", 0, nul) === "chara";
+  const payload = raw.subarray(nul + 1).toString("ascii");
+  payloadOk = JSON.parse(Buffer.from(payload, "base64").toString("utf8")).data.name === "林黛玉";
+  const stored = out.readUInt32BE(txt.crcPos);
+  const computed = X.crc32(out.subarray(txt.dataPos - 4, txt.crcPos));
+  crcOk = stored === computed;
+}
+t("chara keyword", kwOk);
+t("payload roundtrip", payloadOk);
+t("chunk crc valid", crcOk);
+t("tEXt before IEND", chunks.indexOf(txt) === chunks.length - 2);
+
+// embedChara 非法输入抛错
+let threw = false;
+try{ X.embedChara(new ArrayBuffer(8), "e30="); }catch(e){ threw = true; }
+t("rejects non-png", threw);
+
+// --- 静态: 原生层与 UI 入口 ---
+const java = fs.readFileSync("src/com/ling/novelreader/MainActivity.java", "utf8");
+t("JsBridge sharePng", java.indexOf("sharePng") >= 0 && java.indexOf("@JavascriptInterface") >= 0);
+t("addJavascriptInterface", java.indexOf('addJavascriptInterface(new JsBridge(), "Android")') >= 0);
+t("provider file exists", fs.existsSync("src/com/ling/novelreader/SharedFileProvider.java"));
+const mf = fs.readFileSync("AndroidManifest.xml", "utf8");
+t("manifest provider", mf.indexOf("SharedFileProvider") >= 0 && mf.indexOf("com.ling.novelreader.shared") >= 0);
+const html = fs.readFileSync("assets/www/index.html", "utf8");
+t("cardexport.js in index.html", html.indexOf("rp/cardexport.js") >= 0);
+const asrc = fs.readFileSync("assets/www/app.js", "utf8");
+t("exportCard exists", asrc.indexOf("window.exportCard") >= 0);
+t("export button on card", asrc.indexOf("exportCard('${c.id}')") >= 0);
+
+console.log(`\ncardexport: ${pass} pass, ${fail} fail`);
+process.exit(fail ? 1 : 0);
