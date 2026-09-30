@@ -44,6 +44,11 @@ var LAYERS = {
 function val(f){
   if(f == null) return "";
   if(typeof f === "string") return f.trim();
+  /* 纯数组字段(typical_lines 等在各处都存成数组): 逐行拼, 以前这里直接吞成空字符串 */
+  if(Array.isArray(f)){
+    return f.map(function(it){ return String(it == null ? "" : it).trim(); })
+      .filter(function(it){ return it; }).join("\n").trim();
+  }
   var parts = [];
   if(f.v) parts.push(String(f.v).trim());
   (f.items || []).forEach(function(it){
@@ -74,6 +79,11 @@ function itemsOf(card, name){
   var f = card.fields[name];
   if(!f) return [];
   if(typeof f === "string") return f ? [f] : [];
+  /* 纯数组字段直接取用(同 val) */
+  if(Array.isArray(f)){
+    return f.map(function(it){ return String(it == null ? "" : it).trim(); })
+      .filter(function(it){ return it; });
+  }
   var out = [];
   if(f.v) out.push(f.v);
   (f.items || []).forEach(function(i){ if(i) out.push(i); });

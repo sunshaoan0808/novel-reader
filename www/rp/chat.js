@@ -227,11 +227,13 @@ function findCard(runId, name){
   if(runId === "custom" && typeof RP_WRITER !== "undefined"){
     var cc = RP_WRITER.findCustom(name);
     if(cc) return {name: cc.name, fields: cc.fields || {},
+      greeting: cc.greeting || "",
       altGreetings: cc.altGreetings || [], exampleDialogue: cc.exampleDialogue || ""};
   }
   if(runId === "imported" && typeof RP_CARDIMPORT !== "undefined"){
     var ic = RP_CARDIMPORT.find(name);
     if(ic) return {name: ic.name, fields: ic.fields || {},
+      greeting: ic.greeting || "",
       altGreetings: ic.altGreetings || [], exampleDialogue: ic.exampleDialogue || ""};
   }
   var cards = (window.__DATA__ && window.__DATA__.rp_cards || {})[runId] || [];
@@ -303,9 +305,17 @@ function ppaKeyRound(dirText){
 
 async function greeting(runId, name, cfg, novel){
   var card = findCard(runId, name);
-  /* P1-2: 卡片自带多开场白 -> 随机挑一条, 省一次模型调用 */
-  if(card && card.altGreetings && card.altGreetings.length){
-    return card.altGreetings[Math.floor(Math.random() * card.altGreetings.length)];
+  /* 卡片原开场白优先: first_mes/greeting 为正统开场, 多开场白作为候选一起随机。
+   * 以前导入卡的 first_mes 只塞进 typical_lines(纯数组还被 val 吞掉), 有 key 时又被模型重写,
+   * 导致卡片原开场白永远出不来。 */
+  if(card){
+    var pool = [];
+    if(card.greeting && String(card.greeting).trim()) pool.push(String(card.greeting).trim());
+    (card.altGreetings || []).forEach(function(g){
+      g = String(g == null ? "" : g).trim();
+      if(g && pool.indexOf(g) < 0) pool.push(g);
+    });
+    if(pool.length) return pool[Math.floor(Math.random() * pool.length)];
   }
   if(!cfg || !cfg.key){
     var lines = card ? RP_PROMPT.renderFields(card, ["typical_lines"]) : "";

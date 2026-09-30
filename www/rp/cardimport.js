@@ -111,6 +111,8 @@ function normalizeTavern(d){
     });
   });
   var tags = d.tags || [];
+  /* 开场白 first_mes 单独保留: 聊天/穿越开场优先用卡片原开场白, 不再只塞进 typical_lines */
+  var greeting = String(d.first_mes == null ? "" : d.first_mes).trim();
   /* P1-2: 保留多开场白与示例对话(之前归一化会丢, 导出也写空) */
   var altGreetings = Array.isArray(d.alternate_greetings) ? d.alternate_greetings
     .map(function(g){ return String(g == null ? "" : g).trim(); })
@@ -122,6 +124,7 @@ function normalizeTavern(d){
     name: name,
     novel: tags[0] || "导入角色卡",
     fields: fields,
+    greeting: greeting,
     altGreetings: altGreetings,
     exampleDialogue: exampleDialogue,
     scenario: String(d.scenario || "").trim(),

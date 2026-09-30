@@ -99,7 +99,7 @@ return "未知世界";
 /* 世界卡（World Bible v1）：书中世界=小说+常驻世界书；卡片世界=卡片设定+自带世界书 */
 function buildWorldBible(kind, id){
 var name = worldDisplayName(kind, id);
-var bg = "", loreEntries = [];
+var bg = "", loreEntries = [], greeting = "";
 if(kind === "book"){
 var run = (window.__DATA__ && window.__DATA__.runs || {})[id] || {};
 /* P2: 注册表 pending 世界（如水浒）：不编造人物剧情，用开放式异世界推进 */
@@ -126,6 +126,8 @@ var f = card.fields || {};
 bg = "世界设定：" + (card.scenario || f.core_identity || "（卡片未写明世界设定）") +
 "\n主角：" + card.name + (f.core_traits? "，" + String(f.core_traits).slice(0, 80): "");
 loreEntries = (card.worldbook || []).filter(function(e){ return e.enabled!== false;});
+/* 卡片原开场白: 开场生成时作为情境参考 */
+greeting = card.greeting || "";
 }
 }
 /* P1: 用户已确认的 AI 世界补完（nd_wb2_），与原文合并，补完部分自带来源标注 */
@@ -138,7 +140,7 @@ loreEntries.push({title: "AI 补完 · 剧情锚点", content: a, constant: true
 });
 }
 }catch(e){}
-return {key: kind + ":" + id, name: name, bg: bg, loreEntries: loreEntries};
+return {key: kind + ":" + id, name: name, bg: bg, loreEntries: loreEntries, greeting: greeting};
 }
 
 /* ================= 世界状态 ================= */
@@ -357,6 +359,8 @@ try {
 var prompt = "你是穿越剧的开场旁白。\n世界：" + bible.name + "\n" +
 String(bible.bg).slice(0, 400) + "\n玩家身份：" + identityOneLiner(trav) + "\n" +
 "开场锚点：" + (trav.anchorTitle || "故事开端") + "\n" +
+/* 卡片世界: 把卡片原开场白给模型做情境参考, 开场更贴原卡 */
+(bible.greeting ? "角色原开场白（仅作情境参考，可化用其氛围与处境，不要照搬原文）：\n" + String(bible.greeting).slice(0, 300) + "\n" : "") +
 "写一段 150 字内的开场：环境氛围 + 玩家此刻的处境 + 一个钩子。用第二人称“你”。" +
 "然后另起一行输出 <ws>{\"date\":\"…\",\"loc\":\"…\",\"progress\":\"…\"}</ws> 给出初始时间地点。" +
 "只输出开场正文和 ws 块，不要解释。";
@@ -370,8 +374,14 @@ return offlineOpening(trav);
 function offlineOpening(trav){
 var bible = buildWorldBible(trav.worldKind, trav.worldId);
 var who = trav.mode === "soul"? ("你成了" + trav.charName): ("你以" + identityOneLiner(trav) + "的身份");
+/* 卡片世界: 离线模板也带上卡片的世界设定, 不再是纯套话 */
+var scen = "";
+if(trav.worldKind === "card"){
+var m = String(bible.bg || "").match(/^世界设定：(.+)$/m);
+if(m && m[1] && m[1].indexOf("未写明") < 0) scen = "\n" + m[1].slice(0, 120);
+}
 return "「" + bible.name + " · " + (trav.anchorTitle || "故事开端") + "」\n" +
-who + "，睁开眼，周围的一切既陌生又真实。\n" +
+who + "，睁开眼，周围的一切既陌生又真实。" + scen + "\n" +
 "（开场由 AI 生成会更精彩：去「设置」配好大模型后重开即可）";
 }
 
