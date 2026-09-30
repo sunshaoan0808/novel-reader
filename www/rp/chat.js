@@ -790,6 +790,9 @@ async function sendTraverse(travId, text, opts){
     if(dirTextT && b.messages.length && b.messages[0].role === "system")
       b.messages[0].content += "\n\n" + dirTextT;
   }catch(e){}
+  /* 剧情选项卡: 与单聊/群聊一致, 由 RP 设置里的选项开关控制 */
+  if(opts.optCards && b.messages.length && b.messages[0].role === "system")
+    b.messages[0].content += "\n\n" + optCardsInstr(opts.optCount, opts.optMood);
   if(opts.onSystem) opts.onSystem(b.preview, b.stats);
 
   var reply = "";

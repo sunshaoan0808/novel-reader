@@ -2239,6 +2239,7 @@ const r = isGroup
 ? await RP.sendTraverse(CHAT.travId, text, {
   cfg: sendOpts.cfg, history: h, temperature: sendOpts.temperature,
   topP: sendOpts.topP, maxTokens: sendOpts.maxTokens, budget: sendOpts.budget,
+  optCards: sendOpts.optCards, optCount: sendOpts.optCount, optMood: sendOpts.optMood,
   signal: sendOpts.signal, onToken: sendOpts.onToken, onPush: sendOpts.onPush,
   onUserMsg: sendOpts.onUserMsg, onSystem: sendOpts.onSystem,
   ppa: sendOpts.ppa, onAligning: sendOpts.onAligning,
