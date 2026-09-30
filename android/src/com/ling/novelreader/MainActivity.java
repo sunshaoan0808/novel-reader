@@ -2,8 +2,13 @@ package com.ling.novelreader;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Base64;
 import android.webkit.JavascriptInterface;
@@ -51,6 +56,54 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> startActivity(Intent.createChooser(it, "分享角色卡")));
             } catch (Exception e) {
                 android.util.Log.e("novelreader", "sharePng failed", e);
+            }
+        }
+
+        /** JS 桥: 角色召回本地通知（Tier3-24）。纯本地通知，不走任何推送服务器。
+         *  JS 只在"App 回到前台且距上次聊天超过 N 小时"时调用。
+         *  Android 13+ 需要 POST_NOTIFICATIONS 运行时权限：首次调用时申请，本次先跳过。 */
+        @JavascriptInterface
+        public void notifyLocal(final String title, final String text) {
+            try {
+                if (Build.VERSION.SDK_INT >= 33 &&
+                    checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                        != PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(
+                        new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 1002);
+                    return;
+                }
+                final String t = (title == null || title.isEmpty()) ? "TA" : title;
+                final String c = text == null ? "" : text;
+                runOnUiThread(() -> {
+                    try {
+                        NotificationManager nm =
+                            (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+                        if (nm == null) return;
+                        Notification.Builder b;
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            b = new Notification.Builder(MainActivity.this, "recall");
+                        } else {
+                            b = new Notification.Builder(MainActivity.this);
+                            b.setPriority(Notification.PRIORITY_DEFAULT);
+                        }
+                        int flags = android.app.PendingIntent.FLAG_UPDATE_CURRENT;
+                        if (Build.VERSION.SDK_INT >= 23) flags |= android.app.PendingIntent.FLAG_IMMUTABLE;
+                        android.app.PendingIntent pi = android.app.PendingIntent.getActivity(
+                            MainActivity.this, 0, getIntent(), flags);
+                        b.setContentTitle(t)
+                         .setContentText(c)
+                         .setSmallIcon(getApplicationInfo().icon)
+                         .setContentIntent(pi)
+                         .setAutoCancel(true);
+                        if (Build.VERSION.SDK_INT >= 16)
+                            b.setStyle(new Notification.BigTextStyle().bigText(c));
+                        nm.notify(2001, b.build());
+                    } catch (Exception e) {
+                        android.util.Log.e("novelreader", "notifyLocal ui failed", e);
+                    }
+                });
+            } catch (Exception e) {
+                android.util.Log.e("novelreader", "notifyLocal failed", e);
             }
         }
     }
@@ -123,6 +176,14 @@ public class MainActivity extends Activity {
             }
         });
         setContentView(web);
+        /* Tier3-24: 角色召回通知渠道（Android 8+ 需要先建 channel） */
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel ch = new NotificationChannel(
+                "recall", "角色召回", NotificationManager.IMPORTANCE_DEFAULT);
+            ch.setDescription("角色想你了时的本地召回提醒");
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            if (nm != null) nm.createNotificationChannel(ch);
+        }
         if (savedInstanceState != null) {
             web.restoreState(savedInstanceState);
         } else {
@@ -147,6 +208,15 @@ public class MainActivity extends Activity {
             filePathCallback.onReceiveValue(results);
             filePathCallback = null;
         }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        /* Tier3-24: App 从后台回到前台，让 JS 检查是否需要发角色召回本地通知 */
+        if (web != null) web.evaluateJavascript(
+            "(function(){try{if(window.__onAppResumed)window.__onAppResumed();}catch(e){}})()",
+            null);
     }
 
     @Override

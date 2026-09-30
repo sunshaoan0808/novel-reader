@@ -8,6 +8,9 @@ function extract(src, name){
     "(?:let|const|var)\\s+"+name+"\\s*=\\s*function\\s*\\(",
     name+"\\s*=\\s*\\([^)]*\\)\\s*=>",
     "window\\."+name+"\\s*=\\s*\\([^)]*\\)\\s*=>",
+    /* #9: newSaveSlot 改为 async 箭头函数 */
+    name+"\\s*=\\s*async\\s*\\([^)]*\\)\\s*=>",
+    "window\\."+name+"\\s*=\\s*async\\s*\\([^)]*\\)\\s*=>",
   ];
   for(const p of pats){
     const m = src.match(new RegExp(p));
@@ -39,6 +42,7 @@ const ctx = {
   savePlot: (p)=>{ savedPlot = p; },
   prompt: (msg, def)=>"测试存档",
   confirm: ()=>true,
+  confirmCheck: async ()=>true, /* #9: 存档确认弹窗在测试里自动勾选 */
   alert: ()=>{},
   renderSaves: ()=>{}, showChat: ()=>{},
   titleEl: {}, subEl: {}, view: {},
@@ -56,10 +60,12 @@ const E = (code)=>vm.runInContext(code, ctx);
 let pass = 0, fail = 0;
 const t = (n, c)=>{ c ? pass++ : (fail++, console.log("FAIL:", n)); };
 
+/* #9: newSaveSlot 改为 async（含 confirmCheck 弹窗），测试体包进 async main */
+async function main(){
 t("empty at first", E("getSaves()").length === 0);
 
 E(`saveHist("nd_chat_r1_阿绫", [{role:"user",content:"hi"},{role:"assistant",content:"你好"}])`);
-E("newSaveSlot()");
+await E("newSaveSlot()");
 let ss = E("getSaves()");
 t("new slot saved", ss.length === 1 && ss[0].name === "测试存档");
 t("slot captures history", ss[0].history.length === 2);
@@ -85,7 +91,7 @@ t("delete works", E("getSaves()").length === 0);
 
 // prompt 取消不建档
 ctx.prompt = ()=>null;
-E("newSaveSlot()");
+await E("newSaveSlot()");
 t("prompt cancel no slot", E("getSaves()").length === 0);
 
 // savesKey 按聊天隔离
@@ -93,8 +99,8 @@ t("savesKey scoped", E("savesKey()") === "nd_saves_nd_chat_r1_阿绫");
 
 // P1-5: parentId 分支链
 ctx.prompt = ()=>"分支存档";
-E("newSaveSlot()");
-E("newSaveSlot()");
+await E("newSaveSlot()");
+await E("newSaveSlot()");
 const chain = E("getSaves()");
 t("首存档parentId null", chain[0].parentId === null);
 t("次存档parentId指向上一个", chain[1].parentId === chain[0].id);
@@ -104,3 +110,5 @@ t("删分支源后清理记录", E("getBranchSrc()['nd_chat_r1_阿绫']") === un
 
 console.log(`\nsaves: ${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);
+}
+main().catch(e=>{ console.error(e); process.exit(1); });

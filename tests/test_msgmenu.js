@@ -94,7 +94,7 @@ t("sheet有反对", html.indexOf("rateMsg(1,-1)") >= 0);
 t("sheet有编辑", html.indexOf("editMsg(1)") >= 0);
 t("sheet有复制", html.indexOf("copyMsg(1)") >= 0);
 t("sheet有TTS", html.indexOf("ttsMsg(1)") >= 0);
-t("sheet有删除", html.indexOf("delMsg(1)") >= 0);
+t("sheet有删除", html.indexOf("delMsgAsk(1)") >= 0); /* #13: 删除走 delMsgAsk(记忆二选一) */
 t("sheet有预览", html.indexOf("msprev") >= 0);
 
 // ---- 用户消息: 无评分/TTS ----
@@ -110,7 +110,7 @@ const GKEY = "nd_group_r1_林黛玉_贾宝玉"; // sort 后林在前
 store[GKEY] = JSON.stringify([mk("assistant", "群消息", {speaker: "林黛玉"})]);
 vm.runInContext("msgSheet(true, 0)", ctx);
 t("群聊无Pin", sheetOf().innerHTML.indexOf("pinChatMsg") < 0);
-t("群聊有删除", sheetOf().innerHTML.indexOf("delMsg(0)") >= 0);
+t("群聊有删除", sheetOf().innerHTML.indexOf("delMsgAsk(0)") >= 0); /* #13 */
 // 群聊下 pinChatMsg 直接返回, 不写记忆
 const before = store["nd_mem2_r1_null"];
 vm.runInContext("pinChatMsg(0)", ctx);

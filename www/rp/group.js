@@ -111,6 +111,52 @@ function pickSpeaker(userText, members, talkMap, lastSpeaker){
   return s.length ? s[0] : null;
 }
 
+/* ---- 角色关系设定（对标 Talkie "Add a Relationship": "X is Y's …" 句式） ----
+ * 存储: nd_grel_<runId>_<gkey> = [{a, b, rel}]，渲染为 "A是B的rel" 注入群聊 prompt */
+function relKey(runId, gkey){ return "nd_grel_" + runId + "_" + gkey; }
+function getRels(runId, gkey){
+  try{
+    var v = JSON.parse(lsGet(relKey(runId, gkey)) || "[]");
+    return Array.isArray(v) ? v.filter(function(r){ return r && r.a && r.b && r.rel; }) : [];
+  }catch(e){ return []; }
+}
+function saveRels(runId, gkey, rels){
+  lsSet(relKey(runId, gkey), JSON.stringify(rels || []));
+}
+/* 解析建群时的关系文本：每行 "A是B的C"，返回 {ok:[{a,b,rel}], bad:行数} */
+function parseRelLines(text, members){
+  var ok = [], bad = 0;
+  String(text || "").split(/\n/).forEach(function(line){
+    line = String(line).trim();
+    if(!line) return;
+    var m = line.match(/^(.+?)是(.+?)的(.+)$/);
+    if(!m){ bad++; return; }
+    var a = m[1].trim(), b = m[2].trim(), rel = m[3].trim();
+    if(!a || !b || !rel){ bad++; return; }
+    if(members && members.length && (members.indexOf(a) < 0 || members.indexOf(b) < 0)){ bad++; return; }
+    ok.push({a: a, b: b, rel: rel});
+  });
+  return {ok: ok, bad: bad};
+}
+function addRel(runId, gkey, a, b, rel){
+  if(!a || !b || !rel) return false;
+  var rels = getRels(runId, gkey);
+  rels.push({a: a, b: b, rel: rel});
+  saveRels(runId, gkey, rels);
+  return true;
+}
+function delRel(runId, gkey, idx){
+  var rels = getRels(runId, gkey);
+  if(idx < 0 || idx >= rels.length) return false;
+  rels.splice(idx, 1);
+  saveRels(runId, gkey, rels);
+  return true;
+}
+/* 渲染成 prompt 文本："A是B的rel"，每行一条；空返回 "" */
+function renderRels(runId, gkey){
+  return getRels(runId, gkey).map(function(r){ return r.a + "是" + r.b + "的" + r.rel; }).join("\n");
+}
+
 /* 成员一句话简介（从人设卡字段取） */
 function memberBrief(card){
 var f = (card && card.fields) || {};
@@ -148,6 +194,12 @@ setTalk: setTalk,
 talkMapFor: talkMapFor,
 getOrder: getOrder,
 setOrder: setOrder,
+getRels: getRels,
+saveRels: saveRels,
+addRel: addRel,
+delRel: delRel,
+renderRels: renderRels,
+parseRelLines: parseRelLines,
 memberBrief: memberBrief,
 groupPostInstructions: groupPostInstructions,
 MAX_SPEAKERS: MAX_SPEAKERS,

@@ -504,6 +504,11 @@ color:var(--ink-dim); border-radius:999px; padding:6px 14px; font-size:13px; cur
 .alb-fact{font-size:14px; line-height:1.6;}
 .alb-view{font-size:12.5px; color:var(--ink-dim); margin-top:4px; font-style:italic;}
 .alb-mood .alb-fact{font-size:15px;}
+/* ===== 借鉴清单 1/3/4: 世界书高级字段 + 事件结构化字段 + Facts 分区 ===== */
+.alb-sub{font-size:12.5px; color:var(--ink-dim); margin-top:4px; line-height:1.6;}
+.facts-edu{font-size:13px; color:var(--ink-dim); line-height:1.7; margin-bottom:10px; padding:8px 10px; border:1px dashed var(--line); border-radius:8px;}
+.facts-edu summary{cursor:pointer; color:var(--gold-soft); font-size:12px; margin-top:4px;}
+.facts-en{font-size:12px; color:var(--ink-dim); margin-top:6px; font-style:italic; line-height:1.6;}
 
 /* ===== v21: 记忆转小说 ===== */
 .novel{margin-top:8px;}
@@ -531,6 +536,25 @@ background:none; border:1px solid var(--line); border-radius:8px; cursor:pointer
 .narrbtn{flex:0 0 auto; padding:9px 10px; border-radius:10px; border:1px solid #4a3d24; background:#241f16; color:#8a7a55; font-size:16px; cursor:pointer;}
 .narrbtn.on{background:rgba(212,162,78,.22); border-color:var(--gold-deep); color:var(--gold);}
 #spksel{flex:0 0 auto; max-width:86px; padding:9px 4px; border-radius:10px; border:1px solid #4a3d24; background:#241f16; color:var(--ink); font-size:13px;}
+
+/* ===== Tier3-22: ＠ 点名按钮 + 成员菜单 ===== */
+.atbtn{flex:0 0 auto; padding:9px 11px; border-radius:10px; border:1px solid #4a3d24; background:#241f16; color:var(--gold); font-size:16px; font-weight:700; cursor:pointer;}
+.atmenu{position:fixed; left:12px; bottom:74px; z-index:60; background:#221d14; border:1px solid #4a3d24; border-radius:12px; padding:6px; min-width:150px; box-shadow:0 8px 24px rgba(0,0,0,.5);}
+.atmenu .athint{font-size:12px; color:var(--ink-faint); padding:4px 8px;}
+.atmenu button{display:flex; align-items:center; gap:8px; width:100%; text-align:left; background:none; border:none; color:var(--ink); font-size:14px; padding:7px 8px; border-radius:8px; cursor:pointer;}
+.atmenu button:active{background:rgba(212,162,78,.15);}
+
+/* ===== Tier3-22: 群聊抽屉角色关系编辑器 ===== */
+.grelrow{display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:13px; padding:6px 2px; border-bottom:1px dashed #3a3226;}
+.grelrow span{flex:1; color:var(--ink);}
+.greladd{display:flex; align-items:center; gap:6px; margin-top:8px; flex-wrap:wrap;}
+.greladd select{flex:1; min-width:70px; padding:7px 4px; border-radius:8px; border:1px solid #4a3d24; background:#241f16; color:var(--ink); font-size:13px;}
+.greladd input{flex:2; min-width:80px; padding:7px 8px; border-radius:8px; border:1px solid #4a3d24; background:#241f16; color:var(--ink); font-size:13px;}
+.greladd span{font-size:13px; color:var(--ink-faint);}
+
+/* ===== Tier3-23: 记忆日记日期分组头 ===== */
+.diary-day{font-size:13px; font-weight:700; color:var(--gold-soft); margin:14px 0 6px; padding-left:2px;}
+.diary-day:first-child{margin-top:4px;}
 
 /* ===== v22: 消息分型 ===== */
 .msg.narr{max-width:100%; align-self:center;}
@@ -592,6 +616,8 @@ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow
 .tl-item.gold:before{background:var(--gold); border-color:var(--gold-soft);
   box-shadow:0 0 8px rgba(212,162,78,.7);}
 .tl-item .card{margin-bottom:0;}
+/* 借鉴清单 Tier3 #23: 日记时间线卡片的操作按钮紧凑化 (btnrow flex:1 等分会把三按钮压窄导致换行撑高) */
+.tl-item .btnrow .btn{flex:1 1 auto; padding:8px 6px; font-size:13px; white-space:nowrap;}
 
 /* --- Talkie 式聊天顶栏: 状态行 + 记忆入口 --- */
 .chathead .cstat{font-size:11px; color:var(--ink-faint); margin-top:1px;
@@ -813,3 +839,32 @@ body[data-font="kai"] .bubble{font-family:"Kaiti SC","STKaiti","KaiTi","TW-Kai",
 /* ---- 导演系统（2026-09-30）：HUD 只显示风格，不剧透指令 ---- */
 .dirchip{color:var(--gold)}
 .dirchip .ic{color:var(--gold)}
+/* ---- 借鉴清单 Tier2（2026-09-30） ---- */
+/* #5 Pin 教育气泡（C.AI 长按教育文案） */
+.pinedu{background:#241d12;border:1px solid var(--gold);color:var(--ink);font-size:13px;line-height:1.6;
+border-radius:10px;padding:10px 12px;margin:6px 12px;cursor:pointer}
+/* #6 上下文褪色提示 */
+.ctxwarn{font-size:12px;color:#e0a33e;background:#221a10;border:1px solid #6b4f1d;border-radius:8px;
+padding:6px 10px;margin:6px 12px;line-height:1.6}
+/* #9 带复选框确认弹窗（C.AI "Copy facts and Story Memory to new chat" 风格） */
+.cfcheck{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:900;display:flex;align-items:center;justify-content:center;padding:20px}
+.cfbox{background:#1c1712;border:1px solid var(--line);border-radius:12px;max-width:420px;width:100%;padding:16px}
+.cfttl{font-size:15px;font-weight:700;margin-bottom:8px;color:var(--ink)}
+.cfbody{font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:12px}
+.cfrow{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink);margin-bottom:14px;cursor:pointer}
+.cfrow input{width:auto;accent-color:var(--gold)}
+.cfbtns{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+/* #10/#14 事件库：永久 badge + 分型 chips */
+.kindchips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.kindchip{background:#241d12;border:1px solid var(--line);color:var(--muted);font-size:12px;
+border-radius:999px;padding:4px 12px;cursor:pointer}
+.kindchip.on{background:var(--gold);border-color:var(--gold);color:#1c1712}
+/* #18 模型能力标签 */
+.tagchip{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink);
+background:#241d12;border:1px solid var(--line);border-radius:999px;padding:4px 12px;margin:0 6px 6px 0;cursor:pointer}
+.tagchip input{width:auto;accent-color:var(--gold)}
+/* #19 记忆快照状态行 */
+.memstatus{font-size:12px;border-radius:8px;padding:6px 10px;margin:8px 0;line-height:1.6}
+.memstatus.running{color:#e0a33e;background:#221a10;border:1px solid #6b4f1d}
+.memstatus.done{color:#8fce8f;background:#142116;border:1px solid #2c5a34}
+.memstatus.fail{color:#e07a7a;background:#241414;border:1px solid #6b2c2c}

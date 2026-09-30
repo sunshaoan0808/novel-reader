@@ -63,6 +63,42 @@ return {recent: 50, similar: 30, important: 20};
  * record3: 轻量 gist + 原文指针 [{id, gist, msg_from, msg_to, legacy}] 上限 60, 只追加不改写
  * 开关: 设置页 leanmem (默认开); getRpCfg 不存在时(老测试上下文)走旧三池路径。 */
 var PROFILE3_MAX = 20, EVENT3_MAX = 40, RECORD3_MAX = 60;
+/* 第 3 项 (Talkie memory_profile_*): event3 可选结构化字段; profile3 relationship 段 */
+var EVENT_STRUCT_FIELDS = ["location", "participants", "agreements", "type", "status",
+  "emotionalTone", "attitudeToUser", "relationshipImpact"];
+var REL_FIELDS = ["stage", "boundaries", "type", "communicationPreferences", "currentLocation"];
+/* 第 4 项 (C.AI Facts): 自动事实分类 + 总量上限(字) */
+var FACT_CATS = ["外貌", "怪癖", "关系", "偏好", "其他"];
+var FACTS_MAX_CHARS = 2000;
+function pickStructFields(src, fields, maxLen){
+  var r = null;
+  (fields || []).forEach(function(k){
+    var v = String((src && src[k]) || "").trim().slice(0, maxLen || 80);
+    if(v){ (r = r || {})[k] = v; }
+  });
+  return r;
+}
+/* 合并结构化字段: 新值只填旧值的空位, 不覆盖已有 */
+function mergeStructFields(dst, src, fields){
+  if(!src) return;
+  (fields || []).forEach(function(k){ if(!dst[k] && src[k]) dst[k] = src[k]; });
+}
+/* profile3 条目是否为 Facts (自动/手动事实), 区别于稳定事实 */
+function isFactEntry(p){ return !!(p && p.fact); }
+function factsOf(st){
+  var p3 = (st && st.profile3) || [];
+  return p3.filter(isFactEntry);
+}
+function factsChars(st){
+  var n = 0;
+  factsOf(st).forEach(function(p){ n += String(p.text || "").length; });
+  return n;
+}
+function getFacts(st){
+  var fs = factsOf(st);
+  return {auto: fs.filter(function(f){ return f.auto; }),
+          manual: fs.filter(function(f){ return !f.auto; })};
+}
 function leanmemOn(){
 try{
 if(typeof getRpCfg !== "function") return false; // 老测试上下文: 保持旧行为
@@ -137,14 +173,19 @@ return "你是" + name + "的记忆整理者(LeanMem 分流整理)。" + (cardHi
 "1. 过滤: 寒暄(你好/在吗/嗯嗯)、重复、纯表情、无实质信息的轮次直接丢弃, 不记。\n" +
 "2. 分流: 剩下的内容按三库归类——\n" +
 "   profile 库: 稳定事实(喜好/习惯/身份/与\"我\"的关系进展等), 极少变化, 只写新增或变化的;\n" +
-"   event 库: 发生的事, 写成 topic(10-20字)+t_anchor(相对时间如\"今晚\")+state(30-60字当时状态/结果);\n" +
+"   facts 自动事实: 本周期新出现的、值得长期记住的细节事实(外貌/怪癖/关系/偏好), 每条带 cat 分类(外貌|怪癖|关系|偏好|其他), 只写新增, 不要重复已有的;\n" +
+"   event 库: 发生的事, 写成 topic(10-20字)+t_anchor(相对时间如\"今晚\")+state(30-60字当时状态/结果), 另有可选结构化字段 location/participants/agreements/type/status/emotionalTone/attitudeToUser/relationshipImpact;\n" +
+"   每条 event 再打类型标签 kind, 四选一: 事件/心情/关系/初见(初次见面或第一印象→初见, 情绪状态→心情, 与某人关系变化→关系, 其他→事件);\n" +
 "   record 库: 值得回溯原文的细节, 一句话 gist(如关键原话、数字、承诺)。\n" +
 "3. 心境: 定性" + name + "此刻的心境(1-2个词)+50-100字此刻看世界的滤镜。\n" +
 "【第二阶段·唯一输出】: 只输出一个 JSON, 无其他文字:\n" +
 '{"drop":false,"mood":{"state":"1-2个词","filter":"50-100字"},' +
 '"profile":["新增稳定事实, 无则[]"],' +
-'"event":[{"topic":"…","t_anchor":"…","state":"…"}],' +
+'"facts":[{"text":"…","cat":"外貌|怪癖|关系|偏好|其他"}],' +
+'"event":[{"topic":"…","t_anchor":"…","state":"…","kind":"事件/心情/关系/初见","location":"…","participants":"…","agreements":"…","type":"…","status":"…","emotionalTone":"…","attitudeToUser":"…","relationshipImpact":"…"}],' +
 '"record":["…gist…"]}。' +
+"\nprofile 里关系类事实可写成对象: {\"text\":\"…\",\"relationship\":{\"stage\":\"关系阶段\",\"boundaries\":\"关系边界\",\"type\":\"关系类型\",\"communicationPreferences\":\"沟通偏好\",\"currentLocation\":\"当前位置\"}}。" +
+"\nevent 结构化字段、facts、relationship 缺失留空字符串或缺省, 不要编造; 无新增则对应数组为 []。" +
 "\n若本周期全是低信息量内容(寒暄/重复/无实质), 只输出 {\"drop\":true}。";
 }
 /* LeanMem 解析: drop -> 三库不动(水位照常推进); 新格式 -> 分流写入;
@@ -166,46 +207,90 @@ return null;
 }
 var p3 = (prev.profile3 || []).slice(), e3 = (prev.event3 || []).slice(), r3 = (prev.record3 || []).slice();
 var apexW = (typeof RP_APEX !== "undefined") && RP_APEX.on(); // APEX-MEM: 开则只追加版本, 关则覆盖式旧行为
+/* appendVersion 会把 payload 的字段盖到版本对象上, id 必须走 logicalId 参数, 故剥掉 */
+function p3payload(rec){ var o = {}; for(var k in rec) if(k !== "id") o[k] = rec[k]; return o; }
 if(!o.drop){
-/* profile: 只追加/覆盖 (新条目包含旧条目或反之 -> 替换, 否则追加) */
-(o.profile || []).forEach(function(tx){
-tx = String(tx || "").slice(0, 120);
+/* profile: 只追加/覆盖 (新条目包含旧条目或反之 -> 替换, 否则追加);
+ * 条目可为字符串或 {text, relationship} 对象 (第 3 项: relationship 段 stage/boundaries/type/communicationPreferences/currentLocation) */
+(o.profile || []).forEach(function(it){
+var tx, rel = null;
+if(it && typeof it === "object"){ tx = String(it.text || "").slice(0, 120); rel = pickStructFields(it.relationship, REL_FIELDS, 60); }
+else tx = String(it || "").slice(0, 120);
 if(!tx) return;
 var found = -1;
 for(var i = 0; i < p3.length; i++){
 var e = String(p3[i].text || "");
 if(e && (e.indexOf(tx) >= 0 || tx.indexOf(e) >= 0)){ found = i; break; }
 }
+function p3rec(base, isNew){
+var rec = {id: base.id, fromPin: !!base.fromPin, text: tx, updatedAt: Date.now()};
+var oldRel = pickStructFields(base.relationship, REL_FIELDS, 60);
+var nr = oldRel || rel ? {} : null;
+if(nr){ if(oldRel) for(var k in oldRel) nr[k] = oldRel[k];
+if(rel) for(var k2 in rel) nr[k2] = rel[k2];
+rec.relationship = nr; }
+return rec;
+}
 if(apexW){
-if(found >= 0) p3.push(RP_APEX.appendVersion(p3, "p3", p3[found].id,
-{fromPin: !!p3[found].fromPin, text: tx}, false));
-else p3.push(RP_APEX.appendVersion(p3, "p3", nextStoreId(p3), {text: tx}, true));
+if(found >= 0){ var _nr = p3rec(p3[found], false);
+p3.push(RP_APEX.appendVersion(p3, "p3", _nr.id, p3payload(_nr), false)); }
+else { var _nid = nextStoreId(p3), _nr2 = p3rec({id: _nid}, true);
+p3.push(RP_APEX.appendVersion(p3, "p3", _nid, p3payload(_nr2), true)); }
 }else{
-if(found >= 0) p3[found] = {id: p3[found].id, fromPin: !!p3[found].fromPin, text: tx, updatedAt: Date.now()};
-else p3.push({id: nextStoreId(p3), text: tx, updatedAt: Date.now()});
+if(found >= 0){ var keepId = p3[found].id, keepPin = p3[found].fromPin; p3[found] = p3rec({id: keepId, fromPin: keepPin, relationship: p3[found].relationship}, false); }
+else p3.push(p3rec({id: nextStoreId(p3)}, true));
 }
 });
+/* facts 自动区 (第 4 项): maybeAnalyze 抽取的细节事实, 带 cat 分类; 老 profile3 条目无 fact 标记, 读取容错 */
+var _fc = factsChars({profile3: p3});
+(o.facts || []).forEach(function(f){
+if(!f) return;
+var tx = String(f.text || "").trim().slice(0, 120);
+if(!tx) return;
+var cat = FACT_CATS.indexOf(f.cat) >= 0 ? f.cat : "其他";
+var dup = false;
+for(var i = 0; i < p3.length; i++){
+var e = String(p3[i].text || "");
+if(e && (e.indexOf(tx) >= 0 || tx.indexOf(e) >= 0)){ dup = true; break; }
+}
+if(dup) return;
+if(_fc + tx.length > FACTS_MAX_CHARS) return; /* 自动抽取超限静默跳过, 不挤掉已有 */
+_fc += tx.length;
+var nid = nextStoreId(p3);
+var rec = {id: nid, text: tx, cat: cat, fact: true, auto: true, updatedAt: Date.now()};
+if(apexW) p3.push(RP_APEX.appendVersion(p3, "p3", nid, p3payload(rec), true));
+else p3.push(rec);
+});
 p3 = apexW ? RP_APEX.capLogical(p3, PROFILE3_MAX) : p3.slice(-PROFILE3_MAX);
-/* event: 演化合并 —— 只有 event 库允许跨周期合并, profile/record 不动 */
+/* event: 演化合并 —— 只有 event 库允许跨周期合并, profile/record 不动;
+ * 第 3 项: 可选结构化字段 location/participants/agreements/type/status/emotionalTone/attitudeToUser/relationshipImpact,
+ * 老数据缺字段为 undefined, 读取容错, 不迁移 */
 (o.event || []).forEach(function(ev){
 if(!ev) return;
 var topic = String(ev.topic || "").slice(0, 40), ta = String(ev.t_anchor || "").slice(0, 20);
 var state = String(ev.state || "").slice(0, 120);
+var kind = normKind(ev.kind); /* #14 分型标签 */
+var sf = pickStructFields(ev, EVENT_STRUCT_FIELDS, 80);
 if(!topic && !state) return;
 var m = null;
 for(var i = 0; i < e3.length; i++) if(eventSimilar(e3[i], topic)){ m = e3[i]; break; }
 if(m){
 var ns = ((m.state ? m.state + "；" : "") + state).slice(0, 200);
-if(apexW) e3.push(RP_APEX.appendVersion(e3, "e3", m.id,
-{topic: m.topic, t_anchor: m.t_anchor || ta, state: ns, merged: (m.merged || 1) + 1}, false));
-else { m.state = ns; if(!m.t_anchor) m.t_anchor = ta; m.merged = (m.merged || 1) + 1; m.updatedAt = Date.now(); }
+var mg = {topic: m.topic, t_anchor: m.t_anchor || ta, state: ns, merged: (m.merged || 1) + 1, kind: kind || m.kind || ""};
+mergeStructFields(mg, pickStructFields(m, EVENT_STRUCT_FIELDS, 80), EVENT_STRUCT_FIELDS);
+mergeStructFields(mg, sf, EVENT_STRUCT_FIELDS);
+if(apexW) e3.push(RP_APEX.appendVersion(e3, "e3", m.id, mg, false));
+else { for(var k in mg) m[k] = mg[k]; m.updatedAt = Date.now(); }
 }else{
-if(apexW) e3.push(RP_APEX.appendVersion(e3, "e3", nextStoreId(e3),
-{topic: topic, t_anchor: ta, state: state}, true));
-else e3.push({id: nextStoreId(e3), topic: topic, t_anchor: ta, state: state, updatedAt: Date.now()});
+var nid = nextStoreId(e3);
+var ne = {topic: topic, t_anchor: ta, state: state, kind: kind, updatedAt: Date.now()};
+if(sf) for(var k2 in sf) ne[k2] = sf[k2];
+if(apexW) e3.push(RP_APEX.appendVersion(e3, "e3", nid, ne, true));
+else { ne.id = nid; e3.push(ne); }
 }
 });
-e3 = apexW ? RP_APEX.capLogical(e3, EVENT3_MAX) : e3.slice(-EVENT3_MAX);
+e3 = apexW ? RP_APEX.capLogical(pruneEvents(e3, EVENT3_MAX), EVENT3_MAX) /* #10 永久条目不参与剪枝 */
+: pruneEvents(e3, EVENT3_MAX);
 /* record: 只追加不改写 */
 (o.record || []).forEach(function(g){
 g = String(g || "").slice(0, 120);
@@ -242,6 +327,171 @@ var truncated = raw.length > IRONLAW_MAX;
 var t = truncated ? raw.slice(0, IRONLAW_MAX) : raw;
 try { localStorage.setItem(ironKey(runId, name, cardId), t); } catch(e){}
 return {saved: t, truncated: truncated, len: t.length};
+}
+
+/* 借鉴清单 Tier2 #11: 本聊摘要手写框 (Janitor "Enter a summary for your chat. This will be
+ * included into the prompt as long-term memory."): 按聊天存, important 池最高优先级 (排在铁律之前)。 */
+var CHATSUM_MAX = 1000;
+function sumKey(runId, name){ return "nd_chatsum_" + (runId || "") + "_" + (name || ""); }
+function getChatSummary(runId, name){
+try { return String(localStorage.getItem(sumKey(runId, name)) || ""); }
+catch(e){ return ""; }
+}
+function saveChatSummary(runId, name, text){
+var raw = String(text || "");
+var truncated = raw.length > CHATSUM_MAX;
+var t = truncated ? raw.slice(0, CHATSUM_MAX) : raw;
+try { localStorage.setItem(sumKey(runId, name), t); } catch(e){}
+return {saved: t, truncated: truncated, len: t.length};
+}
+
+/* 借鉴清单 Tier2 #10: 永久记忆 (Talkie permanent memory)。event3 条目 perm 标记:
+ * important 池置顶、不参与剪枝; 上限 PERM_MAX, 达上限用 Talkie 原文 toast。 */
+var PERM_MAX = 20;
+function permLimitMsg(){ return "The selected events have reached the upper limit"; }
+function eventPermCount(runId, name){
+var st = get(runId, name);
+var ids = {}, n = 0;
+((st && st.event3) || []).forEach(function(e){
+if(e && e.perm && !ids[e.id]){ ids[e.id] = 1; n++; }
+});
+return n;
+}
+function setEventPerm(runId, name, id, perm){
+var st = get(runId, name);
+if(!st || !st.event3) return false;
+var apexW = leanmemOn() && (typeof RP_APEX !== "undefined") && RP_APEX.on();
+var latest = apexW ? RP_APEX.latestOf(st.event3) : st.event3;
+var hit = null;
+latest.forEach(function(e){ if(e && e.id == id) hit = e; });
+if(!hit) return false;
+if(!!hit.perm === !!perm) return true;
+if(perm && eventPermCount(runId, name) >= PERM_MAX) return "limit";
+if(apexW){
+var base = {};
+for(var k in hit) base[k] = hit[k];
+base.perm = !!perm;
+st.event3.push(RP_APEX.appendVersion(st.event3, "e3", hit.id, base, false));
+}else{
+hit.perm = !!perm; hit.updatedAt = Date.now();
+}
+save(runId, name, st);
+return true;
+}
+/* 事件剪枝: 永久条目优先保留, 其余按新→旧填满 EVENT3_MAX (apex 路径保留被选 id 的全部版本) */
+function pruneEvents(arr, max){
+arr = arr || [];
+max = max || EVENT3_MAX;
+var apexW = leanmemOn() && (typeof RP_APEX !== "undefined") && RP_APEX.on();
+var latest = apexW ? RP_APEX.latestOf(arr) : arr.slice();
+var perms = latest.filter(function(e){ return e && e.perm; });
+var rest = latest.filter(function(e){ return e && !e.perm; });
+var keepN = Math.min(max, perms.length + rest.length);
+var keepRest = keepN > perms.length ? rest.slice(-(keepN - perms.length)) : [];
+var keepIds = {};
+perms.concat(keepRest).forEach(function(e){ keepIds[e.id] = 1; });
+return arr.filter(function(e){ return e && keepIds[e.id]; });
+}
+
+/* 借鉴清单 Tier2 #12: 新聊天记忆窗口 (Janitor "Set New Chat Memory window. Lower if you get errors.")。
+ * 控制单次 prompt 注入的记忆总条数; 老测试上下文 (无 getRpCfg) 走默认不收紧。 */
+var MEMWIN_DEFAULT = 60;
+function memWindowN(){
+try{
+if(typeof getRpCfg !== "function") return MEMWIN_DEFAULT;
+var c = getRpCfg();
+var n = parseInt(c && c.memWindowN, 10);
+if(isFinite(n) && n > 0) return n;
+}catch(e){}
+return MEMWIN_DEFAULT;
+}
+/* 记忆窗口裁剪: 总条数超限时按 important > recent > similar 优先级, 从末段整段裁掉 */
+function applyMemWindow(pools, secLists){
+var winN = memWindowN();
+var total = secLists.important.n + secLists.recent.n + secLists.similar.n;
+pools.windowN = winN;
+pools.windowDropped = 0;
+if(winN <= 0 || total <= winN) return;
+var over = total - winN;
+var order = ["similar", "recent", "important"];
+for(var oi = 0; oi < order.length && over > 0; oi++){
+var key = order[oi], sl = secLists[key];
+while(over > 0 && sl.secs.length){
+var last = sl.secs[sl.secs.length - 1];
+if(!last.items || last.items > over) break; /* 粒度到整段, 不切半段 */
+sl.secs.pop();
+sl.n -= last.items; over -= last.items;
+pools[key].items -= last.items;
+pools[key].tokens = Math.max(0, pools[key].tokens - estTokens(last.text));
+pools[key].windowDropped = (pools[key].windowDropped || 0) + last.items;
+pools.windowDropped += last.items;
+}
+}
+}
+
+/* 借鉴清单 Tier2 #14: 事件分型标签 (对标星野记忆 card kind: 日记/羁绊/心情/MBTI/第一印象) */
+var EVENT_KINDS = ["事件", "心情", "关系", "初见"];
+function normKind(k){
+k = String(k || "").trim();
+return EVENT_KINDS.indexOf(k) >= 0 ? k : "";
+}
+function kindLabel(e){
+return (e && e.kind && EVENT_KINDS.indexOf(e.kind) >= 0) ? e.kind : "事件";
+}
+
+/* 借鉴清单 Tier2 #13: 消息是否已进入记忆 (摘要水位内 / record 原文指针区间 / 版本链) */
+function msgInMemory(runId, name, msg, history){
+var st = get(runId, name) || {};
+history = history || [];
+var mid = msg && (msg.mid || msg.id);
+var inSummary = false, inChain = false;
+if(mid && history.length){
+var water = -1, mi = -1, i;
+for(i = 0; i < history.length; i++){
+var hmid = history[i] && (history[i].mid || history[i].id);
+if(st.up_to_msg_id && hmid === st.up_to_msg_id) water = i;
+if(hmid === mid) mi = i;
+}
+inSummary = mi >= 0 && water >= 0 && mi <= water;
+var recs = (st.record3 || []).filter(function(r){ return r && !r.legacy; });
+for(var j = 0; j < recs.length && !inChain; j++){
+var r = recs[j], fi = -1, ti = -1;
+for(var k = 0; k < history.length; k++){
+var km = history[k] && (history[k].mid || history[k].id);
+if(r.msg_from && km === r.msg_from) fi = k;
+if(r.msg_to && km === r.msg_to) ti = k;
+}
+if(fi >= 0 && ti >= 0 && mi >= fi && mi <= ti) inChain = true;
+}
+}
+return {inMemory: inSummary || inChain, inSummary: inSummary, inChain: inChain};
+}
+function delAskText(){
+return "这条消息已进入聊天记忆(摘要/版本链)。删掉它也会影响记忆——要一起清除记忆，还是只删消息？";
+}
+
+/* 借鉴清单 Tier2 #19: 记忆快照状态机 (对标猫箱 BotMemorySnapshot{GeneratePlan,RetryGenerate,SyncGenerate}) */
+function memStatusKey(runId, name){ return "nd_memstatus_" + (runId || "") + "_" + (name || ""); }
+function getMemStatus(runId, name){
+try{
+var v = JSON.parse(localStorage.getItem(memStatusKey(runId, name)) || "null");
+if(v && (v.state === "running" || v.state === "done" || v.state === "fail")) return v;
+}catch(e){}
+return {state: "idle", at: 0};
+}
+function setMemStatus(runId, name, state){
+try{ localStorage.setItem(memStatusKey(runId, name), JSON.stringify({state: state, at: Date.now()})); }catch(e){}
+}
+function memStatusLine(runId, name){
+var s = getMemStatus(runId, name);
+if(s.state === "running") return {state: "running", text: "记忆生成中…"};
+if(s.state === "fail") return {state: "fail", text: "记忆生成失败，点我重试"};
+if(s.state === "done" && s.at){
+var d = new Date(s.at);
+var hh = String(d.getHours()).padStart(2, "0"), mm = String(d.getMinutes()).padStart(2, "0");
+return {state: "done", text: "记忆已更新 " + hh + ":" + mm};
+}
+return {state: "idle", text: ""};
 }
 
 /* 按 token 预算截断一段文本 */
@@ -286,12 +536,20 @@ important: {tokens: 0, items: 0, dropped: 0},
 recent: {tokens: 0, items: 0, dropped: 0},
 similar: {tokens: 0, items: 0, dropped: 0},
 };
-var secs = [];
 
-/* ---- important 池: 铁律 > 置顶(新→旧) > 心境; 永不整段丢弃 ---- */
-var ironSec = "", pinLines = [], moodSec = "", profLines = [];
+/* ---- 分池段收集 (#12 记忆窗口按 important > recent > similar 优先级裁条数) ---- */
+var secLists = {important: {secs: [], n: 0}, recent: {secs: [], n: 0}, similar: {secs: [], n: 0}};
+function pushSec(pool, text, items){
+if(!text) return;
+secLists[pool].secs.push({text: text, items: items || 0});
+secLists[pool].n += (items || 0);
+}
+
+/* ---- important 池: 本聊摘要 > 铁律 > 永久记忆 > 置顶(新→旧) > 画像库 > 心境; 永不整段丢弃 ---- */
+var sumSec = "", ironSec = "", pinLines = [], moodSec = "", profLines = [], permLines = [];
+var chatSum = getChatSummary(runId, name);
 var impLeft = bImp;
-if(budgetTokens > 0 && (iron || pinned.length || mood)){
+if(budgetTokens > 0 && (chatSum || iron || pinned.length || mood || (lean && (P3.length || E3.length)))){
 if(impLeft <= 0) impLeft = Math.min(budgetTokens, 200); // 再小也要保住铁律
 var addImp = function(kind, text, mustKeep){
 var need = estTokens(text);
@@ -310,6 +568,19 @@ pools.important.dropped++;
 return "";
 };
 if(iron) ironSec = addImp("iron", "【铁律记忆】\n" + iron, true);
+/* #11 本聊摘要: 最高优先级, 永不丢 (排在铁律之前) */
+if(chatSum) sumSec = addImp("chatsum", "【本聊摘要】\n" + chatSum, true);
+/* #10 永久记忆: important 池置顶、不参与剪枝 */
+if(lean){
+var eperm = E3.filter(function(e){ return e && e.perm; }).reverse(); /* 新→旧 */
+for(var ei = 0; ei < eperm.length; ei++){
+var ex = eperm[ei];
+var pt = "- " + (ex.t_anchor ? ex.t_anchor + " " : "") + String(ex.topic || "") +
+(ex.state ? "——" + ex.state : "") + " 【永久】";
+var pl2 = addImp("perm", pt, false);
+if(pl2) permLines.push(pl2);
+}
+}
 for(var pi = 0; pi < pinned.length; pi++){
 var pl = addImp("pin", fmtItem(pinned[pi]), false);
 if(pl) pinLines.push(pl);
@@ -328,14 +599,17 @@ var mt = "【当前心境】" + mood.state + (mood.filter ? "——" + mood.filt
 moodSec = addImp("mood", mt, false);
 }
 }
-if(ironSec) secs.push(ironSec);
+if(sumSec) pushSec("important", sumSec, 1); /* #11 本聊摘要最高优先级 */
+if(ironSec) pushSec("important", ironSec, 1);
+if(permLines.length) /* #10 永久记忆置顶 */
+pushSec("important", "【永久记忆】(手动挑选，不参与剪枝)\n" + permLines.join("\n"), permLines.length);
 if(pinLines.length)
-secs.push("【置顶记忆】(永不遗忘, 回答时优先参考)\n" + pinLines.join("\n"));
+pushSec("important", "【置顶记忆】(永不遗忘, 回答时优先参考)\n" + pinLines.join("\n"), pinLines.length);
 if(profLines.length){
-secs.push("【画像记忆】(稳定事实)\n" + profLines.join("\n"));
+pushSec("important", "【画像记忆】(稳定事实)\n" + profLines.join("\n"), profLines.length);
 pools.important.store = "profile库";
 }
-if(moodSec) secs.push(moodSec);
+if(moodSec) pushSec("important", moodSec, 1);
 
 /* ---- recent 池: LeanMem 开 -> event 库 (新→旧, 按条丢弃); 关 -> 未置顶短期 ---- */
 var recLines = [], recLeft = bRec;
@@ -351,7 +625,7 @@ if(en <= recLeft){ recLines.push(et); recLeft -= en;
 pools.recent.tokens += en; pools.recent.items++; }
 else pools.recent.dropped++;
 }
-if(recLines.length) secs.push("【事件】(新→旧)\n" + recLines.join("\n"));
+if(recLines.length) pushSec("recent", "【事件】(新→旧)\n" + recLines.join("\n"), recLines.length);
 }else{
 for(var ri = 0; ri < rest.length; ri++){
 var rt = fmtItem(rest[ri]);
@@ -360,7 +634,7 @@ if(rn <= recLeft){ recLines.push(rt); recLeft -= rn;
 pools.recent.tokens += rn; pools.recent.items++; }
 else pools.recent.dropped++;
 }
-if(recLines.length) secs.push("【近期记忆】(新→旧)\n" + recLines.join("\n"));
+if(recLines.length) pushSec("recent", "【近期记忆】(新→旧)\n" + recLines.join("\n"), recLines.length);
 }
 
 /* ---- similar 池: 时序感知检索（Chronos 思路）优先，退化为长远印象占位 ---- */
@@ -369,10 +643,10 @@ var tInfo = (opts.temporal && opts.temporal.text) ? opts.temporal : null;
 if(tInfo){
 pools.similar.source = "时序切片";
 var tt = tInfo.text, tn = estTokens(tt);
-if(tn <= simLeft){ secs.push(tt); pools.similar.tokens = tn; pools.similar.items = tInfo.items || 0; }
+if(tn <= simLeft){ pushSec("similar", tt, tInfo.items || 0); pools.similar.tokens = tn; pools.similar.items = tInfo.items || 0; }
 else if(simLeft >= 20){
 var tc = truncText(tt, simLeft);
-secs.push(tc); pools.similar.tokens = estTokens(tc); pools.similar.items = tInfo.items || 0;
+pushSec("similar", tc, tInfo.items || 0); pools.similar.tokens = estTokens(tc); pools.similar.items = tInfo.items || 0;
 }
 else pools.similar.dropped = 1;
 }
@@ -380,10 +654,10 @@ else if(long){
 pools.similar.source = "占位";
 var lt = "【长远印象】" + long;
 var ln = estTokens(lt);
-if(ln <= simLeft){ secs.push(lt); pools.similar.tokens = ln; pools.similar.items = 1; }
+if(ln <= simLeft){ pushSec("similar", lt, 1); pools.similar.tokens = ln; pools.similar.items = 1; }
 else if(simLeft >= 20){
 var st2 = truncText(lt, simLeft);
-secs.push(st2); pools.similar.tokens = estTokens(st2); pools.similar.items = 1;
+pushSec("similar", st2, 1); pools.similar.tokens = estTokens(st2); pools.similar.items = 1;
 }
 else pools.similar.dropped = 1;
 }
@@ -396,10 +670,10 @@ if(apexBlock){
 pools.similar.source = (tInfo ? "时序切片+" : "") + "记录库·版本链";
 var abn = estTokens(apexBlock.text);
 if(abn <= simLeft){
-secs.push(apexBlock.text); pools.similar.tokens += abn; pools.similar.items += (apexBlock.items || 0);
+pushSec("similar", apexBlock.text, apexBlock.items || 0); pools.similar.tokens += abn; pools.similar.items += (apexBlock.items || 0);
 }else if(simLeft >= 20){
 var abc = truncText(apexBlock.text, simLeft);
-secs.push(abc); pools.similar.tokens += estTokens(abc); pools.similar.items += (apexBlock.items || 0);
+pushSec("similar", abc, apexBlock.items || 0); pools.similar.tokens += estTokens(abc); pools.similar.items += (apexBlock.items || 0);
 }else pools.similar.dropped++;
 if(apexBlock.adjudicated){ pools.similar.adjudicated = true; pools.similar.adjudReason = apexBlock.reason || ""; }
 }
@@ -418,13 +692,18 @@ pools.similar.tokens += gn; pools.similar.items++; }
 else pools.similar.dropped++;
 }
 if(gLines.length){
-secs.push((tInfo ? "" : "【记录】(细节可回溯原文)\n") + gLines.join("\n"));
+pushSec("similar", (tInfo ? "" : "【记录】(细节可回溯原文)\n") + gLines.join("\n"), gLines.length);
 pools.similar.source = tInfo ? "时序切片+record库" : "record库";
 }
 }
 }
 
 pools.ratio = {important: bImp, recent: bRec, similar: bSim}; // 自适应后的实际预算, 供 Inspector/测试
+applyMemWindow(pools, secLists); /* #12 新聊天记忆窗口裁剪 */
+var secs = [];
+["important", "recent", "similar"].forEach(function(pk){
+secLists[pk].secs.forEach(function(s){ secs.push(s.text); });
+});
 return {text: secs.join("\n"), pools: pools};
 }
 
@@ -479,7 +758,7 @@ if(!o || typeof o!== "object") return null;
 var short = Array.isArray(o.short)? o.short.filter(function(m){
 return m && (m.fact || m.view);
 }).map(function(m, i){
-return {id: m.id || (i + 1), time: m.time || "", fact: String(m.fact || "").slice(0, 120),
+return {id: m.id || (i + 1), time: m.time || "", ts: Date.now(), fact: String(m.fact || "").slice(0, 120),
 view: String(m.view || "").slice(0, 120)};
 }): [];
 var long = String(o.long || "").slice(0, 800);
@@ -534,18 +813,20 @@ var _f = history[idx], _l = history[history.length - 1];
 msgRange = {from: (_f && (_f.mid || _f.id)) || null, to: (_l && (_l.mid || _l.id)) || null};
 }
 var raw = "";
+setMemStatus(runId, name, "running"); /* #19 记忆快照状态机: 开始生成 */
 try {
 raw = await callChat(sumCfg, [
 {role: "user", content: lean ? buildAnalysisPrompt3(name, cardHint, st, newMsgs)
 : buildAnalysisPrompt(name, cardHint, st, newMsgs)},
 ], 0.3);
-} catch(e){ return {analyzed: false};} // 失败: 不打断, 下次重试
+} catch(e){ setMemStatus(runId, name, "fail"); return {analyzed: false};} // 失败: 不打断, 下次重试
 var next = lean ? parseState3(raw, st, msgRange) : parseState(raw, st);
-if(!next) return {analyzed: false};
+if(!next){ setMemStatus(runId, name, "fail"); return {analyzed: false}; }
 var lastM = history[history.length - 1];
 next.up_to = history.length;
 next.up_to_msg_id = (lastM && (lastM.mid || lastM.id)) || upId || null;
 save(runId, name, next);
+setMemStatus(runId, name, "done");
 return {analyzed: true};
 }
 
@@ -569,8 +850,80 @@ save(runId, name, st);
 return true;
 }
 
+/* 第 4 项 Facts 手动区: 增/改/删 (自动区由 maybeAnalyze 写入)。总量 FACTS_MAX_CHARS 字, 超限返回 over。 */
+function _apexW(){ return (typeof RP_APEX !== "undefined") && RP_APEX.on(); }
+function addFact(runId, name, opt){
+var st = get(runId, name);
+if(leanmemOn()) st = migrate3(runId, name, st);
+var text = String((opt && opt.text) || "").trim().slice(0, 120);
+if(!text) return {ok: false, err: "empty"};
+var cat = FACT_CATS.indexOf(opt && opt.cat) >= 0 ? opt.cat : "其他";
+if(factsChars(st) + text.length > FACTS_MAX_CHARS) return {ok: false, err: "over"};
+var p3 = (st.profile3 || []).slice();
+var nid = nextStoreId(p3);
+if(_apexW()) p3.push(RP_APEX.appendVersion(p3, "p3", nid,
+{text: text, cat: cat, fact: true, auto: false, updatedAt: Date.now()}, true));
+else p3.push({id: nid, text: text, cat: cat, fact: true, auto: false, updatedAt: Date.now()});
+p3 = _apexW() ? RP_APEX.capLogical(p3, PROFILE3_MAX) : p3.slice(-PROFILE3_MAX);
+st.profile3 = p3;
+save(runId, name, st);
+return {ok: true, id: nid};
+}
+function editFact(runId, name, id, opt){
+var st = get(runId, name);
+if(!st || !st.profile3) return {ok: false, err: "none"};
+var list = _apexW() ? RP_APEX.latestOf(st.profile3) : st.profile3;
+var cur = null, i;
+for(i = 0; i < list.length; i++) if(list[i] && list[i].id == id && list[i].fact){ cur = list[i]; break; }
+if(!cur) return {ok: false, err: "none"};
+var text = String((opt && opt.text) || "").trim().slice(0, 120);
+if(!text) return {ok: false, err: "empty"};
+var cat = FACT_CATS.indexOf(opt && opt.cat) >= 0 ? opt.cat : "其他";
+if(factsChars(st) - String(cur.text || "").length + text.length > FACTS_MAX_CHARS)
+return {ok: false, err: "over"};
+var p3 = st.profile3.slice();
+if(_apexW()) p3.push(RP_APEX.appendVersion(p3, "p3", cur.id,
+{text: text, cat: cat, fact: true, auto: !!cur.auto, fromPin: !!cur.fromPin}, false));
+else for(i = 0; i < p3.length; i++) if(p3[i] && p3[i].id == id){
+p3[i].text = text; p3[i].cat = cat; p3[i].updatedAt = Date.now(); break; }
+st.profile3 = p3;
+save(runId, name, st);
+return {ok: true};
+}
+function delFact(runId, name, id){
+var st = get(runId, name);
+if(!st || !st.profile3) return false;
+var n0 = st.profile3.length;
+st.profile3 = st.profile3.filter(function(p){ return !(p && p.id == id && p.fact); });
+if(st.profile3.length === n0) return false;
+save(runId, name, st);
+return true;
+}
+
 /* P1-8: 长期记忆库用量统计 {events, pinned, shortN, longN, shortMax, pinMax} */
 var PIN_MAX = 30;
+/* 借鉴清单 Tier2 #5: 聊天消息 Pin 上限 5 条 (C.AI "Pin up to 5 messages"); 首次长按弹一次教育气泡 */
+var MSG_PIN_MAX = 5;
+var PIN_EDU_KEY = "nd_pin_edu_v1";
+function msgPinLimitMsg(){ return "Pin up to 5 messages"; }
+/* C.AI 教育文案中文化: "To pin a memory, press and hold any chat message. This way, {{name}} will always remember that message in this chat." */
+function pinEduText(name){
+return "长按任意聊天消息即可 Pin 为记忆。这样一来，" + (name || "TA") +
+"在这次聊天中会永远记住这条消息。";
+}
+function pinEduSeen(){
+try{ return localStorage.getItem(PIN_EDU_KEY) === "1"; }catch(e){ return false; }
+}
+function pinEduMark(){
+try{ localStorage.setItem(PIN_EDU_KEY, "1"); }catch(e){}
+}
+/* 聊天消息 Pin 计数 (short 里 pin 的条目) */
+function chatPinCount(runId, name){
+var st = get(runId, name), n = 0;
+((st && st.short) || []).forEach(function(m){ if(m && m.pin) n++; });
+return n;
+}
+function canPinChatMsg(runId, name){ return chatPinCount(runId, name) < MSG_PIN_MAX; }
 function memStats(runId, name){
 var st = get(runId, name);
 var short = (st && st.short) || [];
@@ -597,5 +950,22 @@ maybeAnalyze: maybeAnalyze, togglePin: togglePin, delItem: delItem,
 memStats: memStats, SHORT_MAX: SHORT_MAX, PIN_MAX: PIN_MAX,
 leanmemOn: leanmemOn, leanRatio: leanRatio, migrate3: migrate3, seedStores: seedStores,
 buildAnalysisPrompt3: buildAnalysisPrompt3, parseState3: parseState3, eventSimilar: eventSimilar,
-PROFILE3_MAX: PROFILE3_MAX, EVENT3_MAX: EVENT3_MAX, RECORD3_MAX: RECORD3_MAX};
+PROFILE3_MAX: PROFILE3_MAX, EVENT3_MAX: EVENT3_MAX, RECORD3_MAX: RECORD3_MAX,
+FACT_CATS: FACT_CATS, FACTS_MAX_CHARS: FACTS_MAX_CHARS,
+EVENT_STRUCT_FIELDS: EVENT_STRUCT_FIELDS, REL_FIELDS: REL_FIELDS,
+isFactEntry: isFactEntry, factsOf: factsOf, factsChars: factsChars, getFacts: getFacts,
+addFact: addFact, editFact: editFact, delFact: delFact,
+/* 借鉴清单 Tier2 S 级小项 */
+MSG_PIN_MAX: MSG_PIN_MAX, msgPinLimitMsg: msgPinLimitMsg, pinEduText: pinEduText,
+pinEduSeen: pinEduSeen, pinEduMark: pinEduMark, chatPinCount: chatPinCount,
+canPinChatMsg: canPinChatMsg,
+PERM_MAX: PERM_MAX, permLimitMsg: permLimitMsg, setEventPerm: setEventPerm,
+eventPermCount: eventPermCount, pruneEvents: pruneEvents,
+CHATSUM_MAX: CHATSUM_MAX, sumKey: sumKey, getChatSummary: getChatSummary,
+saveChatSummary: saveChatSummary,
+MEMWIN_DEFAULT: MEMWIN_DEFAULT, memWindowN: memWindowN, applyMemWindow: applyMemWindow,
+EVENT_KINDS: EVENT_KINDS, normKind: normKind, kindLabel: kindLabel,
+msgInMemory: msgInMemory, delAskText: delAskText,
+memStatusKey: memStatusKey, getMemStatus: getMemStatus, setMemStatus: setMemStatus,
+memStatusLine: memStatusLine};
 })();

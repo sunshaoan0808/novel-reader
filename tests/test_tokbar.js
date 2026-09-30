@@ -79,7 +79,7 @@ t("tokCount缺失元素不崩", true);
 // 剧情线/Persona 编辑器模板里挂了 tokCount
 const src = fs.readFileSync(WWW + "/app.js", "utf8");
 t("plotEditor挂tokCount", src.indexOf("tokCount('p_outline','p_tok')") >= 0);
-t("personaEditor挂tokCount", src.indexOf("tokCount(['p_name','p_desc','p_extra'],'p_tok')") >= 0);
+t("personaEditor挂tokCount", src.indexOf("tokCount(['p_name','p_called','p_desc','p_extra'],'p_tok')") >= 0); /* #20: 新增 p_called */
 t("loreForm保留", src.indexOf("tokCount('l_content','l_tok')") >= 0);
 t("regexForm保留", src.indexOf("tokCount('x_rep','x_tok')") >= 0);
 

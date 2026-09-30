@@ -38,6 +38,8 @@ var P = {
 "palette": '<path d="M12 22a10 10 0 1 1 10-10c0 1.5-1 2.5-2.5 2.5H17a2 2 0 0 0-2 2c0 .8-.7 1.7-1.7 2.1-.9.4-1.3 1.3-1.3 3.4z"/><circle cx="7.5" cy="10.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="10.5" cy="7.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="7.5" r="1.2" fill="currentColor" stroke="none"/>',
 "chart": '<path d="M3 3v18h18"/><path d="M8 17v-6"/><path d="M13 17V7"/><path d="M18 17v-3"/>',
 "send": '<path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/>',
+"bell": '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+"history": '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>',
 "stop": '<rect x="6" y="6" width="12" height="12" rx="2"/>',
 "back": '<path d="M15 18l-6-6 6-6"/>',
 "menu": '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',

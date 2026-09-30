@@ -378,6 +378,7 @@ async function send(runId, name, text, opts){
     history: mapHistory(h),
     persona: RP_PERSONA.renderText(RP_PERSONA.resolve(runId)),
     pov: opts.pov, person: opts.person,
+    concise: !!opts.concise, /* Tier2 #15 简洁回复开关 */
   }, budget);
   var wsText = "";
   try{
@@ -504,6 +505,7 @@ async function regenerate(runId, name, opts){
     history: mapHistory(h.slice(0, upto)),
     persona: RP_PERSONA.renderText(RP_PERSONA.resolve(runId)),
     pov: opts.pov, person: opts.person,
+    concise: !!opts.concise, /* Tier2 #15 简洁回复开关 */
   }, opts.budget || {});
   if(opts.optCards && b.messages.length && b.messages[0].role === "system")
     b.messages[0].content += "\n\n" + optCardsInstr(opts.optCount, opts.optMood);
@@ -622,10 +624,20 @@ async function genOneSpeaker(runId, run, members, speaker, text, h, opts, budget
     history: mapHistory(h),
     persona: RP_PERSONA.renderText(RP_PERSONA.resolve(runId)),
     pov: opts.pov, person: opts.person,
+    concise: !!opts.concise, /* Tier2 #15 简洁回复开关 */
   }, budget);
   // 注入"在场人物"简介, 替换 post-history 为群聊版
   var briefs = otherCards.map(function(c){ return RP_GROUP.memberBrief(c); }).join("\n");
   if(briefs) b.messages[0].content += "\n\n【在场人物】\n" + briefs;
+  /* 角色关系设定（群设置里配的 "A是B的…"）：注入群聊 prompt */
+  try{
+    if(typeof RP_GROUP.renderRels === "function"){
+      var gk2 = members.slice().sort().join("_");
+      var relText = RP_GROUP.renderRels(runId, gk2);
+      if(relText && b.messages.length && b.messages[0].role === "system")
+        b.messages[0].content += "\n\n【角色关系】\n" + relText;
+    }
+  }catch(e){}
   if(opts.optCards && b.messages.length && b.messages[0].role === "system")
     b.messages[0].content += "\n\n" + optCardsInstr(opts.optCount, opts.optMood);
   if(opts.plotOutline && b.messages.length && b.messages[0].role === "system")

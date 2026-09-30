@@ -167,6 +167,9 @@ view.innerHTML = `<button class="back" onclick="setTab('chars')">${icon("back")}
 <div id="gpick">` + RUN.profiles.map(p=>`
 <label class="pickcard"><input type="checkbox" value="${esc(p.name)}">
 <div class="avatar sm">${esc(p.name[0])}</div><div class="name">${esc(p.name)}</div></label>`).join("") + `</div>
+<div class="field"><label>角色关系（可选，每行一条，格式：A是B的C）</label>
+<textarea id="grel_in" rows="2" placeholder="林黛玉是贾宝玉的表妹"></textarea></div>
+<div class="hint" style="margin:0 0 6px">关系会注入每轮群聊 prompt；建群后也可在群聊抽屉 → 角色关系里增删。</div>
 <div class="actionbar"><button class="btn" style="flex:1" onclick="startGroupChat()">开始群聊</button></div>
 <div style="height:76px"></div>`;
 window.scrollTo(0,0);
@@ -175,6 +178,16 @@ window.startGroupChat = ()=>{
 const sel = Array.from(document.querySelectorAll("#gpick input:checked")).map(i=>i.value);
 if(sel.length < 2){ alert("至少选 2 个人才能群聊"); return; }
 CHAT = {mode:"group", runId: RUN.run_id, name:null, members: sel, forcedSpeaker:null};
+/* Tier3-22: 建群时可选设定角色关系（"A是B的C" 每行一条），注入群聊 prompt */
+try{
+const gkey = sel.slice().sort().join("_");
+const relText = ((document.getElementById("grel_in")||{}).value || "").trim();
+if(relText && typeof RP_GROUP!=="undefined"){
+const pr = RP_GROUP.parseRelLines(relText, sel);
+pr.ok.forEach(r=>RP_GROUP.addRel(CHAT.runId, gkey, r.a, r.b, r.rel));
+if(pr.bad) alert("已设定 " + pr.ok.length + " 条角色关系，" + pr.bad + " 行格式不对被跳过（正确格式：A是B的C）。");
+}
+}catch(e){}
 loadPov();
 setNav("chat");
 };
@@ -245,11 +258,12 @@ const cats = {};
 wb.forEach(e=>{ (cats[e.category||"其他"] = cats[e.category||"其他"]||[]).push(e); });
 wbHtml = `<h2 class="sec">世界观 · ${wb.length} 条</h2>
 <div class="btnrow" style="margin-bottom:10px"><button class="btn ghost" onclick="loreEditor(RUN.run_id,'more')">${icon("edit")} 管理世界书</button></div>` + Object.keys(cats).map(c=>
-`<div class="wb-cat">${esc(c)}</div>` + cats[c].map(e=>`
-<div class="rel"><div class="pair">${esc(e.title||"")}</div>
-<div class="st">${esc((e.rules||[]).join("\n"))}</div>
-${(e.trigger_keywords||[]).length?`<div class="wb-keys">${e.trigger_keywords.map(k=>`<span class="badge">${esc(k)}</span>`).join("")}</div>`:""}
-</div>`).join("")).join("");
+`<div class="wb-cat">${esc(c)}</div>` + cats[c].map(e=>{ const n = normLore(e, 0); return `
+<div class="rel"><div class="pair">${esc(n.name||"")}</div>
+<div class="st">${esc(n.content||"")}</div>
+${(n.key||[]).length?`<div class="wb-keys">${n.key.map(k=>`<span class="badge">${esc(k)}</span>`).join("")}</div>`:""}
+${n.probability<100?`<div class="wb-keys"><span class="badge">概率 ${n.probability}%</span></div>`:""}
+</div>`;}).join("")).join("");
 }
 const arcHtml = `<h2 class="sec">人物弧光 · ${RUN.arcs.length}</h2>` +
 (RUN.arcs.map(a=>`<div class="card"><div class="name">${esc(a.character||a.name||"")}</div>
@@ -436,27 +450,50 @@ const run = ((window.__DATA__||{}).runs||{})[runId]||{};
 titleEl.textContent = "世界书管理"; subEl.textContent = (run.novel||"") + " · 自建条目进 prompt";
 renderLoreList(runId);
 };
+/* 世界书条目归一化展示 (Janitor schema; 老条目缺字段给默认值) */
+function normLore(e, i){
+if(typeof RP_LOREBOOK !== "undefined") return RP_LOREBOOK.normalize(e, i);
+return {name: e.title||"", key: e.keys||e.trigger_keywords||[], content: e.content||"",
+comment: "", keysecondary: [], selectiveLogic: 0, case_sensitive: false, matchWholeWords: true,
+minMessages: 0, constant: !!e.constant, enabled: e.enabled!==false, probability: 100, priority: i+1,
+inclusionGroup: [], groupWeight: 100, prioritizeInclusion: false, placement: "default",
+placementPosition: "after", depth: null};
+}
 function renderLoreList(runId){
 __backAction = ()=>loreGoBack();
 const arr = getLore(runId);
 view.innerHTML = `<button class="back" onclick="loreGoBack()">${icon("back")} 返回</button>
-<div class="btnrow" style="margin-bottom:10px"><button class="btn" onclick="loreForm('${runId}')">${icon("plus")} 新增条目</button><button class="btn" onclick="importStLore('${runId}')">${icon("download")} 导入 ST 世界书</button></div>
-<div class="hint">自建条目和蒸馏产出的世界书一起参与关键词触发（常驻条目每轮必进），存在本机。</div>
-${arr.map((e,i)=>`
-<div class="card"><div class="row"><div style="flex:1">
-<div class="name">${esc(e.title||"无标题")} ${e.constant?'<span class="badge warn">常驻</span>':""} ${e.enabled===false?'<span class="badge">停用</span>':""}</div>
-<div class="meta">触发词：${esc((e.keys||[]).join("、")||"无")} · 优先级 ${e.priority==null?60:e.priority} · 约 ${RP_PROMPT.estTokens(e.content||"")} tok</div>
+<div class="btnrow" style="margin-bottom:10px"><button class="btn" onclick="loreForm('${runId}')">${icon("plus")} 新增条目</button><button class="btn" onclick="importStLore('${runId}')">导入 ST 世界书</button></div>
+<div class="hint">自建条目和蒸馏产出的世界书一起参与关键词触发（常驻条目每轮必进），存在本机。列表顺序即优先级（越靠上越强），用 ↑↓ 调整。</div>
+${arr.map((e,i)=>{
+const n = normLore(e,i);
+const grp = (n.inclusionGroup||[]).join("、");
+return `<div class="card"><div class="row"><div style="flex:1">
+<div class="name">${esc(n.name||"无标题")} ${n.constant?'<span class="badge warn">常驻</span>':""} ${!n.enabled?'<span class="badge">停用</span>':""}${grp?` <span class="badge">互斥组:${esc(grp)}</span>`:""}</div>
+<div class="meta">触发词：${esc((n.key||[]).join("、")||"无")} · P${n.priority} · 概率 ${n.probability}%${n.minMessages?` · ${n.minMessages}条后激活`:""}${n.placement!=="default"?` · 锚定:${esc(n.placement)}`:""} · 约 ${RP_PROMPT.estTokens(n.content||"")} tok</div>
 </div></div>
 <div class="btnrow" style="margin-top:8px">
+<button class="btn ghost" onclick="loreMove('${runId}',${i},-1)"${i===0?" disabled":""}>↑</button>
+<button class="btn ghost" onclick="loreMove('${runId}',${i},1)"${i===arr.length-1?" disabled":""}>↓</button>
 <button class="btn ghost" onclick="loreForm('${runId}',${i})">编辑</button>
-<button class="btn ghost" onclick="loreToggle('${runId}',${i})">${e.enabled===false?"启用":"停用"}</button>
+<button class="btn ghost" onclick="loreToggle('${runId}',${i})">${!n.enabled?"启用":"停用"}</button>
 <button class="btn danger" onclick="loreDel('${runId}',${i})">删除</button>
-</div></div>`).join("") || `<div class="empty">还没有自建条目<br><button class="btn" style="margin-top:10px" onclick="loreForm('${runId}')">新增第一条</button></div>`}`;
+</div></div>`;}).join("") || `<div class="empty">还没有自建条目<br><button class="btn" style="margin-top:10px" onclick="loreForm('${runId}')">新增第一条</button></div>`}`;
 window.scrollTo(0,0);
 }
+/* 上移/下移: 交换位置后重算 priority=index+1 (Janitor: priority 由排序派生, 无数字输入框) */
+window.loreMove = (runId, i, dir)=>{
+const a = getLore(runId);
+const j = i + dir;
+if(j < 0 || j >= a.length) return;
+const t = a[i]; a[i] = a[j]; a[j] = t;
+a.forEach((e, k)=>{ e.priority = k + 1; });
+saveLore(runId, a); renderLoreList(runId);
+};
 window.loreGoBack = ()=>{ loreBack.to==="chat" ? showChat() : setTab("more"); };
 window.loreToggle = (runId, i)=>{ const a = getLore(runId); a[i].enabled = a[i].enabled===false ? true : false; saveLore(runId, a); renderLoreList(runId); };
-/* SillyTavern 世界书(JSON, entries 字典) -> 本机条目 */
+/* SillyTavern 世界书(JSON, entries 字典) -> 本机条目 (字段映射见 RP_LOREBOOK.importST, 规格 1.5) */
+/* 老兜底: RP_LOREBOOK 未加载时用 */
 function stLoreToEntries(d){
 var raw = d && d.entries;
 if(!raw) return null;
@@ -479,9 +516,10 @@ const rd = new FileReader();
 rd.onload = ()=>{
 try{
 const d = JSON.parse(rd.result);
-const es = stLoreToEntries(d);
+const es = (typeof RP_LOREBOOK !== "undefined") ? RP_LOREBOOK.importST(d) : stLoreToEntries(d);
 if(!es){ alert("解析失败: 不是 ST 世界书格式"); return; }
-const a = getLore(runId); es.forEach(function(e){ a.push(e); });
+let a = getLore(runId); es.forEach(function(e){ a.push(e); });
+if(typeof RP_LOREBOOK !== "undefined") a = RP_LOREBOOK.normalizeAll(a);
 saveLore(runId, a); renderLoreList(runId);
 alert("已导入 " + es.length + " 条世界书");
 }catch(e){ alert("解析失败: " + e.message); }
@@ -495,27 +533,61 @@ window.loreForm = (runId, i)=>{
 __backAction = ()=>renderLoreList(runId);
 const _ll = getLore(runId);
 const _isNew = (i==null || !_ll[i]);
-const e = _isNew ? {title:"", keys:[], content:"", constant:false, priority:60, enabled:true} : _ll[i];
+const n = normLore(_isNew ? {} : _ll[i], (i==null ? _ll.length : i));
+const grpStr = (n.inclusionGroup||[]).join("、");
+const logicOpts = [[0,"AND ANY（任一次级命中即纳入）"],[1,"NOT ALL（次级全命中才排除）"],[2,"NOT ANY（任一次级命中即排除）"],[3,"AND ALL（次级全命中才纳入）"]]
+.map(o=>`<option value="${o[0]}"${n.selectiveLogic===o[0]?" selected":""}>${o[1]}</option>`).join("");
+const placeOpts = [["default","默认（世界书段）"],["personality","人设段"],["scenario","场景段"],["exampleDialogs","示例对话段"]]
+.map(o=>`<option value="${o[0]}"${n.placement===o[0]?" selected":""}>${o[1]}</option>`).join("");
 titleEl.textContent = (_isNew?"新增":"编辑") + "世界书条目"; subEl.textContent = "";
 view.innerHTML = `<button class="back" onclick="renderLoreList('${runId}')">${icon("back")} 返回列表</button>
-<div class="field"><label>标题</label><input id="l_title" value="${esc(e.title||"")}"></div>
-<div class="field"><label>触发词（逗号/顿号分隔，消息里出现即触发）</label><input id="l_keys" value="${esc((e.keys||[]).join("、"))}" placeholder="如：大观园、贾府"></div>
-<div class="field"><label>内容（进 prompt 的正文）</label><textarea id="l_content" oninput="tokCount('l_content','l_tok')" style="width:100%;min-height:120px;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:10px">${esc(e.content||"")}</textarea><div class="tokline" id="l_tok"></div></div>
-<div class="field"><label>优先级（越大越先，默认 60）</label><input id="l_pri" type="number" value="${e.priority==null?60:e.priority}"></div>
-<div class="field"><label><input type="checkbox" id="l_const" style="width:auto" ${e.constant?"checked":""}> 常驻条目（每轮必进 prompt）</label></div>
-<div class="field"><label><input type="checkbox" id="l_en" style="width:auto" ${e.enabled===false?"":"checked"}> 启用</label></div>
+<div class="field"><label>标题</label><input id="l_title" value="${esc(n.name||"")}"></div>
+<div class="field"><label>触发词（逗号/顿号分隔，消息里出现即触发；可用 /正则/flags 写法）</label><input id="l_keys" value="${esc((n.key||[]).join("、"))}" placeholder="如：大观园、贾府"></div>
+<div class="field"><label>内容（进 prompt 的正文）</label><textarea id="l_content" oninput="tokCount('l_content','l_tok')" style="width:100%;min-height:120px;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:10px">${esc(n.content||"")}</textarea><div class="tokline" id="l_tok"></div></div>
+<div class="field"><label>优先级：第 ${n.priority} 位（在列表用 ↑↓ 调整顺序，越靠上越强）</label></div>
+<div class="field"><label><input type="checkbox" id="l_const" style="width:auto" ${n.constant?"checked":""}> 常驻条目（每轮必进 prompt）</label></div>
+<div class="field"><label><input type="checkbox" id="l_en" style="width:auto" ${n.enabled?"":"checked"}> 启用</label></div>
+<details class="card" style="margin-top:4px"><summary style="cursor:pointer;padding:4px">高级选项（触发概率 / 互斥组 / 次级关键词 / 插入位置…）</summary>
+<div style="padding:6px 2px">
+<div class="field"><label>触发概率 %（0-100，掷骰决定是否注入）</label><input id="l_prob" type="number" min="0" max="100" step="1" value="${n.probability}"></div>
+<div class="field"><label>最小消息数（N 条消息后才激活，0=立即）</label><input id="l_minmsg" type="number" min="0" step="1" value="${n.minMessages||0}"></div>
+<div class="field"><label><input type="checkbox" id="l_case" style="width:auto" ${n.case_sensitive?"checked":""}> 区分大小写（对正则键无效）</label></div>
+<div class="field"><label><input type="checkbox" id="l_whole" style="width:auto" ${n.matchWholeWords?"checked":""}> 整词匹配（king 不匹配 liking）</label></div>
+<div class="field"><label>次级关键词（逗号/顿号分隔；用于纳入或排除）</label><input id="l_keys2" value="${esc((n.keysecondary||[]).join("、"))}"></div>
+<div class="field"><label>次级关键词逻辑</label><select id="l_logic">${logicOpts}</select></div>
+<div class="field"><label>互斥组（逗号分隔；同组每次只激活一条）</label><input id="l_group" value="${esc(grpStr)}" placeholder="如：combat、social"></div>
+<div class="field"><label>组内权重（同组随机挑选时的权重）</label><input id="l_gweight" type="number" min="1" step="1" value="${n.groupWeight||100}"></div>
+<div class="field"><label><input type="checkbox" id="l_prioin" style="width:auto" ${n.prioritizeInclusion?"checked":""}> 组内按插入顺序而非权重挑选</label></div>
+<div class="field"><label>插入位置（锚定到对应 prompt 段）</label><select id="l_place">${placeOpts}</select>
+<select id="l_placepos" style="margin-top:6px"><option value="after"${n.placementPosition!=="before"?" selected":""}>该段之后</option><option value="before"${n.placementPosition==="before"?" selected":""}>该段之前</option></select></div>
+<div class="field"><label>扫描深度（检测最近 N 条消息，1-10，空=默认 4）</label><input id="l_depth" type="number" min="1" max="10" value="${n.depth||""}" placeholder="默认"></div>
+<div class="field"><label>备注（不进 prompt，仅自己看）</label><input id="l_comment" value="${esc(n.comment||"")}"></div>
+</div></details>
 <div class="btnrow"><button class="btn" onclick="loreSave('${runId}',${i==null?"null":i})">保存</button></div>`;
 tokCount("l_content","l_tok");
 window.scrollTo(0,0);
 };
 window.loreSave = (runId, i)=>{
-const keys = $("#l_keys").value.split(/[，,、]/).map(x=>x.trim()).filter(Boolean);
-const e = {title: $("#l_title").value.trim()||"无标题", keys, content: $("#l_content").value.trim(),
-priority: parseInt($("#l_pri").value)||60, constant: $("#l_const").checked, enabled: $("#l_en").checked,
-id: "u"+Date.now()};
-if(!e.content){ alert("内容不能为空"); return; }
+const splitKeys = (v)=> v.split(/[，,、]/).map(x=>x.trim()).filter(Boolean);
+const keys = splitKeys($("#l_keys").value);
+const keys2 = splitKeys($("#l_keys2").value);
+const grp = splitKeys($("#l_group").value);
+let prob = parseInt($("#l_prob").value); if(!isFinite(prob)) prob = 100; prob = Math.min(100, Math.max(0, prob));
+let minmsg = parseInt($("#l_minmsg").value); if(!isFinite(minmsg) || minmsg < 0) minmsg = 0;
+let gw = parseInt($("#l_gweight").value); if(!isFinite(gw) || gw < 1) gw = 100;
+let depth = parseInt($("#l_depth").value); if(!isFinite(depth)) depth = null; else depth = Math.min(10, Math.max(1, depth));
 const a = getLore(runId);
-if(i==null) a.push(e); else { e.id = a[i].id||e.id; a[i] = e; }
+const e = {id: ((i==null || !a[i]) ? "u"+Date.now() : (a[i].id || "u"+Date.now())),
+name: $("#l_title").value.trim()||"无标题", key: keys, content: $("#l_content").value.trim(),
+comment: $("#l_comment").value.trim(), enabled: $("#l_en").checked, constant: $("#l_const").checked,
+probability: prob, minMessages: minmsg, case_sensitive: $("#l_case").checked,
+matchWholeWords: $("#l_whole").checked, keysecondary: keys2,
+selectiveLogic: parseInt($("#l_logic").value)||0, inclusionGroup: grp, groupWeight: gw,
+prioritizeInclusion: $("#l_prioin").checked, placement: $("#l_place").value,
+placementPosition: $("#l_placepos").value, depth: depth,
+priority: (i==null ? a.length+1 : i+1)};
+if(!e.content){ alert("内容不能为空"); return; }
+if(i==null) a.push(e); else a[i] = e;
 saveLore(runId, a); renderLoreList(runId);
 if(i==null) achvUnlock("lore_1");
 };
@@ -715,6 +787,7 @@ const getRpCfg = ()=> Object.assign({maxContext:8192, respTokens:512, summaryMod
   worldsim:true, wsPerMsg:3, wsStepMin:30, wsWxAuto:true, wsWxEvery:5, temporal:true, leanmem:true,
   apex:true,
   memCycle:10, memPoolRatio:"50/30/20",
+  memWindowN:60, /* Tier2 #12 新聊天记忆窗口, 默认 60 条 */
   ppaMode:"key", ppaModel:"",
   director:true, directorTier:"sentinel", directorStyle:"slowburn", directorEvery:5, directorStale:8, directorModel:""}, JSON.parse(localStorage.getItem(RPCFG_KEY)||"{}"));
 const saveRpCfg = (c)=> localStorage.setItem(RPCFG_KEY, JSON.stringify(c));
@@ -807,6 +880,7 @@ ${povChipsHTML()}
 <h3>聊天</h3>
 <button class="ditem" onclick="toggleDrawer(false);openAlbum(CHAT.runId,CHAT.name)">${icon("books")} 记忆事件簿</button>
 <button class="ditem" onclick="toggleDrawer(false);openSaves()">${icon("save")} 平行存档</button>
+<button class="ditem" onclick="toggleDrawer(false);newChatSameRole()">${icon("plus")} 开新聊天</button>
 <button class="ditem" onclick="toggleDrawer(false);personaEditor(CHAT.runId,'chat')">${icon("user")} 我的人设（本次覆盖）</button>
 <button class="ditem" onclick="toggleDrawer(false);charDetail(CHAT.runId,CHAT.name)">${icon("user")} 角色详情</button>
 <button class="ditem" onclick="toggleDrawer(false);showATasks()">${icon("chart")} 分析任务</button>
@@ -816,6 +890,8 @@ ${povChipsHTML()}
 <button class="ditem" onclick="toggleDrawer(false);showSystem()">${icon("settings")} 人设 prompt 预览</button>
 <button class="ditem" onclick="toggleDrawer(false);promptDiag()">${icon("chart")} Prompt 诊断</button>
 <button class="ditem" onclick="toggleDrawer(false);exportChat()">&#x1F4E4; 复制聊天记录</button>
+<button class="ditem" onclick="toggleDrawer(false);showForeshadow()">${icon("book-open")} 伏笔面板</button>
+<button class="ditem" onclick="toggleDrawer(false);exportChatTxt()">${icon("download")} 导出聊天 TXT</button>
 <button class="ditem danger" onclick="toggleDrawer(false);clearChat()">&#x1F5D1; 清空聊天记录</button>
 <h3>设置</h3>
 <button class="ditem" onclick="exitChatTo('settings')">&#x1F527; 大模型与 RP 设置</button>
@@ -870,6 +946,8 @@ return `<div class="gmember"><button class="whoami ${CHAT.forcedSpeaker===n?"act
 <div class="avatar sm">${esc(n[0])}</div>
 <div><div class="name">${esc(n)}${CHAT.forcedSpeaker===n?" · 下一个说":""}</div></div>
 </button><div class="talkrow"><span>发言欲</span><input type="range" min="0" max="100" step="5" value="${tv}" oninput="setTalkVal('${qn}',this.value)"><b>${tv}</b></div></div>`;}).join("")}
+<h3>角色关系 · 注入群聊 prompt</h3>
+<div id="grelbox"></div>
 <h3>叙事视角</h3>
 ${povChipsHTML()}
 <h3>聊天</h3>
@@ -881,6 +959,8 @@ ${povChipsHTML()}
 <button class="ditem" onclick="toggleDrawer(false);loreEditor(CHAT.runId,'chat')">${icon("book-open")} 世界书管理</button>
 <button class="ditem" onclick="toggleDrawer(false);regexEditor(CHAT.runId,null,'chat')">🔤 正则替换</button>
 <button class="ditem" onclick="toggleDrawer(false);exportChat()">&#x1F4E4; 复制聊天记录</button>
+<button class="ditem" onclick="toggleDrawer(false);showForeshadow()">${icon("book-open")} 伏笔面板</button>
+<button class="ditem" onclick="toggleDrawer(false);exportChatTxt()">${icon("download")} 导出聊天 TXT</button>
 <button class="ditem danger" onclick="toggleDrawer(false);clearChat()">&#x1F5D1; 清空聊天记录</button>
 <h3>设置</h3>
 <button class="ditem" onclick="exitChatTo('settings')">&#x1F527; 大模型与 RP 设置</button>
@@ -888,6 +968,7 @@ ${povChipsHTML()}
 ${!cfg.key?`<div class="hint" style="margin:10px 14px">还没配大模型接口，先去「设置」里填 API 地址/Key/模型，聊天才能用。Key 只存在你手机上。</div>`:""}`;
 renderChat();
 renderScenChips();
+renderGRelBox();
 attachHeadHide();
 if(!getHist(k).length){
 const sp = ms[Math.floor(Math.random()*ms.length)];
@@ -911,6 +992,31 @@ window.setTalkVal = (n, v)=>{
 RP_GROUP.setTalk(CHAT.runId, n, v);
 const b = event && event.target ? event.target.parentElement.querySelector("b") : null;
 if(b) b.textContent = v;
+};
+/* ============ Tier3-22: 群聊抽屉里的角色关系编辑器 ============ */
+function renderGRelBox(){
+const box = document.getElementById("grelbox"); if(!box) return;
+if(typeof RP_GROUP==="undefined" || CHAT.mode!=="group"){ box.innerHTML=""; return; }
+const gkey = (CHAT.members||[]).slice().sort().join("_");
+const rels = RP_GROUP.getRels(CHAT.runId, gkey);
+const ms = CHAT.members||[];
+const opt = (sel)=> ms.map(n=>`<option value="${esc(n)}"${n===sel?" selected":""}>${esc(n)}</option>`).join("");
+box.innerHTML = (rels.length
+? rels.map((r,i)=>`<div class="grelrow"><span>${esc(r.a)} 是 ${esc(r.b)} 的 ${esc(r.rel)}</span><button class="btn ghost" onclick="gRelDel(${i})">删</button></div>`).join("")
+: `<div class="hint" style="margin:0 0 6px">还没设定关系，如"林黛玉是贾宝玉的表妹"，会注入每轮群聊 prompt。</div>`)
++ `<div class="greladd"><select id="grel_a">${opt(ms[0])}</select><span>是</span><select id="grel_b">${opt(ms[1]||ms[0])}</select><span>的</span><input id="grel_r" placeholder="表妹/师徒…"><button class="btn" onclick="gRelAdd()">＋</button></div>`;
+}
+window.gRelAdd = ()=>{
+const a = ($("#grel_a")||{}).value, b = ($("#grel_b")||{}).value, r = (($("#grel_r")||{}).value||"").trim();
+if(!a || !b || !r){ alert("把 A / B / 关系都填上"); return; }
+const gkey = (CHAT.members||[]).slice().sort().join("_");
+RP_GROUP.addRel(CHAT.runId, gkey, a, b, r);
+renderGRelBox();
+};
+window.gRelDel = (i)=>{
+const gkey = (CHAT.members||[]).slice().sort().join("_");
+RP_GROUP.delRel(CHAT.runId, gkey, i);
+renderGRelBox();
 };
 function showChatPicker(){
 __backAction = null;
@@ -956,6 +1062,88 @@ const txt = h.map(m=>`${m.role==="user"?"我":(CHAT.mode==="group"?(m.speaker||"
 copyText(txt);
 alert(`已复制 ${h.length} 条消息到剪贴板`);
 };
+/* ============ 伏笔面板 + 剧情导出 (对标 Talkie 剧情 "Foreshadowing Panel · EPUB Export") ============ */
+/* 数据: RP_FORE (www/data/foreshadow_cal.js 蒸馏管线事件日历, 897 条伏笔) */
+let FS_TAB = "unresolved";
+window.showForeshadow = ()=>{
+if(typeof RP_FORE === "undefined" || !RP_FORE.items().length){ rpToast("伏笔数据未加载"); return; }
+FS_TAB = "unresolved";
+renderForeshadow();
+};
+window.fsTab = (t)=>{ FS_TAB = t; renderForeshadow(); };
+function renderForeshadow(){
+const run = (window.__DATA__.runs||{})["honglou_full"] || {};
+__backAction = ()=>showChat();
+document.body.classList.remove("chatmode");
+titleEl.innerHTML = icon("book-open") + " 伏笔面板";
+const g = RP_FORE.group();
+subEl.textContent = (run.novel || "红楼梦") + ` · 未回收 ${g.unresolved.length} · 已回收 ${g.resolved.length}`;
+const list = FS_TAB === "resolved" ? g.resolved : g.unresolved;
+const CAP = 200;
+const cards = list.slice(0, CAP).map(x=>{
+const e = x.e;
+const resolved = RP_FORE.isResolved(e);
+return `<div class="card" onclick="foreshadowChapter(${e.ch})" style="cursor:pointer">
+<div style="font-size:13px;margin-bottom:6px">${esc(e.s || "")}</div>
+<div class="row"><span class="badge" style="${resolved?"":"background:#f5e6c8;color:#8a6d2f"}">${esc(RP_FORE.statusText(e))}</span>
+<span class="kv">第 ${e.ch} 回</span>
+<span class="kv">${esc(RP_FORE.peopleText(e))}</span>
+<span style="flex:1"></span><span class="kv">›</span></div></div>`;
+}).join("");
+view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回聊天</button>
+<div class="dtabs">
+<button class="dtab${FS_TAB==="unresolved"?" on":""}" onclick="fsTab('unresolved')">未回收 · ${g.unresolved.length}</button>
+<button class="dtab${FS_TAB==="resolved"?" on":""}" onclick="fsTab('resolved')">已回收 · ${g.resolved.length}</button>
+</div>
+<div class="hint">状态按蒸馏数据推导: 有回收时间点的记为「已回收」。点任意条目跳转到对应回目的事件。</div>
+${cards || `<div class="empty">暂无</div>`}
+${list.length > CAP ? `<div class="hint">仅展示前 ${CAP} 条, 共 ${list.length} 条</div>` : ""}
+<div style="height:40px"></div>`;
+window.scrollTo(0,0);
+}
+/* 点击伏笔 -> 跳转对应回目 (事件日历/回目映射) */
+window.foreshadowChapter = (ch)=>{
+__backAction = ()=>renderForeshadow();
+document.body.classList.remove("chatmode");
+titleEl.innerHTML = icon("book-open") + ` 第 ${ch} 回`;
+subEl.textContent = "事件日历 · 回目事件";
+const evs = (typeof RP_FORE !== "undefined") ? RP_FORE.chapterOf(ch) : [];
+const KN = {event: "事件", foreshadowing: "伏笔", turning_point: "转折点", arc_turning_point: "弧光转折"};
+const groups = {};
+evs.forEach(x=>{ const k = x.e.k || "event"; (groups[k] = groups[k] || []).push(x); });
+const body = Object.keys(groups).map(k=>
+`<h2 class="sec">${KN[k] || k} · ${groups[k].length}</h2>` +
+groups[k].map(x=>`<div class="card"><div style="font-size:13px">${esc(x.e.s || "")}</div>
+<div class="kv" style="margin-top:4px">${esc(RP_FORE.peopleText(x.e))}</div></div>`).join("")
+).join("") || `<div class="empty">该回目暂无事件</div>`;
+view.innerHTML = `<button class="back" onclick="renderForeshadow()">${icon("back")} 返回伏笔面板</button>
+${body}<div style="height:40px"></div>`;
+window.scrollTo(0,0);
+};
+/* 聊天记录导出 TXT (纯文本: 时间 + 说话人 + 内容; EPUB 不做, TXT 保底) */
+function downloadTxt(name, text){
+try{
+const blob = new Blob(["\ufeff" + text], {type: "text/plain;charset=utf-8"});
+const a = document.createElement("a");
+a.href = URL.createObjectURL(blob);
+a.download = name;
+document.body.appendChild(a); a.click();
+setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); }catch(e){} a.remove(); }, 800);
+}catch(e){ copyText(text); rpToast("下载失败, 已复制到剪贴板"); }
+}
+window.exportChatTxt = ()=>{
+const h = getHist(chatHistKey());
+if(!h.length){ rpToast("没有可导出的聊天记录"); return; }
+const who = (m)=> m.role === "user" ? "我"
+  : (CHAT.mode === "group" ? (m.speaker || "?") : (CHAT.name || "?"));
+const txt = h.map(m=>{
+const ts = m.ts ? new Date(m.ts).toLocaleString("zh-CN") : "";
+return `[${ts}] ${who(m)}: ${m.content}`;
+}).join("\n\n");
+const nm = CHAT.mode === "group" ? "群聊" : (CHAT.name || "聊天");
+downloadTxt(`${nm}_聊天记录.txt`, txt);
+rpToast(`已导出 ${h.length} 条`);
+};
 function copyText(t){
 if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(t); return; }
 const ta = document.createElement("textarea");
@@ -972,6 +1160,39 @@ const k = chatHistKey();
 const h = getHist(k);
 h.splice(idx, 1);
 saveHist(k, h); renderChat();
+};
+/* Tier2 #13: 消息已进记忆时, 删除前询问"删消息和记忆 / 只删消息" (对标 Janitor 删除对话框)。
+ * 未进记忆 → 走旧 confirm 直删。 */
+window.delMsgAsk = (idx)=>{
+const k = chatHistKey();
+const h = getHist(k);
+const m = h[idx]; if(!m) return;
+msgSheet(false);
+let inMem = false;
+if(CHAT.mode === "single"){
+try{ inMem = RP_MEM.msgInMemory(CHAT.runId, CHAT.name, m, h).inMemory; }catch(e){}
+}
+if(!inMem){
+if(confirm("删除这条消息？")) window.delMsg(idx);
+return;
+}
+const ov = document.createElement("div");
+ov.className = "cfcheck";
+ov.innerHTML = `<div class="cfbox"><div class="cfttl">删除这条消息？</div>`
++ `<div class="cfbody">${esc(RP_MEM.delAskText())}</div>`
++ `<div class="cfbtns"><button class="btn" id="delask_both">删除消息和记忆</button>`
++ `<button class="btn ghost" id="delask_msg">只删消息</button>`
++ `<button class="btn ghost" id="delask_cancel">取消</button></div></div>`;
+document.body.appendChild(ov);
+const done = ()=>ov.remove();
+ov.querySelector("#delask_cancel").onclick = done;
+ov.onclick = (e)=>{ if(e.target === ov) done(); };
+ov.querySelector("#delask_both").onclick = ()=>{
+window.delMsg(idx);
+try{ RP_MEM.clear(CHAT.runId, CHAT.name); }catch(e){}
+done();
+};
+ov.querySelector("#delask_msg").onclick = ()=>{ window.delMsg(idx); done(); };
 };
 /* ============ P0-2 消息编辑: 原地改文本; 改用户消息后自动重生成其后 AI 回复 ============ */
 window.editMsg = (idx)=>{
@@ -997,6 +1218,8 @@ if(bub && ("orig" in bub.dataset)) bub.innerHTML = bub.dataset.orig;
 /* ============ P0-3 长按消息统一操作菜单 (对标 C.AI 长按菜单) ============ */
 window.pinChatMsg = (idx)=>{
 if(CHAT.mode !== "single") return;
+/* Tier2 #5: Pin 上限 5 条 (C.AI "Pin up to 5 messages") */
+if(!RP_MEM.canPinChatMsg(CHAT.runId, CHAT.name)){ msgSheet(false); alert(RP_MEM.msgPinLimitMsg()); return; }
 const h = getHist(chatHistKey());
 const m = h[idx]; if(!m) return;
 const who = m.role === "user" ? "我" : (CHAT.name || "TA");
@@ -1004,7 +1227,7 @@ const st = RP_MEM.get(CHAT.runId, CHAT.name) || {};
 st.short = st.short || [];
 let nid = 1;
 st.short.forEach(x=>{ if(x.id >= nid) nid = x.id + 1; });
-st.short.push({id: nid, time: "手动置顶",
+st.short.push({id: nid, time: "手动置顶", ts: Date.now(),
 fact: (who + "：" + String(m.content).replace(/<[^>]*>/g, "").slice(0, 120)),
 view: "", pin: true});
 st.updatedAt = Date.now();
@@ -1024,6 +1247,21 @@ window.msgPressEnd = ()=>{ if(_pressT){ clearTimeout(_pressT); _pressT = null; }
 window.msgMenu = (idx)=>{
 msgPressEnd();
 msgSheet(true, idx);
+/* Tier2 #5: 首次长按弹一次教育气泡 (C.AI "To pin a memory, press and hold any chat message...") */
+try{
+if(!RP_MEM.pinEduSeen()){
+RP_MEM.pinEduMark();
+const sh = document.getElementById("msgsheet");
+if(sh && !sh.querySelector(".pinedu")){
+const b = document.createElement("div");
+b.className = "pinedu";
+b.textContent = RP_MEM.pinEduText(CHAT.name);
+b.onclick = ()=>b.remove();
+sh.insertBefore(b, sh.firstChild);
+setTimeout(()=>{ if(b.parentNode) b.remove(); }, 8000);
+}
+}
+}catch(e){}
 };
 window.msgSheet = (on, idx)=>{
 let sh = document.getElementById("msgsheet");
@@ -1057,7 +1295,8 @@ sh.innerHTML = `<div class="mshandle"></div><div class="msprev">${esc(prev)}${m.
 + item(close+`editMsg(${idx})`, "edit", "编辑")
 + item(close+`copyMsg(${idx})`, "copy", "复制")
 + (isAI ? item(close+`ttsMsg(${idx})`, "volume", "TTS 朗读") : "")
-+ item(`if(confirm("删除这条消息？")){${close}delMsg(${idx})}`, "trash", "删除", true);
++ item(close+`delMsgAsk(${idx})`, "trash", "删除", true)
++ item(close+`rewindMsg(${idx})`, "history", "回溯到这里");
 document.getElementById("msgscrim").classList.add("on");
 sh.classList.add("on");
 };
@@ -1118,6 +1357,16 @@ if(typeof RP_ACHV==="undefined") return;
 if(RP_ACHV.unlock(id)) achvToast(id);
 };
 let ACHV_TOAST_TIMER = null;
+let RP_TOAST_TIMER = null;
+/* 通用轻提示: 失败/解析失败时 toast 提示, 不中断流程 */
+window.rpToast = (msg)=>{
+let el = document.getElementById("rpToast");
+if(!el){ el = document.createElement("div"); el.id = "rpToast"; el.className = "achv-toast"; document.body.appendChild(el); }
+el.textContent = msg;
+el.classList.add("show");
+if(RP_TOAST_TIMER) clearTimeout(RP_TOAST_TIMER);
+RP_TOAST_TIMER = setTimeout(()=>el.classList.remove("show"), 2600);
+};
 function achvToast(id){
 const def = RP_ACHV.DEFS.find(d=>d.id===id); if(!def) return;
 let el = document.getElementById("achvToast");
@@ -1426,10 +1675,16 @@ const used = (s.sysTokens||0) + (s.histTokens||0);
 const max = s.maxCtx || 8192;
 const pct = Math.min(100, Math.round(used / max * 100));
 const hits = (s.loreHits||[]).filter(Boolean);
+/* 世界书触发标签: 有 hitDetails 时展示 probability/priority (Janitor 式), 否则退化为标题 */
+const hitDet = (s.loreHitDetails||[]).filter(Boolean);
 bar.style.display = "block";
 bar.innerHTML = `<div class="ctxrow"><div class="ctxbar-bg"><div class="ctxbar-fg${pct>85?" hot":""}" style="width:${pct}%"></div></div>`
 + `<span class="ctxnum">上下文 ${used}/${max} · 历史${s.histKept||0}条</span></div>`
-+ (hits.length ? `<div class="ctxlore">${icon("book-open",14)} 触发：${hits.map(x=>esc(x)).join("、")}</div>` : "");
++ (hits.length ? `<div class="ctxlore">${icon("book-open",14)} 触发：${hitDet.length
+? hitDet.map(d=>`${esc(d.title)}<span style="opacity:.6;font-size:11px"> ${d.probability}%·P${d.priority}</span>`).join("、")
+: hits.map(x=>esc(x)).join("、")}</div>` : "")
++ /* Tier2 #6: C.AI "Older messages will fade from Memory, but anything you save to Story Memory is kept safe." */
++ (pct > 90 ? `<div class="ctxwarn">旧消息会逐渐从记忆中褪色，但你置顶 / 存入事件簿的记忆会一直保留。</div>` : "");
 }
 /* ============ 世界模拟 HUD：聊天页顶栏下常驻时间/天气/地点 ============ */
 function simChatKey(){
@@ -1645,10 +1900,34 @@ const ph = CHAT.mode==="group" ? "在群里说点什么…（@名字可点名）
 const spk = CHAT.mode==="group"
 ? `<select id="spksel" onchange="setAsSpeaker(this.value)" title="发言身份"><option value="">我</option>`
 + CHAT.members.map(n=>`<option value="${esc(n)}"${CHAT.asSpeaker===n?" selected":""}>${esc(n)}</option>`).join("") + `</select>` : "";
+/* Tier3-22: 群聊输入区点头像 @ 指定角色（@ 后本轮点名该角色先回） */
+const atb = CHAT.mode==="group"
+? `<button id="atbtn" class="atbtn" onclick="toggleAtMenu(event)" title="＠ 指定角色：本轮点名 TA 先回">＠</button>` : "";
 return `<button id="narrbtn" class="narrbtn${CHAT.narrMode?" on":""}" onclick="toggleNarr()" title="旁白模式：发送场景/动作描写">${icon("scroll")}</button>`
-+ `${spk}<input id="chat_in" placeholder="${CHAT.narrMode?"📜 旁白：写场景/动作/心理描写…":ph}" onkeydown="if(event.key==='Enter')sendChat()">`
++ `${atb}${spk}<input id="chat_in" placeholder="${CHAT.narrMode?"📜 旁白：写场景/动作/心理描写…":ph}" onkeydown="if(event.key==='Enter')sendChat()">`
 + `<button class="sendbtn" onclick="sendChat()" title="发送">${icon("send")}</button>`;
 }
+window.toggleAtMenu = (ev)=>{
+if(ev && ev.stopPropagation) ev.stopPropagation();
+let m = document.getElementById("atmenu");
+if(m){ m.remove(); return; }
+if(CHAT.mode!=="group" || !(CHAT.members||[]).length) return;
+m = document.createElement("div"); m.id = "atmenu"; m.className = "atmenu";
+m.innerHTML = `<div class="athint">＠ 谁先回？</div>` + CHAT.members.map(n=>{
+const qn = n.replace(/'/g,"\\'");
+return `<button onclick="atMention('${qn}')"><div class="avatar sm">${esc(n[0])}</div><span>${esc(n)}</span></button>`;
+}).join("");
+const bar = document.querySelector(".chatbar");
+(bar || document.body).appendChild(m);
+};
+window.atMention = (name)=>{
+const inp = document.getElementById("chat_in");
+if(inp){
+inp.value = ((inp.value||"").replace(/\s+$/,"") + " @" + name + " ").replace(/^ /,"");
+inp.focus();
+}
+const m = document.getElementById("atmenu"); if(m) m.remove();
+};
 window.toggleNarr = ()=>{
 CHAT.narrMode = !CHAT.narrMode;
 const b = document.getElementById("narrbtn");
@@ -1713,10 +1992,15 @@ STREAM_SPEAKER = speakers[0] || null;
 }
 if(isTrav) STREAM_SPEAKER = "世界";
 try{
+/* Tier2 #15: 简洁回复开关 (Janitor "Snappier, more concise replies"): 单聊且打开时,
+ * system 追加简洁指令, maxTokens 压到 300 以内, 透传 concise 到 prompt 构建 */
+const conciseOn = CHAT.mode==="single" && getChatOpt(CHAT.runId, CHAT.name).concise;
 const sendOpts = {
 cfg: Object.assign({}, cfg, {maxContext: rcfg.maxContext, summaryModel: rcfg.summaryModel}),
 history: h,
-temperature: rcfg.temperature, topP: rcfg.topP, maxTokens: rcfg.respTokens,
+temperature: rcfg.temperature, topP: rcfg.topP,
+maxTokens: conciseOn ? Math.min(rcfg.respTokens, 300) : rcfg.respTokens,
+concise: conciseOn,
 optCards: !!rcfg.optCards, optCount: rcfg.optCount, optMood: rcfg.optMood,
 plotOutline: activePlotOutline(), scenario: scenarioInstr(), oocOn: rcfg.ooc,
 userMtype: CHAT.narrMode ? "narr" : (CHAT.asSpeaker ? "npc" : "player"),
@@ -1753,6 +2037,7 @@ const r = isGroup
 : await RP.send(CHAT.runId, CHAT.name, text, sendOpts);
 saveHist(k, r.history);
 achvUnlock("first_chat");
+try{ hbAfterSend(); }catch(e){} /* Tier3-25: 心跳轮次计数（仅前台，不阻塞） */
 if(r.aborted){
 const hh = getHist(k);
 hh.push({role:"assistant", content:"（已停止生成）", ts:Date.now()});
@@ -1841,7 +2126,8 @@ if(inp){ inp.value = s.starter; sendChat(); }
 };
 window.clearChat = ()=>{
 const label = CHAT.mode==="group" ? "这个群聊" : CHAT.name;
-if(!confirm(`清空和${label}的聊天记录？`)) return;
+/* Tier2 #16: 星野 "设置·重启对话会清空记忆和关系，从头来过" — 明确告知后果 */
+if(!confirm(`清空和${label}的聊天记录？\n会清空记忆和关系，从头来过。`)) return;
 localStorage.removeItem(chatHistKey());
 if(CHAT.mode==="single") RP_MEM.clear(CHAT.runId, CHAT.name);
 renderChat();
@@ -1878,6 +2164,8 @@ window.setPov = (id)=>{ CHAT.pov = id; savePov(); toggleDrawer(false); showChat(
 window.setPerson = (id)=>{ CHAT.person = id; savePov(); toggleDrawer(false); showChat(); };
 /* ============ 记忆事件簿 (对标 Talkie Memory Album + C.AI 记忆 Pin) ============ */
 let ALBUM = {runId:null, name:null, back:null};
+let ALBUM_KIND = ""; /* Tier2 #14: 事件分型筛选，空=全部 */
+window.albumKindFilter = (k)=>{ ALBUM_KIND = k || ""; renderAlbum(); };
 window.openAlbum = (runId, name, back)=>{
 ALBUM = {runId:runId, name:name, back:(typeof back==="function"?back:null)};
 renderAlbum();
@@ -1885,6 +2173,35 @@ renderAlbum();
 function albumBack(){
 if(ALBUM.back) ALBUM.back();
 else showChat();
+}
+/* ============ Tier3-23: 记忆日记（Memory Diary 形态）============
+ * auto-memories（自动抽取）/ pinned-memories（Pin/永久）两节，按时间倒序，日期分组头 */
+function diaryTs(m){ /* 条目时间戳：ts 优先，其次解析 time 文本，否则 0（未知时间） */
+if(m && m.ts) return m.ts;
+if(m && m.time){ const t = Date.parse(m.time); if(!isNaN(t)) return t; }
+return 0;
+}
+function diaryDayLabel(ts){
+if(!ts) return "未知时间";
+const d = new Date(ts), now = new Date();
+const day = (x)=> new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+const diff = Math.round((day(now) - day(d)) / 86400e3);
+const md = (d.getMonth() + 1) + "月" + d.getDate() + "日";
+if(diff === 0) return "今天 · " + md;
+if(diff === 1) return "昨天 · " + md;
+if(d.getFullYear() === now.getFullYear()) return md;
+return d.getFullYear() + "年" + md;
+}
+function diarySectionHTML(title, ic, items, evCard){
+if(!items.length) return "";
+const sorted = items.slice().sort((a,b)=>diaryTs(b) - diaryTs(a));
+let html = "", lastDay = null;
+sorted.forEach(m=>{
+const day = diaryDayLabel(diaryTs(m));
+if(day !== lastDay){ html += `<div class="diary-day">${esc(day)}</div>`; lastDay = day; }
+html += evCard(m);
+});
+return `<h2 class="sec">${icon(ic,14)} ${title}</h2><div class="timeline">${html}</div>`;
 }
 function renderAlbum(){
 const runId = ALBUM.runId, nm = ALBUM.name;
@@ -1899,13 +2216,17 @@ const rest = short.filter(m=>!m.pin);
 const h = getHist(`nd_chat_${runId}_${nm}`);
 let up = 0, dn = 0;
 h.forEach(m=>{ if(m.role==="assistant"){ if(m.rating===1) up++; else if(m.rating===-1) dn++; } });
-titleEl.innerHTML = icon("books")+" 记忆事件簿"; subEl.textContent = nm + " · 事件时间线";
+titleEl.innerHTML = icon("books")+" 记忆事件簿"; subEl.textContent = nm + " · 记忆日记";
 /* P1-8: 长期记忆库用量条 */
 const ms = RP_MEM.memStats(runId, nm);
 const muPct = Math.min(100, Math.round(ms.events / Math.max(1, ms.shortMax) * 100));
 const muBar = `<div class="mem-usage"><div class="mu-bar"><div class="mu-fill" style="width:${muPct}%"></div></div>
 <div class="mu-label">长期记忆 ${ms.events}/${ms.shortMax} · 置顶 ${ms.pinned}/${ms.pinMax} · 长远印象 ${ms.longN}/1</div></div>`
 + (ms.pinned >= ms.pinMax ? `<div class="hint warn">置顶已达 ${ms.pinned} 条, 建议整理：取消不重要的置顶, 让最重要的记忆排在前面。（只是提醒, 不会禁止继续置顶）</div>` : "");
+/* Tier2 #19: 记忆快照状态行 (对标猫箱 BotMemorySnapshot 状态机) */
+const msl = RP_MEM.memStatusLine(runId, nm);
+const memStatusHtml = (msl.state !== "idle")
+? `<div class="memstatus ${msl.state}"${msl.state==="fail"?' onclick="retryMemAnalyze()" style="cursor:pointer"':""}>${esc(msl.text)}</div>` : "";
 const evCard = (m)=>{
 const id = m.id;
 return `<div class="tl-item${m.pin?" gold":""}"><div class="card alb-event${m.pin?" pinned":""}">`
@@ -1922,6 +2243,42 @@ const apexAlb = (typeof RP_APEX !== "undefined") && (getRpCfg().apex !== false) 
 const P3alb = apexAlb ? RP_APEX.latestOf(st.profile3) : ((st && st.profile3) || []);
 const E3alb = apexAlb ? RP_APEX.latestOf(st.event3) : ((st && st.event3) || []);
 const R3alb = apexAlb ? RP_APEX.latestOf(st.record3) : ((st && st.record3) || []);
+/* 第 3 项: profile3 relationship 段分段渲染 (stage/boundaries/type/communicationPreferences/currentLocation) */
+const relSeg = (p)=>{
+const r = p && p.relationship; if(!r) return "";
+const parts = [["stage","阶段"],["boundaries","边界"],["type","类型"],["communicationPreferences","沟通偏好"],["currentLocation","当前位置"]]
+.filter(kv=>r[kv[0]]).map(kv=>kv[1]+"："+r[kv[0]]);
+return parts.length ? `<div class="alb-sub">关系 · ${esc(parts.join("；"))}</div>` : "";
+};
+/* 第 3 项: event3 结构化字段分段渲染 (老数据缺字段=undefined, 容错跳过) */
+const evStruct = (e)=>{
+const L = (typeof RP_LOREBOOK !== "undefined") ? RP_LOREBOOK.EVENT_FIELD_LABELS : null;
+const keys = ["location","participants","agreements","type","status","emotionalTone","attitudeToUser","relationshipImpact"];
+const fb = {location:"地点",participants:"参与者",agreements:"约定与任务",type:"类型",status:"状态",emotionalTone:"情感基调",attitudeToUser:"对用户的态度",relationshipImpact:"关系影响"};
+const parts = keys.filter(k=>e && e[k]).map(k=>((L&&L[k])||fb[k])+"："+e[k]);
+return parts.length ? `<div class="alb-sub">${esc(parts.join("；"))}</div>` : "";
+};
+/* 第 4 项: Facts 独立分区 (自动区/手动区, 带分类标签, 可编辑/手动添加) */
+const factsHtml = (()=>{
+if(!(st && st.migrated3)) return "";
+const gf = RP_MEM.getFacts(st), fz = RP_MEM.factsChars(st), fmax = RP_MEM.FACTS_MAX_CHARS;
+const factRow = (f)=>`<div class="alb-fact">· <span class="badge">${esc(f.cat||"其他")}</span> ${esc(f.text||"")}`
++ `<div class="btnrow" style="margin-top:6px"><button class="btn ghost" onclick="factForm(${f.id})">编辑</button><button class="btn danger" onclick="factDel(${f.id})">删除</button></div></div>`;
+const edu = `<div class="facts-edu">角色会留意聊天中的细节——外貌、怪癖、关系等，自动记成事实并随时间更新；你也可以随时编辑或补充。`
++ `<details><summary>原文说明 (C.AI)</summary>`
++ `<div class="facts-en">"Your Characters pay attention. As you chat, they pick up on details about everyone mentioned in the conversation - appearance, quirks, relationships, and more. These facts update automatically over time."</div>`
++ `<div class="facts-en">"You can edit or add facts about Characters whenever you want."</div>`
++ `<div class="facts-en">"Changes are captured automatically, kept up to date, and always editable."</div>`
++ `</details></div>`;
+return `<h2 class="sec">事实 Facts</h2><div class="card">${edu}`
++ `<div class="alb-time">自动事实 · ${gf.auto.length} 条（聊天中自动抽取更新）</div>`
++ (gf.auto.map(factRow).join("") || '<div class="empty">多聊几句，事实会自动出现在这里</div>')
++ `<div class="alb-time" style="margin-top:8px">手动事实 · ${gf.manual.length} 条（你亲手添加）</div>`
++ (gf.manual.map(factRow).join("") || '<div class="empty">暂无</div>')
++ `<div class="btnrow" style="margin-top:8px"><button class="btn" onclick="factForm()">+ 添加事实</button></div>`
++ `<div class="hint">事实总字数 ${fz}/${fmax}，超限请删除或缩短一条事实。</div></div>`;
+})();
+const P3stable = P3alb.filter(p=>!RP_MEM.isFactEntry(p));
 const apexHist = (arr, id, fmt)=>{
   if(!apexAlb || typeof RP_APEX === "undefined") return "";
   const vers = RP_APEX.versionsOf(arr || [], id);
@@ -1929,25 +2286,42 @@ const apexHist = (arr, id, fmt)=>{
   const olds = vers.slice(0, -1).reverse().map(v=>`<div class="alb-fact" style="opacity:.62">v${v.v||1} · ${esc(fmt(v))}</div>`).join("");
   return `<details class="alb-hist"><summary>历史版本（${vers.length - 1}）</summary>${olds}</details>`;
 };
+/* Tier2 #14: 事件分型筛选 (对标星野记忆 card kind); Tier2 #10: 永久记忆按钮 */
+const kindChips = `<div class="kindchips">` + ["", "事件", "心情", "关系", "初见"].map(k=>
+`<button class="kindchip${ALBUM_KIND===k?" on":""}" onclick="albumKindFilter('${k}')">${k||"全部"}</button>`).join("") + `</div>`;
+const E3shown = ALBUM_KIND ? E3alb.filter(e=>RP_MEM.kindLabel(e)===ALBUM_KIND) : E3alb;
+const ev3Card = (e)=>{
+const kind = RP_MEM.kindLabel(e);
+return `<div class="alb-fact">· ${esc((e.t_anchor?e.t_anchor+" ":"")+(e.topic||""))}${e.state?" —— "+esc(e.state):""}${evStruct(e)}`
++ ` <span class="badge">${kind}</span>`
++ (e.perm?` <span class="badge warn">${icon("pin",11)} 永久</span>`:"")
++ `${(e.merged||0)>1?` <span class="badge">合并×${e.merged}</span>`:""}${(e.v||1)>1?` <span class="badge">v${e.v}</span>`:""}`
++ `<div class="btnrow" style="margin-top:6px"><button class="btn ghost" onclick="toggleEventPerm(${e.id})">${e.perm?"取消永久":"设为永久"}</button></div></div>`
++ apexHist(st.event3,e.id,x=>(x.t_anchor?x.t_anchor+" ":"")+(x.topic||"")+(x.state?" —— "+x.state:""));
+};
 view.innerHTML = `<button class="back" onclick="albumBack()">${icon("back")} 返回</button>
 ${muBar}
+${memStatusHtml}
 <div class="alb-stats">${icon("brain",14)} ${short.length} 条记忆 · ${icon("pin",13)} ${pinned.length} 置顶 · ${icon("thumb-up",13)} ${up} ${icon("thumb-down",13)} ${dn}</div>`
 + (st && st.mood && st.mood.state
 ? `<div class="card alb-mood"><div class="alb-time">当前心境</div><div class="alb-fact">${esc(st.mood.state)}${st.mood.filter?" —— "+esc(st.mood.filter):""}</div></div>` : "")
 + ((st && st.migrated3)
 ? `<h2 class="sec">三库记忆（LeanMem 分流）</h2>`
-+ `<div class="card"><div class="alb-time">画像库 · 稳定事实 ${P3alb.length} 条${apexAlb ? "（版本链）" : ""}</div>`
-+ (P3alb.map(p=>`<div class="alb-fact">· ${esc(p.text||"")}${(p.v||1)>1?` <span class="badge">v${p.v}</span>`:""}</div>`+apexHist(st.profile3,p.id,x=>x.text||"")).join("")||'<div class="empty">暂无</div>') + `</div>`
++ `<div class="card"><div class="alb-time">画像库 · 稳定事实 ${P3stable.length} 条${apexAlb ? "（版本链）" : ""}</div>`
++ (P3stable.map(p=>`<div class="alb-fact">· ${esc(p.text||"")}${relSeg(p)}${(p.v||1)>1?` <span class="badge">v${p.v}</span>`:""}</div>`+apexHist(st.profile3,p.id,x=>x.text||"")).join("")||'<div class="empty">暂无</div>') + `</div>`
 + `<div class="card"><div class="alb-time">事件库 · 带时间锚 ${E3alb.length} 条（可演化合并）${apexAlb ? "（版本链）" : ""}</div>`
-+ (E3alb.slice().reverse().map(e=>`<div class="alb-fact">· ${esc((e.t_anchor?e.t_anchor+" ":"")+(e.topic||""))}${e.state?" —— "+esc(e.state):""}${(e.merged||0)>1?` <span class="badge">合并×${e.merged}</span>`:""}${(e.v||1)>1?` <span class="badge">v${e.v}</span>`:""}</div>`+apexHist(st.event3,e.id,x=>(x.t_anchor?x.t_anchor+" ":"")+(x.topic||"")+(x.state?" —— "+x.state:""))).join("")||'<div class="empty">暂无</div>') + `</div>`
++ kindChips
++ (E3shown.slice().reverse().map(e=>ev3Card(e)).join("")||'<div class="empty">暂无</div>') + `</div>`
 + `<div class="card"><div class="alb-time">记录库 · 原文索引 ${R3alb.filter(r=>!r.legacy).length} 条（只追加不改写）${apexAlb ? "（版本链）" : ""}</div>`
 + (R3alb.filter(r=>!r.legacy).slice().reverse().map(r=>`<div class="alb-fact">· ${esc(r.gist||"")}${(r.msg_from||r.msg_to)?` <span style="opacity:.6">（原文 ${esc(r.msg_from||"?")}→${esc(r.msg_to||"")}）</span>`:""}${(r.v||1)>1?` <span class="badge">v${r.v}</span>`:""}</div>`+apexHist(st.record3,r.id,x=>x.gist||"")).join("")||'<div class="empty">暂无</div>') + `</div>`
++ factsHtml
 : "")
-+ `<h2 class="sec">事件时间线${pinned.length?"（置顶优先）":""}</h2>`
-+ `<div class="timeline">` + pinned.concat(rest).map(evCard).join("") + `</div>`
++ `<div class="hint">记忆日记：聊天中自动抽取的点滴按时间倒序排列；置顶的是永久记忆，AI 永远优先记住。</div>`
++ diarySectionHTML("置顶记忆 · pinned-memories", "pin", pinned, evCard)
++ diarySectionHTML("自动记忆 · auto-memories", "clock", rest, evCard)
 + (st && st.long ? `<h2 class="sec">长远印象</h2><div class="card"><div class="alb-fact">${esc(st.long)}</div></div>` : "")
 + (!short.length && !(st && st.long) ? `<div class="empty"><span class="big">${icon("brain",44)}</span>还没有记忆<br><span style="font-size:12px">每 ${(getRpCfg().memCycle||10)} 条消息自动整理一次</span><br><button class="btn ghost" style="margin-top:10px" onclick="albumBack()">去聊天产生记忆</button></div>` : "")
-+ `<div class="btnrow" style="margin-top:12px"><button class="btn" onclick="memoryNovel()">${icon("book-open")} 转成小说</button></div>
++ `<div class="btnrow" style="margin-top:12px"><button class="btn" onclick="memoryNovel()">${icon("book-open")} 转成小说</button><button class="btn ghost" onclick="showNovel3()">${icon("scroll")} 分章小说 · 可改写</button></div>
 <div style="height:40px"></div>`;
 window.scrollTo(0,0);
 }
@@ -1969,12 +2343,75 @@ if(!confirm("删除这条记忆？")) return;
 RP_MEM.delItem(ALBUM.runId, ALBUM.name, id);
 renderAlbum();
 };
+/* Tier2 #10: 永久记忆切换 (Talkie "Select the event you want Talkie to remember permanently…")。
+ * 达上限时用 Talkie 原文 toast。 */
+window.toggleEventPerm = (id)=>{
+const st = RP_MEM.get(ALBUM.runId, ALBUM.name) || {};
+const apexW = (typeof RP_APEX !== "undefined") && RP_MEM.leanmemOn() && RP_APEX.on();
+const latest = apexW ? RP_APEX.latestOf(st.event3) : ((st && st.event3) || []);
+const hit = latest.filter(e=>e && e.id == id)[0];
+const r = RP_MEM.setEventPerm(ALBUM.runId, ALBUM.name, id, !(hit && hit.perm));
+if(r === "limit") alert(RP_MEM.permLimitMsg());
+renderAlbum();
+};
+/* Tier2 #19: 记忆快照失败 → 手动重试 (用摘要模型对最近消息跑一次分析) */
+window.retryMemAnalyze = async ()=>{
+const runId = ALBUM.runId, nm = ALBUM.name;
+try{
+const cfg = getCfg();
+const h = getHist(`nd_chat_${runId}_${nm}`);
+if(!h.length){ alert("还没有聊天记录"); return; }
+const card = RP.findCard(runId, nm) || {};
+const hint = (((card.fields||{}).core_traits||"") + " " + ((card.fields||{}).speech_style||"")).trim();
+await RP_MEM.maybeAnalyze(runId, nm, h, cfg,
+function(c, ms, t){ return RP_NET.complete(c, ms, t); }, hint);
+}catch(e){
+try{ RP_MEM.setMemStatus(ALBUM.runId, ALBUM.name, "fail"); }catch(e2){}
+}
+renderAlbum();
+};
 window.memCopyCard = (id)=>{
 const st = RP_MEM.get(ALBUM.runId, ALBUM.name);
 const m = ((st && st.short)||[]).find(x=>x.id==id);
 if(!m) return;
 copyText(`📌 记忆快照 · ${ALBUM.name}\n时间：${m.time||"往事"}\n事实：${m.fact||""}${m.view?"\n此刻看法："+m.view:""}`);
 alert("记忆卡片已复制");
+};
+/* ============ Facts 事实增改删 (第 4 项: 独立产品面, 自动区+手动区, 分类, 2000 字上限) ============ */
+window.factForm = (fid)=>{
+const runId = ALBUM.runId, nm = ALBUM.name;
+__backAction = ()=>renderAlbum();
+document.body.classList.remove("chatmode");
+const st = RP_MEM.get(runId, nm);
+const gf = RP_MEM.getFacts(st);
+const all = gf.auto.concat(gf.manual);
+const f = (fid != null) ? all.find(x=>x.id==fid) : null;
+titleEl.innerHTML = icon("books")+" "+(f?"编辑事实":"添加事实"); subEl.textContent = nm;
+const cats = RP_MEM.FACT_CATS.map(c=>`<option value="${c}"${f&&f.cat===c?" selected":""}>${c}</option>`).join("");
+view.innerHTML = `<button class="back" onclick="renderAlbum()">${icon("back")} 返回事件簿</button>
+<div class="card"><div class="alb-time">Select fact category · 选择事实分类</div>
+<div class="field"><label>分类</label><select id="f_cat">${cats}</select></div>
+<div class="field"><label>事实内容</label><input id="f_text" value="${esc(f?(f.text||""):"")}" placeholder="如：她左眉有一颗小痣"></div>
+<div class="hint">事实总字数上限 ${RP_MEM.FACTS_MAX_CHARS} 字，当前 ${RP_MEM.factsChars(st)} 字。</div>
+<div class="btnrow"><button class="btn" onclick="factSave(${fid==null?"null":fid})">保存</button></div></div>`;
+window.scrollTo(0,0);
+};
+window.factSave = (fid)=>{
+const runId = ALBUM.runId, nm = ALBUM.name;
+const opt = {text: $("#f_text").value, cat: $("#f_cat").value};
+const r = (fid==null) ? RP_MEM.addFact(runId, nm, opt) : RP_MEM.editFact(runId, nm, fid, opt);
+if(!r.ok && r.err === "over"){
+alert("事实总字数已达上限（"+RP_MEM.FACTS_MAX_CHARS+"字），请删除或缩短一条事实后再添加。\nYour Story and Facts exceeds allowed text limit, try removing or shortening another fact.");
+return;
+}
+if(!r.ok){ alert("保存失败，请重试。\nFailed to save fact. Please try again."); return; }
+alert("Fact saved successfully · 事实已保存");
+renderAlbum();
+};
+window.factDel = (fid)=>{
+if(!confirm("确定删除这条事实吗？此操作不可撤销。\nAre you sure you want to delete this Smart Fact? This action cannot be undone.")) return;
+RP_MEM.delFact(ALBUM.runId, ALBUM.name, fid);
+renderAlbum();
 };
 /* ============ 记忆转小说 (对标猫箱记忆转小说: 记忆事件 → 小说体阅读) ============ */
 window.memoryNovel = ()=>{
@@ -2050,6 +2487,148 @@ if(!el) return;
 copyText(el.innerText);
 alert("全文已复制");
 };
+/* ============ 记忆转小说 · 分章改写 (对标猫箱 novel/*: 生成->分章节->可改写) ============ */
+/* 三步: 1 生成章节列表 -> 2 逐章改写正文(先概要后正文) -> 3 阅读 / 导出 TXT; 全本地存储 nd_novel_<chatId> */
+let NOV = {runId: null, name: null};
+window.showNovel3 = ()=>{
+if(typeof RP_NOVEL === "undefined"){ rpToast("小说模块未加载"); return; }
+NOV = {runId: ALBUM.runId, name: ALBUM.name};
+renderNovel3();
+};
+function novelChatId(){ return `nd_chat_${NOV.runId}_${NOV.name}`; }
+function novelMaterial(){
+const runId = NOV.runId, name = NOV.name;
+let facts = "";
+try{
+const st = RP_MEM.get(runId, name);
+facts = ((st && st.short) || []).slice(-20).map(m=>`· ${m.time || "往事"}: ${m.fact || ""}`).join("\n");
+}catch(e){}
+const h = getHist(novelChatId()).slice(-40);
+const hist = h.map(m=>`${m.role === "user" ? "我" : name}: ${m.content}`).join("\n");
+let cal = "";
+try{
+if(typeof RP_FORE !== "undefined"){
+cal = RP_FORE.all().filter(e=>e.k !== "foreshadowing" && (e.c || []).indexOf(name) >= 0)
+.slice(0, 40).map(e=>`第${e.ch}回: ${e.s}`).join("\n");
+}
+}catch(e){}
+return RP_NOVEL.buildMaterial(facts, hist, cal);
+}
+function novelStatusBadge(ch){
+if(ch.status === RP_NOVEL.ST_DONE) return `<span class="badge">已完成</span>`;
+if(ch.status === RP_NOVEL.ST_WRITING) return `<span class="badge" style="background:#e3f0ff;color:#2b6cb0">生成中…</span>`;
+return `<span class="badge" style="background:#f5e6c8;color:#8a6d2f">概要已出</span>`;
+}
+function renderNovel3(){
+__backAction = ()=>renderAlbum();
+document.body.classList.remove("chatmode");
+titleEl.innerHTML = icon("scroll") + " 小说工坊";
+subEl.textContent = NOV.name + " · 生成→改写→导出";
+const novel = RP_NOVEL.getNovel(novelChatId());
+let body = "";
+if(!novel){
+body = `<div class="empty"><span class="big">${icon("scroll",44)}</span>还没有章节规划<br><span style="font-size:12px">AI 会按聊天记录与记忆事件, 先出章节列表 (标题+梗概), 再逐章扩写正文</span><br>
+<button class="btn" style="margin-top:10px" onclick="novelPlan()">✨ 生成章节</button></div>`;
+}else{
+body = `<div class="card"><div class="name" style="font-size:15px">${esc(novel.title || "")}</div>
+<div class="kv">${novel.chapters.length} 章 · ${novel.chapters.filter(c=>c.status===RP_NOVEL.ST_DONE).length} 章正文已完成</div></div>` +
+novel.chapters.map((ch, i)=>`<div class="card">
+<div class="row"><div><div class="name" style="font-size:14px">第${i + 1}章 · ${esc(ch.title)}</div>
+<div class="kv">${esc(ch.overview || "")}</div></div>${novelStatusBadge(ch)}</div>
+<div class="btnrow" style="margin-top:8px">
+<button class="btn ghost" onclick="novelRewriteUI(${i})">✏️ ${ch.status===RP_NOVEL.ST_DONE?"再次改写":"生成正文"}</button>
+${ch.status === RP_NOVEL.ST_DONE ? `<button class="btn ghost" onclick="novelRead()">📖 阅读</button>` : ""}
+</div><div id="nrw_${i}"></div></div>`).join("") +
+`<div class="btnrow" style="margin-top:12px">
+<button class="btn ghost" onclick="if(confirm('重新规划会清空现有章节, 继续?'))novelPlan(true)">🔄 重新规划</button>
+<button class="btn ghost" onclick="novelExportTxt()">${icon("download")} 导出 TXT</button>
+<button class="btn danger ghost" onclick="if(confirm('删除这本小说?')){RP_NOVEL.delNovel(novelChatId());renderNovel3();}">删除</button>
+</div>`;
+}
+view.innerHTML = `<button class="back" onclick="renderAlbum()">${icon("back")} 返回事件簿</button>
+${body}<div style="height:40px"></div>`;
+window.scrollTo(0,0);
+}
+/* 第一步: 生成章节列表 */
+window.novelPlan = async (force)=>{
+if(typeof RP_NOVEL === "undefined") return;
+const cfg = getCfg();
+if(!cfg.key || !cfg.base){ alert("先去「设置」填 API 地址和 Key"); return; }
+const mat = novelMaterial();
+if(!mat.trim()){ rpToast("没有足够的聊天记录或记忆可写"); return; }
+rpToast("正在规划章节…");
+try{
+const chapters = await RP_NOVEL.planChapters(mat, NOV.name, cfg,
+function(c, ms, t){ return RP_NET.complete(c, ms, t); });
+RP_NOVEL.saveNovel(novelChatId(), RP_NOVEL.newNovelDoc(NOV.name, chapters));
+rpToast(`已生成 ${chapters.length} 章`);
+renderNovel3();
+}catch(e){ rpToast("章节规划失败, 请重试"); }
+};
+/* 第二步: 单章改写 (章节名+概要+一句话指令 -> 重生成正文) */
+window.novelRewriteUI = (i)=>{
+const box = document.getElementById("nrw_" + i);
+if(!box) return;
+box.innerHTML = `<div class="field" style="margin-top:8px"><label>改写要求 (可空, 直接点生成=按概要扩写正文)</label>
+<input id="nrw_in_${i}" placeholder="如: 写得更悬疑一点, 加一段雨夜对话"></div>
+<div class="btnrow"><button class="btn" id="nrw_go_${i}" onclick="novelRewriteDo(${i})">🚀 生成本章正文</button></div>`;
+const inp = document.getElementById("nrw_in_" + i);
+if(inp) inp.focus();
+};
+window.novelRewriteDo = async (i)=>{
+const cfg = getCfg();
+if(!cfg.key || !cfg.base){ alert("先去「设置」填 API 地址和 Key"); return; }
+const novel = RP_NOVEL.getNovel(novelChatId());
+if(!novel || !novel.chapters[i]){ rpToast("章节不存在"); return; }
+const inp = document.getElementById("nrw_in_" + i);
+const instruction = inp ? inp.value.trim() : "";
+novel.chapters[i].status = RP_NOVEL.ST_WRITING;
+RP_NOVEL.saveNovel(novelChatId(), novel);
+renderNovel3();
+try{
+await RP_NOVEL.rewriteChapter(novel, i, instruction, cfg,
+function(c, ms, t){ return RP_NET.complete(c, ms, t); });
+const nv2 = RP_NOVEL.getNovel(novelChatId()) || novel;
+RP_NOVEL.saveNovel(novelChatId(), nv2);
+rpToast(`第 ${i + 1} 章正文已生成`);
+}catch(e){
+const nv3 = RP_NOVEL.getNovel(novelChatId());
+if(nv3 && nv3.chapters[i] && nv3.chapters[i].status === RP_NOVEL.ST_WRITING){
+nv3.chapters[i].status = nv3.chapters[i].content ? RP_NOVEL.ST_DONE : RP_NOVEL.ST_PLANNED;
+RP_NOVEL.saveNovel(novelChatId(), nv3);
+}
+rpToast("本章生成失败, 请重试");
+}
+renderNovel3();
+};
+/* 第三步: 阅读 */
+window.novelRead = ()=>{
+__backAction = ()=>renderNovel3();
+document.body.classList.remove("chatmode");
+const novel = RP_NOVEL.getNovel(novelChatId());
+if(!novel){ renderNovel3(); return; }
+titleEl.innerHTML = icon("book-open") + " " + esc(novel.title || "小说");
+subEl.textContent = NOV.name;
+const cnNum = ["一","二","三","四","五","六","七","八","九","十"];
+view.innerHTML = `<button class="back" onclick="renderNovel3()">${icon("back")} 返回工坊</button>
+<div class="novel"><div class="nov-title">${esc(novel.title || "")}</div>` +
+novel.chapters.map((ch, i)=>{
+const cn = i < 10 ? cnNum[i] : String(i + 1);
+const paras = String(ch.content || "(本章正文尚未生成)").split(/\n{2,}|\n/).filter(s=>s.trim());
+return `<div class="nov-ch"><div class="nov-chh">第${cn}章 · ${esc(ch.title)}</div>` +
+paras.map(p=>`<div class="nov-p">${esc(p.trim())}</div>`).join("") + `</div>`;
+}).join("") + `</div>
+<div class="btnrow" style="margin-top:12px"><button class="btn ghost" onclick="novelExportTxt()">${icon("download")} 导出 TXT</button></div>
+<div style="height:40px"></div>`;
+window.scrollTo(0,0);
+};
+/* 第三步: 导出 TXT (纯文本, EPUB 不做) */
+window.novelExportTxt = ()=>{
+const novel = RP_NOVEL.getNovel(novelChatId());
+if(!novel){ rpToast("还没有小说可导出"); return; }
+downloadTxt(`${novel.title || "小说"}.txt`, RP_NOVEL.exportTxt(novel));
+rpToast("已导出 TXT");
+};
 /* ============ 平行存档 (对标 Xclaw: 多时间线快照, 随时存档/加载/删除) ============ */
 function savesKey(){ return "nd_saves_" + chatHistKey(); }
 function getSaves(){
@@ -2109,7 +2688,19 @@ view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返�
 + `<div style="height:40px"></div>`;
 window.scrollTo(0,0);
 }
-/* P0-2: 铁律记忆框交互 */
+/* Tier2 #11: 本聊摘要框 (Janitor "Enter a summary for your chat. This will be included into the prompt as long-term memory.")。
+ * 按聊天存, important 池最高优先级 (排在铁律之前), 1000 字。 */
+window.chatsumCount = ()=>{
+const ta = document.getElementById("chatsum_box"), c = document.getElementById("chatsum_cnt");
+if(ta && c) c.textContent = ta.value.length + "/" + RP_MEM.CHATSUM_MAX;
+};
+window.saveChatSumUI = ()=>{
+const ta = document.getElementById("chatsum_box");
+if(!ta) return;
+const r = RP_MEM.saveChatSummary(DETAIL.runId, DETAIL.name, ta.value);
+chatsumCount();
+alert(r.truncated ? "已保存（超 1000 字部分已截断）" : "本聊摘要已保存，每次对话会最先注入");
+};
 window.ironlawCount = ()=>{
 const ta = document.getElementById("ironlaw_box"), c = document.getElementById("ironlaw_cnt");
 if(ta && c) c.textContent = ta.value.length + "/400";
@@ -2122,17 +2713,97 @@ const r = RP_MEM.saveIronLaw(DETAIL.runId, DETAIL.name, card.id || null, v);
 ironlawCount();
 alert(r.truncated ? "已保存（超 400 字部分已截断）" : "铁律记忆已保存，对话时会永远最先注入");
 };
-window.newSaveSlot = ()=>{
+/* Tier2 #15: 单聊选项 (concise 简洁回复开关), 按聊天存 */
+const chatOptKey = (runId, name)=> `nd_chatopt_${runId}_${name}`;
+const getChatOpt = (runId, name)=>{
+try{ return Object.assign({concise:false}, JSON.parse(localStorage.getItem(chatOptKey(runId, name))||"{}")); }
+catch(e){ return {concise:false}; }
+};
+const saveChatOpt = (runId, name, o)=>{
+try{ localStorage.setItem(chatOptKey(runId, name), JSON.stringify(o||{})); }catch(e){}
+};
+window.saveConciseUI = ()=>{
+const sw = document.getElementById("concise_sw");
+if(!sw) return;
+const o = getChatOpt(DETAIL.runId, DETAIL.name);
+o.concise = !!sw.checked;
+saveChatOpt(DETAIL.runId, DETAIL.name, o);
+alert(sw.checked ? "简洁回复已开启" : "简洁回复已关闭");
+};
+/* Tier2 #9: 带复选框的确认弹窗 (C.AI "Copy facts and Story Memory to new chat" 风格)。
+ * 返回 Promise: 勾选状态 true/false, 取消/点遮罩返回 null */
+window.confirmCheck = (title, bodyHtml, checkLabel, okLabel)=>{
+return new Promise((resolve)=>{
+const ov = document.createElement("div");
+ov.className = "cfcheck";
+ov.innerHTML = `<div class="cfbox"><div class="cfttl">${esc(title)}</div><div class="cfbody">${bodyHtml}</div>`
++ `<label class="cfrow"><input type="checkbox" id="cfcheck_box" checked> ${esc(checkLabel)}</label>`
++ `<div class="cfbtns"><button class="btn ghost" id="cfcheck_cancel">取消</button>`
++ `<button class="btn" id="cfcheck_ok">${esc(okLabel||"确定")}</button></div></div>`;
+document.body.appendChild(ov);
+const done = (v)=>{ ov.remove(); resolve(v); };
+ov.querySelector("#cfcheck_cancel").onclick = ()=>done(null);
+ov.onclick = (e)=>{ if(e.target === ov) done(null); };
+ov.querySelector("#cfcheck_ok").onclick = ()=>done(!!ov.querySelector("#cfcheck_box").checked);
+});
+};
+
+/* Tier2 #9: 开新聊天 — 同一角色开新会话, 可选带走 Pin 与记忆。
+ * 先自动备份当前聊天为存档, 再清空历史+记忆(可选恢复记忆快照), 空历史触发开场白。 */
+window.newChatSameRole = async ()=>{
+if(CHAT.mode !== "single") return;
+const ok = await confirmCheck("开新聊天",
+`和 <b>${esc(CHAT.name)}</b> 开启一段新的聊天？<br>当前聊天会自动备份为一条存档。`,
+"带走 Pin 与记忆", "开新聊天");
+if(ok === null) return;
+const k = chatHistKey();
+const def = new Date().toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
+const ss = getSaves();
+const slot = {id: Date.now(), name: "自动备份 " + def, ts: Date.now(),
+parentId: getBranchSrc()[k] || null,
+history: getHist(k),
+mem: RP_MEM.get(CHAT.runId, CHAT.name),
+plot: getPlot()};
+ss.push(slot);
+try{ localStorage.setItem(savesKey(), JSON.stringify(ss)); }
+catch(e){ alert("自动备份失败，请先手动新建存档"); return; }
+let memSnap = null;
+if(ok){
+const st = RP_MEM.get(CHAT.runId, CHAT.name) || {};
+memSnap = {pinned: ((st.short||[]).filter(m=>m&&m.pin)),
+profile3: st.profile3, event3: st.event3, record3: st.record3, mood: st.mood, migrated3: st.migrated3};
+}
+saveHist(k, []);
+RP_MEM.clear(CHAT.runId, CHAT.name);
+if(ok && memSnap){
+const st2 = RP_MEM.get(CHAT.runId, CHAT.name) || {};
+st2.short = (memSnap.pinned||[]).slice();
+st2.profile3 = memSnap.profile3; st2.event3 = memSnap.event3; st2.record3 = memSnap.record3;
+st2.mood = memSnap.mood; st2.migrated3 = memSnap.migrated3;
+st2.up_to = 0; st2.up_to_msg_id = null; st2.watermark = null;
+RP_MEM.save(CHAT.runId, CHAT.name, st2);
+}
+setBranchSrc(k, slot.id);
+LAST_STATS = null;
+showChat();
+};
+
+window.newSaveSlot = async ()=>{
 const def = new Date().toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
 const name = prompt("存档名称", "存档 " + def);
 if(name === null) return;
+/* Tier2 #9: 存档时可选是否带走 Pin 与记忆 (C.AI "Copy facts and Story Memory to new chat") */
+const carry = CHAT.mode === "single" ? await confirmCheck("新建存档",
+"是否把当前的记忆快照一起存入存档？<br>加载该存档时会恢复这些记忆。",
+"带走 Pin 与记忆", "保存存档") : null;
+if(CHAT.mode === "single" && carry === null) return;
 const k = chatHistKey();
 const ss = getSaves();
 const id = Date.now();
 const slot = {id: id, name: (name||"").trim() || ("存档"+(ss.length+1)), ts: Date.now(),
 parentId: getBranchSrc()[k] || null, /* P1-5: 记录分支来源 */
 history: getHist(k),
-mem: CHAT.mode==="single" ? RP_MEM.get(CHAT.runId, CHAT.name) : null,
+mem: (CHAT.mode==="single" && carry) ? RP_MEM.get(CHAT.runId, CHAT.name) : null,
 plot: getPlot()};
 ss.push(slot);
 try{ localStorage.setItem(savesKey(), JSON.stringify(ss)); }
@@ -2153,6 +2824,52 @@ try{ savePlot(s.plot === undefined ? null : s.plot); }catch(e){}
 LAST_STATS = null;
 setBranchSrc(k, s.id); /* P1-5: 加载后, 后续存档从这里分叉 */
 showChat();
+};
+/* ============ Tier3-21: 长按 Rewind 回溯分支（对标 Talkie Rewind）============
+ * 回溯到第 idx 条消息：之后的消息移入一个新分支存档（复用平行存档/分支机制，
+ * parentId 链向当前分支源），当前聊天只保留到 idx。
+ * 双上限（抄 Talkie 文案，中文化）：单次最多 20 条；仅支持近 7 天消息。 */
+const REWIND_MAX = 20, REWIND_DAYS = 7;
+function rewindCheck(h, idx){
+const tail = h.length - (idx + 1);
+if(tail > REWIND_MAX) return {ok:false, code:"count", max:REWIND_MAX};
+const m = h[idx];
+const ts = m && m.ts;
+if(ts && Date.now() - ts > REWIND_DAYS * 86400 * 1000)
+return {ok:false, code:"age", days:REWIND_DAYS};
+return {ok:true};
+}
+window.rewindMsg = (idx)=>{
+const k = chatHistKey();
+const h = getHist(k);
+const m = h[idx]; if(!m) return;
+const chk = rewindCheck(h, idx);
+if(!chk.ok){
+if(chk.code === "count")
+alert("单次最多只能回溯 " + chk.max + " 条消息。\n请选择更靠后的消息再回溯。");
+else
+alert("目前仅支持回溯近 " + chk.days + " 天内的消息。");
+return;
+}
+const tail = h.slice(idx + 1);
+if(!tail.length){ alert("这条已经是最后一条消息，没有可回溯的内容。"); return; }
+if(!confirm("回溯到这条消息？\n之后 " + tail.length + " 条消息将移入新分支，当前聊天只保留到这里。")) return;
+const ss = getSaves();
+const id = Date.now();
+const nm = new Date().toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
+const slot = {id: id, name: "回溯分支·" + nm, ts: Date.now(),
+parentId: getBranchSrc()[k] || null, /* 复用平行存档分支机制：链向当前分支源 */
+history: tail,
+mem: CHAT.mode === "single" ? RP_MEM.get(CHAT.runId, CHAT.name) : null,
+plot: getPlot()};
+ss.push(slot);
+try{ localStorage.setItem(savesKey(), JSON.stringify(ss)); }
+catch(e){ alert("存档失败：存储空间不足，试试删除旧存档"); return; }
+saveHist(k, h.slice(0, idx + 1));
+setBranchSrc(k, id);
+if(slot.parentId) achvUnlock("branch_1");
+alert("已回溯：之后 " + tail.length + " 条消息已移入新分支「" + slot.name + "」，可在「平行存档」里查看或加载。");
+try{ renderChat(); }catch(e){}
 };
 window.renameSaveSlot = (id)=>{
 const ss = getSaves();
@@ -2176,29 +2893,32 @@ renderSaves();
 /* ============ Persona: 全局用户人设 + 按聊天覆盖 ============ */
 window.personaEditor = (scope, from)=>{
 const isOverride = !!scope;
-const p = (isOverride ? RP_PERSONA.getOverride(scope) : RP_PERSONA.getGlobal()) || {name:"", desc:"", extra:""};
+const p = (isOverride ? RP_PERSONA.getOverride(scope) : RP_PERSONA.getGlobal()) || {name:"", desc:"", extra:"", called:""};
 __backAction = ()=>{ from==="settings" ? showSettings() : showChat(); };
 document.body.classList.remove("chatmode");
 titleEl.innerHTML = icon("user")+" 我的人设";
 subEl.textContent = isOverride ? "仅本次聊天生效（覆盖全局人设）" : "全局生效：以后所有聊天都会告诉 AI 你是谁";
 view.innerHTML = `<button class="back" onclick="__backAction()">${icon("back")} 返回</button>
 <div class="field"><label>称呼 / 名字</label>
-<input id="p_name" placeholder="希望 AI 怎么称呼你" value="${esc(p.name||"")}" oninput="tokCount(['p_name','p_desc','p_extra'],'p_tok')"></div>
+<input id="p_name" placeholder="希望 AI 怎么称呼你" value="${esc(p.name||"")}" oninput="tokCount(['p_name','p_called','p_desc','p_extra'],'p_tok')"></div>
+<div class="field"><label>TA 怎么称呼我</label>
+<input id="p_called" placeholder="如：主人、小可爱、林先生（TA 对你的专属称呼）" value="${esc(p.called||"")}" oninput="tokCount(['p_name','p_called','p_desc','p_extra'],'p_tok')"></div>
 <div class="field"><label>自我描述</label>
-<textarea id="p_desc" rows="4" placeholder="年龄、职业、性格、说话习惯……" oninput="tokCount(['p_name','p_desc','p_extra'],'p_tok')">${esc(p.desc||"")}</textarea></div>
+<textarea id="p_desc" rows="4" placeholder="年龄、职业、性格、说话习惯……" oninput="tokCount(['p_name','p_called','p_desc','p_extra'],'p_tok')">${esc(p.desc||"")}</textarea></div>
 <div class="field"><label>补充说明（可选）</label>
-<textarea id="p_extra" rows="3" placeholder="希望 AI 记住的偏好、你们的关系设定……" oninput="tokCount(['p_name','p_desc','p_extra'],'p_tok')">${esc(p.extra||"")}</textarea></div>
+<textarea id="p_extra" rows="3" placeholder="希望 AI 记住的偏好、你们的关系设定……" oninput="tokCount(['p_name','p_called','p_desc','p_extra'],'p_tok')">${esc(p.extra||"")}</textarea></div>
 <div class="tokline" id="p_tok"></div>
 <div class="btnrow"><button class="btn" onclick="savePersonaUI(${isOverride?`'${scope}'`:"null"},'${from}')">保存</button>
 ${isOverride && RP_PERSONA.getOverride(scope) ? `<button class="btn ghost" onclick="RP_PERSONA.saveOverride('${scope}',null);__backAction()">清除本次覆盖</button>` : ""}
 </div>
 <div class="hint">保存后，人设会以【玩家人设】段注入每轮 prompt，紧跟在角色身份说明之后。</div>
 <div style="height:40px"></div>`;
-tokCount(['p_name','p_desc','p_extra'],'p_tok');
+tokCount(['p_name','p_called','p_desc','p_extra'],'p_tok');
 window.scrollTo(0,0);
 };
 window.savePersonaUI = (scope, from)=>{
 const p = {name: document.getElementById("p_name").value.trim(),
+           called: document.getElementById("p_called").value.trim(),
            desc: document.getElementById("p_desc").value.trim(),
            extra: document.getElementById("p_extra").value.trim()};
 if(scope) RP_PERSONA.saveOverride(scope, p); else RP_PERSONA.saveGlobal(p);
@@ -2260,10 +2980,21 @@ const n = (st && st.short && st.short.length) || 0;
 /* P0-2: 铁律记忆框 (400 字常驻, 进 important 池最高优先级) */
 const _dc = RP.findCard(runId, nm) || {};
 const _iron = RP_MEM.getIronLaw(runId, nm, _dc.id || null);
+/* Tier2 #11: 本聊摘要框 — 和铁律卡并列 */
+const _chatsum = RP_MEM.getChatSummary(runId, nm);
+/* Tier2 #15: 简洁回复开关 (Janitor "Snappier, more concise replies.") */
+const _copt = getChatOpt(runId, nm);
 body = `<div class="card"><div class="name" style="font-size:14px">铁律记忆 · 永远最先注入</div>`
 + `<div class="meta">对${esc(nm)}的硬性要求（如绝不做的事、必须遵守的设定），400 字以内，每次对话必带</div>`
 + `<div class="field" style="margin:8px 0 0"><textarea id="ironlaw_box" rows="4" maxlength="400" placeholder="如：绝不在人前提起穿越者的身份；对黛玉永远温柔…" oninput="ironlawCount()">${esc(_iron)}</textarea></div>`
 + `<div class="btnrow"><span class="kv" id="ironlaw_cnt">${_iron.length}/400</span><span style="flex:1"></span><button class="btn" onclick="saveIronLawUI()">保存铁律</button></div></div>`
++ `<div class="card"><div class="name" style="font-size:14px">本聊摘要 · 手写长期记忆</div>`
++ `<div class="meta">一句话概括这段聊天（1000 字以内），每次对话会最先注入，作为长期记忆</div>`
++ `<div class="field" style="margin:8px 0 0"><textarea id="chatsum_box" rows="3" maxlength="1000" placeholder="如：我们是青梅竹马，正在一起调查家族旧事…" oninput="chatsumCount()">${esc(_chatsum)}</textarea></div>`
++ `<div class="btnrow"><span class="kv" id="chatsum_cnt">${_chatsum.length}/1000</span><span style="flex:1"></span><button class="btn" onclick="saveChatSumUI()">保存摘要</button></div></div>`
++ `<div class="card"><div class="name" style="font-size:14px">回复风格</div>`
++ `<div class="field"><label><input id="concise_sw" type="checkbox" style="width:auto" ${_copt.concise?"checked":""}> 简洁回复（Snappier：回答简短精炼，节奏轻快；关掉则回复更长）</label></div>`
++ `<div class="btnrow"><button class="btn" onclick="saveConciseUI()">保存</button></div></div>`
 + `<div class="card"><div class="name" style="font-size:14px">${st&&st.mood&&st.mood.state?esc(st.mood.state):"还没有心境记录"}</div>`
 + `<div class="meta">${n} 条近期记忆${st&&st.long?" · 有长远印象":""}</div>`
 + `<div class="btnrow" style="margin-top:8px"><button class="btn" onclick="detailOpenAlbum()">${icon("books")} 打开记忆事件簿</button></div></div>`;
@@ -2380,6 +3111,166 @@ ${(s.loreHits && s.loreHits.length) ? `<div class="kv" style="margin-top:6px">�
 window.scrollTo(0,0);
 };
 
+/* ============ Tier3-24: 角色召回本地通知（对标 Talkie 角色口吻推送）============
+ * 只做本地通知，不做推送。触发时机保守：App 从后台回到前台（原生 onResume 回调
+ * __onAppResumed，或冷启动）且距上次聊天超过 X 小时，发一条本地通知。
+ * 真发动作走原生 JsBridge.notifyLocal；浏览器预览时无桥接，不真发。 */
+const NOTIFY_KEY = "nd_notify_cfg";
+const getNotifyCfg = ()=> Object.assign(
+{on:false, hours:6, template:"{{npc_name}}：你回来了，{{username}}！", lastFired:0},
+JSON.parse(localStorage.getItem(NOTIFY_KEY)||"{}"));
+const saveNotifyCfg = (c)=> localStorage.setItem(NOTIFY_KEY, JSON.stringify(c));
+/* 模板渲染：{{npc_name}} / {{username}}（参考 Talkie：{{npc_name}}: You're back, {{username}}!） */
+function renderNotifyText(tpl, npcName, username){
+return String(tpl||"")
+.replace(/\{\{\s*npc_name\s*\}\}/g, String(npcName||"TA"))
+.replace(/\{\{\s*username\s*\}\}/g, String(username||""));
+}
+/* 最近一次聊天活动：扫 nd_chat_ 前缀与 nd_group_ 前缀，取最后一条消息的 ts 与角色名 */
+function lastChatInfo(){
+let best = null;
+const n = localStorage.length;
+for(let i=0;i<n;i++){
+const k = localStorage.key(i);
+if(!k) continue;
+let m = k.match(/^nd_chat_([^_]+)_(.+)$/) || k.match(/^nd_group_([^_]+)_(.+)$/);
+if(!m) continue;
+let h = null;
+try{ h = JSON.parse(localStorage.getItem(k)||"[]"); }catch(e){}
+if(!Array.isArray(h) || !h.length) continue;
+const last = h[h.length-1];
+const ts = (last && last.ts) || 0;
+if(!ts || (best && ts <= best.ts)) continue;
+const isGroup = k.indexOf("nd_group_")===0;
+best = {key:k, ts:ts, name: isGroup ? (last.speaker || m[2].split("_")[0]) : m[2], group:isGroup};
+}
+return best;
+}
+function usernameOf(){
+try{
+const p = (typeof RP_PERSONA!=="undefined") ? RP_PERSONA.getGlobal() : null;
+return (p && p.name) || "";
+}catch(e){ return ""; }
+}
+window.maybeRecallNotify = ()=>{
+try{
+const cfg = getNotifyCfg();
+if(!cfg.on) return false;
+const bridge = (typeof window!=="undefined") ? window.Android : null;
+if(!bridge || typeof bridge.notifyLocal!=="function") return false; /* 浏览器预览不真发 */
+const last = lastChatInfo();
+if(!last) return false;
+const now = Date.now(), gap = Math.max(1, cfg.hours||6) * 3600 * 1000;
+if(now - last.ts < gap) return false;
+if(now - (cfg.lastFired||0) < gap) return false; /* 同一窗口只发一次 */
+const text = renderNotifyText(cfg.template, last.name, usernameOf());
+bridge.notifyLocal(String(last.name||"TA"), text);
+cfg.lastFired = now; saveNotifyCfg(cfg);
+return true;
+}catch(e){ return false; }
+};
+/* 原生 onResume 回调入口 */
+window.__onAppResumed = ()=>{ maybeRecallNotify(); };
+window.saveNotifyUI = ()=>{
+const c = getNotifyCfg();
+c.on = !!document.getElementById("r_notify_on").checked;
+const hh = parseInt(((document.getElementById("r_notify_hours")||{}).value||""), 10);
+c.hours = (hh>=1 && hh<=168) ? hh : 6;
+const t = ((document.getElementById("r_notify_tpl")||{}).value||"").trim();
+if(t) c.template = t;
+saveNotifyCfg(c);
+alert(c.on ? "已开启：从后台回到前台、且超过 " + c.hours + " 小时没聊天时，会收到一条角色召回本地通知。" : "角色召回通知已关闭。");
+};
+
+/* ============ Tier3-25: 可编辑 heartbeat 主动消息（执行面，保守：仅前台） ============ */
+function hbCheapModel(){
+try{
+const hb = (typeof RP_HB!=="undefined") ? RP_HB.getCfg() : {};
+const rc = (typeof getRpCfg==="function") ? getRpCfg() : {};
+return ((hb.model||"").trim()) || rc.summaryModel || "";
+}catch(e){ return ""; }
+}
+/* 心跳目标聊天：优先当前聊天，否则最近一次有记录的聊天 */
+function hbTargetChat(){
+try{
+if(typeof CHAT!=="undefined" && CHAT && (CHAT.name || CHAT.mode==="group") && typeof chatHistKey==="function"){
+const k = chatHistKey(); const h = (typeof getHist==="function") ? getHist(k) : [];
+if(h && h.length) return {key:k, name: CHAT.mode==="group" ? (CHAT.members||[]).join("、") : CHAT.name};
+}
+}catch(e){}
+const last = (typeof lastChatInfo==="function") ? lastChatInfo() : null;
+return last ? {key:last.key, name:last.name} : null;
+}
+function renderHbLog(){
+const box = document.getElementById("hb_log"); if(!box || typeof RP_HB==="undefined") return;
+const c = RP_HB.getCfg();
+const rows = (c.log||[]).slice().reverse().map(e=>{
+const t = new Date(e.ts).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
+return `<div class="storow"><span>${t} · ${e.need?"想主动说话":"无需打扰"}</span><span>${esc(String(e.message||"").slice(0,24))}</span></div>`;
+}).join("");
+box.innerHTML = (rows ? `<div class="kv" style="margin:8px 0 4px">最近检查记录</div>` + rows
+: `<div class="hint">还没有检查记录。</div>`)
++ (c.enabled ? `<div class="kv">已启用 · ${RP_HB.FREQS[c.freq].name}（每 ${RP_HB.intervalOf(c.freq)} 轮用户消息检查一次）· 距上次 ${c.roundsSince||0} 轮</div>` : "");
+}
+window.saveHbUI = ()=>{
+if(typeof RP_HB==="undefined"){ alert("心跳模块未加载"); return; }
+const c = RP_HB.getCfg();
+c.enabled = !!document.getElementById("r_hb_on").checked;
+c.freq = ((document.getElementById("r_hb_freq")||{}).value)||"mid";
+if(!RP_HB.FREQS[c.freq]) c.freq = "mid";
+c.model = (((document.getElementById("r_hb_model")||{}).value)||"").trim();
+const items = (((document.getElementById("r_hb_items")||{}).value)||"").split(/\n/).map(s=>s.trim()).filter(Boolean);
+if(items.length) c.items = items;
+RP_HB.saveCfg(c);
+renderHbLog();
+alert(c.enabled ? "心跳检查已启用（仅前台生效，后台不执行）。" : "心跳检查已关闭。");
+};
+let HB_TOAST_TIMER = null;
+function hbToast(msg){
+let el = document.getElementById("hbToast");
+if(!el){ el = document.createElement("div"); el.id = "hbToast"; el.className = "achv-toast"; document.body.appendChild(el); }
+el.innerHTML = msg;
+el.classList.add("show");
+if(HB_TOAST_TIMER) clearTimeout(HB_TOAST_TIMER);
+HB_TOAST_TIMER = setTimeout(()=>el.classList.remove("show"), 3200);
+}
+window.hbCheckOnce = async ()=>{
+if(typeof RP_HB==="undefined"){ alert("心跳模块未加载"); return; }
+const cfg = (typeof getCfg==="function") ? getCfg() : {};
+if(!cfg.key || !cfg.base || !cfg.model){ alert("先去「设置」配好 API 地址/Key/模型"); return; }
+const target = hbTargetChat();
+if(!target || !target.key){ alert("还没有任何聊天记录，先去聊几句再检查。"); return; }
+const model = hbCheapModel() || cfg.model;
+if(!confirm("用模型「" + model + "」做一次心跳检查？（约 1 次小模型调用）")) return;
+try{
+const r = await RP_HB.runCheck({charName: target.name, hist: getHist(target.key), model: model,
+complete: (c2, ms, t)=> RP_NET.complete(Object.assign({}, cfg, {model:(c2&&c2.model)||model}), ms, t)});
+try{ renderHbLog(); }catch(e){}
+alert(r.ok ? (r.need ? "检查完成：角色想主动说——\n" + r.message + "\n（已记入日志，未自动发送）" : "检查完成：这次无需打扰。")
+: "检查失败：" + (r.error||"未知错误"));
+}catch(e){ alert("检查失败：" + e.message); }
+};
+/* 每轮用户消息后调用：轮次到达则在前台触发一次检查（fire-and-forget，不阻塞聊天） */
+function hbAfterSend(){
+try{
+if(typeof RP_HB==="undefined") return;
+const hb = RP_HB.getCfg();
+if(!hb.enabled) return;
+hb.roundsSince = (hb.roundsSince||0) + 1;
+if(hb.roundsSince < RP_HB.intervalOf(hb.freq)){ RP_HB.saveCfg(hb); return; }
+RP_HB.saveCfg(hb); /* runCheck 成功后会清零并写 log */
+const cfg = (typeof getCfg==="function") ? getCfg() : {};
+if(!cfg.key || !cfg.base || !cfg.model || typeof RP_NET==="undefined") return;
+const target = hbTargetChat();
+if(!target || !target.key) return;
+const model = hbCheapModel() || cfg.model;
+RP_HB.runCheck({charName: target.name, hist: getHist(target.key), model: model,
+complete: (c2, ms, t)=> RP_NET.complete(Object.assign({}, cfg, {model:(c2&&c2.model)||model}), ms, t)})
+.then(r=>{ if(r && r.ok && r.need) hbToast("💓 心跳检查：" + esc(target.name) + "好像想主动和你说句话，去设置页看看"); })
+.catch(()=>{});
+}catch(e){}
+}
+
 /* ================= 设置 ================= */
 /* ============ P0-5 本地存储用量可视化 ============ */
 const STORAGE_GROUPS = [
@@ -2426,7 +3317,7 @@ return `<div class="setcard"><h3>本地存储用量</h3>
 ${su.groups.map(g=>`<div class="storow"><span>${g.label}</span><span>${g.keys} 项 · ${fmtBytes(g.bytes)}</span></div>`).join("")}
 <div class="storow" id="idbline"><span>浏览器大文件存储（估算）</span><span>统计中…</span></div>
 <div class="storow" id="idbcopied"><span>已备份到大文件存储</span><span>—</span></div>
-<div class="btnrow"><button class="btn ghost" onclick="if(confirm('清空所有单聊/群聊/穿越聊天记录？'))clearChat()">清空聊天记录</button>
+<div class="btnrow"><button class="btn ghost" onclick="if(confirm('清空所有单聊/群聊/穿越聊天记录？\n会清空记忆和关系，从头来过。'))clearChat()">清空聊天记录</button>
 <button class="btn ghost" onclick="storeCleanup()">释放大文件空间</button>
 <button class="btn danger" onclick="wipeAll()">清空全部数据</button></div>
 </div>`;
@@ -2455,9 +3346,16 @@ view.innerHTML = renderStorageCard() + `
 <div id="conn_result"></div>
 <div class="field"><label>模型</label>
 <div class="modelrow">
-<select id="c_model_sel" onchange="document.getElementById('c_model').value=this.value"></select>
-<input id="c_model" placeholder="或手动输入模型名" value="${esc(c.model||"")}">
+<select id="c_model_sel" onchange="document.getElementById('c_model').value=this.value;renderModelTags()"></select>
+<input id="c_model" placeholder="或手动输入模型名" value="${esc(c.model||"")}" oninput="renderModelTags()">
 </div></div>
+<div class="field"><label>模型能力标签（对标 Janitor 模型目录：推理 / 视觉 / 长上下文）</label>
+<div id="modeltags_row"></div>
+<div class="modelrow" style="margin-top:6px">
+<input id="modeltag_new" placeholder="自定义标签，如：联网搜索" style="flex:1">
+<button class="btn ghost" onclick="modelTagAdd()">＋ 标签</button>
+</div>
+<div class="hint">给当前模型打标签，选模型时一眼看清能力；自定义标签会记住。</div></div>
 <div class="field"><label>生图模型（可空，如 dall-e-3）</label>
 <input id="c_img" placeholder="不填则不启用生图" value="${esc(c.imgModel||"")}"></div>
 <div class="field"><label>TTS 模型（可空，如 tts-1）</label>
@@ -2506,6 +3404,8 @@ view.innerHTML = renderStorageCard() + `
 <input id="r_memcycle" type="number" min="5" value=""></div>
 <div class="field"><label>记忆三池预算比例（近期 / 长远 / 重要，如 50/30/20）</label>
 <input id="r_mempool" placeholder="50/30/20" value=""></div>
+<div class="field"><label>新聊天记忆窗口（单次 prompt 注入记忆条数；条数越低越不易出错，对标 Janitor "Set New Chat Memory window. Lower if you get errors."）</label>
+<input id="r_memwin" type="number" min="10" max="500" step="10" value=""></div>
 <div class="field"><label><input id="r_leanmem_on" type="checkbox" style="width:auto"> 启用三库记忆（LeanMem：画像 / 事件 / 记录分流，检索按问题类型自适应）</label></div>
 <div class="field"><label><input id="r_apex_on" type="checkbox" style="width:auto"> 启用记忆版本链（APEX-MEM：只追加不覆盖，旧版本可查；检索时消解矛盾记忆）</label></div>
 <div class="field"><label>二遍对齐 PPA（第一遍自由生成，第二遍对照铁律/弧光改写，只修人设与穿帮）</label>
@@ -2516,7 +3416,10 @@ view.innerHTML = renderStorageCard() + `
 <div class="hint">每 N 条消息，引擎自动整理一次记忆：LeanMem 三库分流（画像库 / 事件库 / 记录库）+ 当前心境（1 次模型调用），存在本机；关闭三库记忆则回退为三池旧行为。</div>
 <div class="hint">Key 只保存在本机, 聊天时由手机直接请求你填的接口, 不经过任何中转。
 免费/便宜的兼容接口 (如硅基流动、DeepSeek) 都可以直接填。</div>
-
+<div class="setcard"><h3>🧠 记忆说明</h3>
+<div class="hint">旧消息会逐渐从记忆中褪色，但你置顶 / 存入事件簿的记忆会一直保留。</div>
+<div class="hint">为什么TA会忘记东西？因为 AI 记忆有最大对话容量的限制，最近没提到的内容会出现失忆。为此你可以：置顶重要消息（长按消息）、填写本聊摘要、把关键事件设为永久记忆——这样即便近期未在对话中提到，TA 也会记住它们啦。</div>
+</div>
 <div class="setcard"><h3>${icon("clock",15)} 世界模拟 · 时间 / 天气 / 地理</h3>
 <div class="field"><label><input id="r_ws_on" type="checkbox" style="width:auto"> 启用世界模拟（每会话独立时钟，随聊天自动流逝）</label></div>
 <div class="field"><label>时间推进：每 N 轮用户消息</label>
@@ -2545,6 +3448,29 @@ view.innerHTML = renderStorageCard() + `
 <input id="r_dir_model" type="text" placeholder="留空 = 与主模型一致" value=""></div>
 <div class="hint">导演只规划剧情（节奏/事件/转场），永远不写正文、不替你做决定；指令注入 prompt 后从正文剥离，你看不到导演的存在。节奏哨兵约增加 1/5 token 消耗。</div>
 <div class="btnrow"><button class="btn" onclick="saveRpCfgUI()">保存 RP 设置</button></div>
+</div>
+
+<div class="setcard"><h3>${icon("bell",15)} 通知 · 角色召回</h3>
+<div class="field"><label><input id="r_notify_on" type="checkbox" style="width:auto"> 角色召回通知（App 从后台回到前台、且距上次聊天超过 N 小时，发一条本地通知）</label></div>
+<div class="field"><label>超过 N 小时未聊天则召回</label>
+<input id="r_notify_hours" type="number" min="1" max="168" step="1" value=""></div>
+<div class="field"><label>通知文案模板（可用 {{npc_name}} / {{username}}）</label>
+<textarea id="r_notify_tpl" rows="2" placeholder="{{npc_name}}：你回来了，{{username}}！"></textarea></div>
+<div class="hint">只做本地通知，不经过任何服务器，也没有推送通道；浏览器里预览时不会真发（需要 Android 原生端）。</div>
+<div class="btnrow"><button class="btn" onclick="saveNotifyUI()">保存通知设置</button></div>
+</div>
+
+<div class="setcard"><h3>${icon("clock",15)} 主动消息 · 心跳检查（可编辑）</h3>
+<div class="field"><label><input id="r_hb_on" type="checkbox" style="width:auto"> 启用心跳检查（仅前台生效，后台不执行）</label></div>
+<div class="field"><label>检查频率</label>
+<select id="r_hb_freq"></select></div>
+<div class="field"><label>心跳用模型（留空=跟随摘要模型；建议填便宜小模型）</label>
+<input id="r_hb_model" placeholder="留空跟随" value=""></div>
+<div class="field"><label>检查事项（每行一条，可编辑）</label>
+<textarea id="r_hb_items" rows="4"></textarea></div>
+<div class="hint">仅前台生效，后台不执行。用户消息轮次到达间隔、或手动点"检查一次"时，用便宜模型做一次检查；即使判定"想主动说话"，也只记入日志、不自动发送。</div>
+<div class="btnrow"><button class="btn" onclick="saveHbUI()">保存心跳设置</button><button class="btn ghost" onclick="hbCheckOnce()">检查一次</button></div>
+<div id="hb_log"></div>
 </div>
 
 <h2 class="sec">数据</h2>
@@ -2608,6 +3534,7 @@ window.storeCleanup = async ()=>{
 })();
 document.getElementById("r_memcycle").value = rc.memCycle||10;
 document.getElementById("r_mempool").value = rc.memPoolRatio||"50/30/20";
+document.getElementById("r_memwin").value = rc.memWindowN||60; /* Tier2 #12 */
 document.getElementById("r_leanmem_on").checked = rc.leanmem!==false;
 document.getElementById("r_apex_on").checked = rc.apex!==false;
 document.getElementById("r_ppa_mode").value = rc.ppaMode||"key";
@@ -2615,7 +3542,26 @@ document.getElementById("r_ppa_model").value = rc.ppaModel||"";
 (function(){ const gp = RP_PERSONA.getGlobal();
 const el = document.getElementById("persona_sum");
 if(el) el.textContent = gp ? ("当前：" + (gp.name||"") + " " + String(gp.desc||"").slice(0,40)) : "未设置（建议填一下，AI 聊天时会知道你是谁）"; })();
+/* Tier3-24: 通知设置初始化 */
+(function(){
+const nc = getNotifyCfg();
+document.getElementById("r_notify_on").checked = !!nc.on;
+document.getElementById("r_notify_hours").value = nc.hours||6;
+document.getElementById("r_notify_tpl").value = nc.template||"";
+})();
+/* Tier3-25: 心跳设置初始化 */
+(function(){
+if(typeof RP_HB==="undefined") return;
+const hb = RP_HB.getCfg();
+document.getElementById("r_hb_on").checked = !!hb.enabled;
+document.getElementById("r_hb_freq").innerHTML = Object.keys(RP_HB.FREQS).map(k=>
+`<option value="${k}"${hb.freq===k?" selected":""}>${RP_HB.FREQS[k].name}（每 ${RP_HB.FREQS[k].rounds} 轮）</option>`).join("");
+document.getElementById("r_hb_model").value = hb.model||"";
+document.getElementById("r_hb_items").value = (hb.items||[]).join("\n");
+renderHbLog();
+})();
 renderPinSettings();
+try{ if(typeof renderModelTags === "function") renderModelTags(); }catch(e){} /* Tier2 #18 */
 const c = getCfg();
 if(c.base && c.key){ fetchModels(true); }
 else {
@@ -2648,8 +3594,39 @@ function _cfgFromUI(){
 return {base:$("#c_base").value.trim(), key:$("#c_key").value.trim(),
 model:$("#c_model").value.trim()||$("#c_model_sel").value};
 }
-window.fetchModels = async (silent)=>{
-const cfg = _cfgFromUI();
+/* Tier2 #18: 模型能力标签 (对标 Janitor 模型目录过滤器：推理 / 视觉 / 长上下文)。
+ * 用户自配模型时给模型打标签，不再盲选。 */
+window.renderModelTags = ()=>{
+const row = document.getElementById("modeltags_row");
+const mv = document.getElementById("c_model");
+if(!row || !mv || typeof RP_MODELTAGS === "undefined") return;
+const id = mv.value;
+const tags = RP_MODELTAGS.allTagsFor(id);
+const cur = RP_MODELTAGS.get(id);
+row.innerHTML = tags.map(t=>
+`<label class="tagchip"><input type="checkbox" data-tag="${esc(t)}" ${cur.indexOf(t)>=0?"checked":""}> ${esc(t)}</label>`).join("")
+|| `<span class="dim">暂无标签</span>`;
+Array.prototype.forEach.call(row.querySelectorAll("input[data-tag]"), (cb)=>{
+cb.onchange = ()=>{
+const on = Array.prototype.filter.call(row.querySelectorAll("input[data-tag]"), x=>x.checked).map(x=>x.getAttribute("data-tag"));
+RP_MODELTAGS.save(id, on);
+renderModelTags();
+};
+});
+};
+window.modelTagAdd = ()=>{
+const inp = document.getElementById("modeltag_new");
+const mv = document.getElementById("c_model");
+if(!inp || !mv || typeof RP_MODELTAGS === "undefined") return;
+const t = inp.value.trim();
+if(!t) return;
+const id = mv.value;
+const cur = RP_MODELTAGS.get(id);
+if(cur.indexOf(t) < 0){ cur.push(t); RP_MODELTAGS.save(id, cur); }
+inp.value = "";
+renderModelTags();
+};
+window.fetchModels = async (silent)=>{const cfg = _cfgFromUI();
 const box = $("#conn_result");
 if(!cfg.base){ if(!silent) alert("先填 API 地址"); return []; }
 try{
@@ -2703,6 +3680,7 @@ ooc:$("#r_ooc").checked, preset:$("#r_preset").value,
 ttsAuto:$("#r_ttsauto").checked, typewriter:$("#r_typewriter").checked,
 memCycle:Math.max(5,parseInt($("#r_memcycle").value)||10),
 memPoolRatio:(($("#r_mempool")&&$("#r_mempool").value)||"50/30/20").trim()||"50/30/20",
+memWindowN:Math.min(500,Math.max(10,parseInt(($("#r_memwin")&&$("#r_memwin").value)||"60")||60)), /* Tier2 #12 */
 leanmem:$("#r_leanmem_on")?$("#r_leanmem_on").checked:true,
 apex:$("#r_apex_on")?$("#r_apex_on").checked:true,
 ppaMode:$("#r_ppa_mode")?$("#r_ppa_mode").value:"key",
@@ -2889,6 +3867,13 @@ const ss = RP_WRITER.listSessions();
 const cs = RP_WRITER.getCustomChars();
 const q = x=>String(x).replace(/'/g,"\\'");
 view.innerHTML = `
+<div class="card"><div class="secttl">✨ AI 生成角色</div>
+<div class="kv">一句话描述你想要的角色, AI 一次生成整张卡: 名字、性格、开场白、示例对话、背景。不满意可换一批, 也可转手动微调。</div>
+<div class="field"><label>Describe your character...（一句话描述）</label><textarea id="vibe_desc" rows="2" placeholder="Describe your character... 比如: 嘴硬心软的落魄书生, 表面清高实则渴望被需要"></textarea></div>
+<div class="btnrow"><button class="btn" id="vibe_btn" onclick="vibeGen()">✨ 生成角色卡</button>
+<button class="btn ghost" onclick="vibeToManual()">手动创建</button></div>
+<div id="vibe_status" class="hint"></div>
+<div id="vibe_preview"></div></div>
 <div class="card"><div class="secttl">${icon("dice")} 一键生成角色卡</div>
 <div class="kv">只填名字和一句话设定, 一次调用生成完整卡。可重试、可中断, 失败不影响现有流程。</div>
 <div class="field"><label>名字</label><input id="qg_name" placeholder="如: 沈清辞"></div>
@@ -2941,6 +3926,79 @@ status.textContent = signal.aborted ? "已中断" : "生成失败: " + e.message
 btn.disabled = false; cancel.style.display = "none"; QG_ABORT = null;
 };
 
+/* ============ VibeCreate 式"一句话生成角色" (对标 C.AI VibeCreate) ============ */
+let VIBE_STATE = {desc: "", attempt: 0, card: null, busy: false};
+const VIBE_PHASES = ["正在生成角色…", "正在构思性格…", "正在写开场白…", "正在润色卡片…"];
+function vibePreviewHTML(card){
+return `<div class="card" style="background:#fffdf7"><div class="name" style="font-size:16px">🎭 ${esc(card.name || "未命名")}</div>
+<div class="kv">性格</div><div style="font-size:13px;margin-bottom:6px">${esc(card.personality || "—")}</div>
+<div class="kv">背景</div><div style="font-size:13px;margin-bottom:6px">${esc(card.background || "—")}</div>
+<div class="kv">开场白</div><div class="bub" style="font-size:13px;margin-bottom:6px">${esc(card.greeting || "—")}</div>
+<div class="kv">示例对话</div><div style="font-size:12px;white-space:pre-wrap;color:#555">${esc(card.exampleDialogue || "—")}</div>
+<div class="btnrow" style="margin-top:10px">
+<button class="btn ghost" onclick="vibeGen(true)">🎲 换一批</button>
+<button class="btn ghost" onclick="vibeToManual()">✏️ 手动微调</button>
+<button class="btn" onclick="vibeSave()">${icon("save")} 保存角色卡</button>
+</div></div>`;
+}
+window.vibeGen = async (shuffle)=>{
+if(typeof RP_VIBE === "undefined"){ rpToast("模块未加载"); return; }
+if(VIBE_STATE.busy) return;
+const cfg = getCfg();
+if(!cfg.key || !cfg.base){ alert("先去「设置」填 API 地址和 Key"); return; }
+const descEl = document.getElementById("vibe_desc");
+const desc = shuffle ? VIBE_STATE.desc : (descEl ? descEl.value.trim() : "");
+if(!desc){ rpToast("先用一句话描述你想要的角色"); return; }
+if(shuffle) VIBE_STATE.attempt++;
+else { VIBE_STATE.desc = desc; VIBE_STATE.attempt = 0; }
+VIBE_STATE.busy = true;
+const btn = document.getElementById("vibe_btn"), status = document.getElementById("vibe_status"),
+  preview = document.getElementById("vibe_preview");
+if(btn) btn.disabled = true;
+let pi = 0;
+if(status) status.textContent = VIBE_PHASES[0];
+const timer = setInterval(()=>{ pi = Math.min(pi + 1, VIBE_PHASES.length - 1); if(status) status.textContent = VIBE_PHASES[pi]; }, 2500);
+try{
+const card = await RP_VIBE.generate(VIBE_STATE.desc, cfg,
+  function(c, ms, t){ return RP_NET.complete(c, ms, t); }, VIBE_STATE.attempt);
+clearInterval(timer);
+VIBE_STATE.card = card;
+if(status) status.textContent = "生成完成 ✅";
+if(preview) preview.innerHTML = vibePreviewHTML(card);
+}catch(e){
+clearInterval(timer);
+if(status) status.textContent = "";
+/* 失败/解析失败: toast 提示, 不中断 (对标 "Failed to generate character (vibe-create)" + "Tap to retry") */
+rpToast("生成失败, 点「生成角色卡」重试");
+}
+VIBE_STATE.busy = false;
+if(btn) btn.disabled = false;
+};
+/* 手动微调: 存为草稿后转入现有写卡表单 (角色卡编辑器) */
+window.vibeToManual = ()=>{
+const card = VIBE_STATE.card;
+if(!card){ rpToast("先生成一张卡, 或点「新建写卡」分步创作"); return; }
+const id = vibeSave(true);
+if(id) editCard("custom", id);
+};
+window.vibeSave = (silent)=>{
+const card = VIBE_STATE.card;
+if(!card){ rpToast("没有可保存的卡片"); return null; }
+const fields = RP_VIBE.toCardFields(card);
+const list = RP_WRITER.getCustomChars() || [];
+const id = "c" + Date.now().toString(36);
+list.unshift({id: id, name: card.name || "未命名", novel: "自定义", worldRunId: "",
+  fields: fields,
+  altGreetings: card.greeting ? [card.greeting] : [],
+  exampleDialogue: card.exampleDialogue || "",
+  createdAt: Date.now()});
+RP_WRITER.saveCustomChars(list);
+try{ achvUnlock("card_1"); }catch(e){}
+VIBE_STATE.card = null;
+if(!silent){ rpToast("已保存"); showWriter(); }
+return id;
+};
+
 /* ============ P1-2: 角色卡编辑器(自创卡/导入卡通用) ============ */
 window.editCard = (src, id)=>{
 const card = src==="custom"
@@ -2961,6 +4019,9 @@ const alt = (card.altGreetings||[]).join("\n");
 const exd = card.exampleDialogue||"";
 view.innerHTML = `
 <div class="hint">修改后点「保存」写回, prompt 注入、开场白、导出都用新内容。<span id="ce_tok" class="dim"></span></div>
+<div class="setcard"><div class="secttl">角色模板 · 一键填充</div>
+<div class="btnrow">${RP_WRITER.CARD_TEMPLATES.map(t=>`<button class="btn ghost" onclick="fillCardTemplate('${t.id}')">${esc(t.name)}<span class="dim"> · ${esc(t.desc)}</span></button>`).join("")}</div>
+<div class="hint">填充会覆盖当前表单内容（清空重写），请先确认。</div></div>
 <div class="setcard">
 <div class="field"><label>名字</label><input id="ce_name" value="${esc(card.name)}"></div>
 <div class="field"><label>多开场白 <span class="dim">alternate_greetings · 每行一条, 开聊时随机挑</span></label>
@@ -2971,6 +4032,21 @@ view.innerHTML = `
 <div class="setcard"><div class="secttl">角色字段</div>${rows}</div>
 <div class="btnrow"><button class="btn" onclick="saveCardEdit('${src}','${id}')">${icon("save")} 保存</button>
 <button onclick="__backAction()">取消</button></div>`;
+};
+/* Tier2 #17: 角色卡模板一键填充 (对标 C.AI CreateCharacter definition-template)。
+ * 数组字段按行展开；覆盖前 confirm。 */
+window.fillCardTemplate = (tid)=>{
+const t = (RP_WRITER.CARD_TEMPLATES||[]).find(x=>x.id===tid);
+if(!t) return;
+if(!confirm(`用「${t.name}」模板填充？\n当前表单内容会被覆盖。`)) return;
+Object.keys(RP_PROMPT.LABELS).forEach(k=>{
+const ta = document.getElementById("cef_"+k);
+if(!ta) return;
+let v = (t.fields && t.fields[k] != null) ? t.fields[k] : "";
+if(Array.isArray(v)) v = v.join("\n");
+ta.value = String(v);
+});
+tokCount("ce_name","ce_tok");
 };
 window.saveCardEdit = (src, id)=>{
 const get = (i)=>document.getElementById(i);
@@ -3154,6 +4230,8 @@ await boot();
 /* P2: 应用壁纸/字体；后台把大文件复制到 IndexedDB（复制模式：localStorage 副本保留，同步读取不受影响；失败自动回退 localStorage） */
 try{ applyAppearance(); }catch(e){}
 try{ if(typeof RP_STORE!=="undefined"){ RP_STORE.warmCache().catch(()=>{}); RP_STORE.migrate().catch(()=>{}); } }catch(e){}
+/* Tier3-24: 冷启动也算一次"回到前台"，检查是否需要角色召回本地通知 */
+try{ maybeRecallNotify(); }catch(e){}
 if(!localStorage.getItem("nd_onboarded")) showOnboard(1);
 })();
 

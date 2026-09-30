@@ -106,8 +106,10 @@ function buildExamples(card, name, budgetTokens){
   return parts.length > 1 ? parts.join("\n") : "";
 }
 
-/* P0-4 lorebook: priority / budget / constant / scan_depth / selective */
-/* 返回命中的世界书条目 (已按 priority 排序)。抽出来供"触发可视化"复用。 */
+/* P0-4 lorebook: Janitor 式完整 schema, 逻辑在 RP_LOREBOOK (www/rp/lorebook.js)。
+ * RP_LOREBOOK 存在时委托它 (probability/minMessages/互斥组/四值逻辑/RegEx/depth);
+ * 不存在时 (如只加载 prompt.js 的旧单测) 走下面的老逻辑兜底。 */
+/* 返回命中的世界书条目 (已按 priority 排序, 小的在前)。抽出来供"触发可视化"复用。 */
 function normEntry(e){
   return {
     title: e.title || "",
@@ -120,7 +122,7 @@ function normEntry(e){
     selective: e.selective || null,
   };
 }
-function matchLore(worldbook, recentText){
+function matchLoreLegacy(worldbook, recentText){
   if(!worldbook || !worldbook.length) return [];
   var wb = (Array.isArray(worldbook) ? worldbook : [worldbook]).map(normEntry);
   function hit(e){
@@ -138,10 +140,24 @@ function matchLore(worldbook, recentText){
   }
   return wb.filter(hit).sort(function(a, b){ return b.priority - a.priority; });
 }
+function matchLore(worldbook, recentText, msgCount){
+  if(typeof RP_LOREBOOK !== "undefined"){
+    return RP_LOREBOOK.match(worldbook, recentText, msgCount).map(function(e){
+      return {title: e.name, text: e.content, keys: e.key, priority: e.priority,
+        probability: e.probability, constant: e.constant, placement: e.placement,
+        placementPosition: e.placementPosition, inclusionGroup: e.inclusionGroup,
+        groupWeight: e.groupWeight, minMessages: e.minMessages,
+        selectiveLogic: e.selectiveLogic, name: e.name, content: e.content};
+    });
+  }
+  return matchLoreLegacy(worldbook, recentText);
+}
 var LORE_MAX_HITS = 8;  /* 单次注入上限: 按 priority 取前 N, 避免触发泛滥 */
-function buildLore(worldbook, recentText, budgetTokens){
-  if(budgetTokens <= 0) return {text: "", hits: []};
-  var sel = matchLore(worldbook, recentText);
+/* textOrMessages: 字符串(老调用) 或消息数组(支持条目级 depth 扫描窗口)。
+ * 返回 {text, hits:[标题...], hitDetails:[{title,probability,priority}...], placed:{段->文本}}。
+ * hits 保持标题字符串数组 (老契约); Inspector 用 hitDetails 展示 probability/priority。 */
+function buildLoreLegacy(worldbook, recentText, budgetTokens){
+  var sel = matchLoreLegacy(worldbook, recentText);
   var lines = [], hits = [], used = 0;
   for(var i = 0; i < sel.length && hits.length < LORE_MAX_HITS; i++){
     var e = sel[i];
@@ -153,6 +169,22 @@ function buildLore(worldbook, recentText, budgetTokens){
     used += need;
   }
   return {text: lines.join("\n"), hits: hits};
+}
+function buildLore(worldbook, textOrMessages, budgetTokens, msgCount){
+  if(typeof RP_LOREBOOK !== "undefined"){
+    var res = RP_LOREBOOK.build(worldbook, textOrMessages, budgetTokens, msgCount, estTokens);
+    return {text: res.text, placed: res.placed,
+      hits: res.hits.map(function(h){ return h.title; }), hitDetails: res.hits};
+  }
+  var rt = Array.isArray(textOrMessages)
+    ? textOrMessages.slice(-4).map(function(m){ return m.content; }).join("\n")
+    : textOrMessages;
+  return buildLoreLegacy(worldbook, rt, budgetTokens);
+}
+/* placed 世界书拼到对应 prompt 段 (personality->core, scenario->background, exampleDialogs->examples) */
+function lorePlacedText(loreRes, anchor){
+  if(!loreRes || !loreRes.placed || !loreRes.placed[anchor]) return "";
+  return "\n" + loreRes.placed[anchor];
 }
 
 function pickRelations(relations, name){
@@ -206,6 +238,10 @@ var PRESETS = {
     loreRatio: 0.15},
 };
 
+/* 借鉴清单 Tier2 #15: 简洁回复开关 (Janitor "Snappier, more concise replies. Leave off for longer responses.")。
+ * ctx.concise 为真时 system 追加本指令; max_tokens 由调用方调低。 */
+var CONCISE_INSTR = "简洁回复：回答简短精炼，直奔主题，避免冗长铺垫；除非用户明确要求，否则不要写长段落，保持节奏轻快。";
+
 /* 主入口: 返回 {messages, stats, preview} */
 function buildMessages(card, ctx, budget){
   ctx = ctx || {};
@@ -223,10 +259,18 @@ function buildMessages(card, ctx, budget){
   var perm = [];   // {kind, text, pri}
   function add(kind, text){ if(text && P[kind] != null) perm.push({kind: kind, text: text, pri: P[kind]}); }
 
+  // lore 用独立预算; 传消息数组以支持条目级 depth 扫描窗口; 触发可视化只显示实际注入的条目
+  var loreBudget = Math.min(900, Math.floor(avail * preset.loreRatio));
+  var histForLore = ctx.history || [];
+  var loreRes = buildLore(ctx.worldbook, histForLore, loreBudget, histForLore.length);
+  var loreHitTitles = loreRes.hits;
+  var loreHitDetails = loreRes.hitDetails || null;
+
   add("identity", "你是" + name + "，《" + (ctx.novel || "") + "》中的人物。");
   add("persona", ctx.persona ? "【玩家人设】\n" + ctx.persona : "");
   add("narrator", NARRATOR_INSTR);
-  add("core", "【核心人设】\n" + renderFields(card, LAYERS.identity.concat(LAYERS.core)));
+  add("core", "【核心人设】\n" + renderFields(card, LAYERS.identity.concat(LAYERS.core))
+    + lorePlacedText(loreRes, "core"));
   /* P0-1: memory 段走三池预算 (RP_MEM.renderBudgeted); 退化路径用 ctx.memory 纯文本 */
   var memBudget = (budget && budget.memBudget) || 1000;
   var memRes = null;
@@ -244,14 +288,10 @@ function buildMessages(card, ctx, budget){
   /* P0-3: 人物弧光段 (当前 timeline_stage, 无弧光卡为空) */
   add("arc", ctx.arc ? "【人物弧光】\n" + ctx.arc : "");
   add("speech", "【说话方式】\n" + renderFields(card, LAYERS.speech));
-  add("examples", buildExamples(card, name, 600));
-  add("background", "【背景】\n" + renderFields(card, LAYERS.background));
+  add("examples", buildExamples(card, name, 600) + lorePlacedText(loreRes, "examples"));
+  add("background", "【背景】\n" + renderFields(card, LAYERS.background) + lorePlacedText(loreRes, "background"));
   var rel = pickRelations(ctx.relations, name);
   add("relations", rel ? "【人物关系】\n" + rel : "");
-  // lore 用独立预算; 触发可视化只显示实际注入的条目 (预算+数量上限后)
-  var loreBudget = Math.min(900, Math.floor(avail * preset.loreRatio));
-  var loreRes = buildLore(ctx.worldbook, recentText, loreBudget);
-  var loreHitTitles = loreRes.hits;
   add("lore", loreRes.text);
 
   perm.sort(function(a, b){ return a.pri - b.pri; });
@@ -275,7 +315,9 @@ function buildMessages(card, ctx, budget){
     hUsed += mt;
   }
 
-  var messages = [{role: "system", content: sysParts.join("\n\n")}];
+  var sysText = sysParts.join("\n\n");
+  if(ctx.concise) sysText += "\n\n" + CONCISE_INSTR; /* #15 简洁回复指令 */
+  var messages = [{role: "system", content: sysText}];
   for(var k = 0; k < hist.length; k++) messages.push(hist[k]);
   var post = postInstructions(name, ctx.pov, ctx.person);
   messages.push({role: "system", content: post});
@@ -285,8 +327,8 @@ function buildMessages(card, ctx, budget){
     stats: {maxCtx: maxCtx, avail: avail, sysTokens: used, histTokens: hUsed,
             histKept: hist.length, histDropped: hDropped, droppedSegs: dropped,
             segTokens: segTokens, memPools: memRes ? memRes.pools : null,
-            loreHits: loreHitTitles, preset: preset.name},
-    preview: sysParts.join("\n\n") + "\n\n" + post,
+            loreHits: loreHitTitles, loreHitDetails: loreHitDetails, preset: preset.name, concise: !!ctx.concise},
+    preview: sysText + "\n\n" + post,
   };
 }
 
@@ -294,5 +336,6 @@ return {
   buildMessages: buildMessages, postInstructions: postInstructions, PRESETS: PRESETS,
   estTokens: estTokens, renderFields: renderFields, LAYERS: LAYERS, matchLore: matchLore,
   buildLore: buildLore, LABELS: LABELS, buildExamples: buildExamples,
+  CONCISE_INSTR: CONCISE_INSTR,
 };
 })();

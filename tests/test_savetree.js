@@ -50,9 +50,14 @@ for(const f of ["data.js", "icons.js", "rp/prompt.js", "rp/persona.js",
 vm.runInContext(fs.readFileSync(WWW + "/" + f, "utf8"), ctx, {filename: f});
 }
 vm.runInContext("window.__DATA__=" + JSON.stringify(DATA), ctx);
+/* #9: newSaveSlot 改为 async（含 confirmCheck 弹窗），测试里自动勾选 */
+vm.runInContext("confirmCheck = async ()=>true;", ctx);
 
 let pass = 0, fail = 0;
 const t = (n, c) => { c ? pass++ : (fail++, console.log("FAIL:", n)); };
+
+/* #9: newSaveSlot 为 async，测试体包进 async main */
+async function main(){
 
 vm.runInContext(`CHAT = {mode:"single", runId:"r1", name:"林黛玉", members:[], narrMode:false, asSpeaker:null}`, ctx);
 vm.runInContext("var __now = 1000000; Date.now = ()=>__now += 1000;", ctx);
@@ -71,13 +76,13 @@ const tree0 = vm.runInContext("saveTree()", ctx);
 t("旧存档全是根", tree0.roots.length === 2 && Object.keys(tree0.children).length === 0);
 
 // ---- 新建存档: 无分支源 -> parentId null, 并成为分支源 ----
-vm.runInContext("newSaveSlot()", ctx);
+await vm.runInContext("newSaveSlot()", ctx);
 let saves = JSON.parse(store[SKEY]);
 const A = saves[saves.length-1];
 t("首存档parentId null", A.parentId === null);
 t("首存档成名分支源", vm.runInContext("getBranchSrc()['" + HKEY + "']", ctx) === A.id);
 // ---- 再存: parentId 指向上一个 ----
-vm.runInContext("newSaveSlot()", ctx);
+await vm.runInContext("newSaveSlot()", ctx);
 saves = JSON.parse(store[SKEY]);
 const B = saves[saves.length-1];
 t("连续存档形成父子链", B.parentId === A.id);
@@ -87,7 +92,7 @@ t("树: 根剩3个(旧1旧2A)", tree1.roots.length === 3);
 // ---- 加载 A 后再存 -> 从 A 分叉 ----
 vm.runInContext("loadSaveSlot(" + A.id + ")", ctx);
 t("加载后分支源=A", vm.runInContext("getBranchSrc()['" + HKEY + "']", ctx) === A.id);
-vm.runInContext("newSaveSlot()", ctx);
+await vm.runInContext("newSaveSlot()", ctx);
 saves = JSON.parse(store[SKEY]);
 const C = saves[saves.length-1];
 t("加载后存档从A分叉", C.parentId === A.id);
@@ -107,3 +112,5 @@ t("渲染有缩进", html.indexOf("margin-left:20px") >= 0 || html.indexOf("marg
 
 console.log(`savetree: ${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);
+}
+main().catch(e=>{ console.error(e); process.exit(1); });
