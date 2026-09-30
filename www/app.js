@@ -847,22 +847,40 @@ return `<div class="chatbg" id="chatbg" aria-hidden="true"><div class="bglayer" 
 /* 用户上传壁纸：按聊天存（单聊/群聊/穿越各一套），IDB 落盘 + 内存镜像保证同步读取不闪。
    dataURL 在上传时已压缩到最长边 1080px JPEG，不会撑爆存储 */
 const wallStoreKey = ()=> "nd_wallpaper_" + chatHistKey();
-let WALL_MEM = {};
+let WALL_MEM = {}; /* k -> {url, dim(0-70), blur(0-12)} */
+/* 兼容老版本存的纯字符串 */
+function normWall(v){
+if(!v) return null;
+if(typeof v === "string") return v.indexOf("data:") === 0 ? {url:v, dim:0, blur:0} : null;
+return (v && v.url) ? {url:v.url, dim:Math.min(70, +v.dim || 0), blur:Math.min(12, +v.blur || 0)} : null;
+}
+function getWallOpts(){ return normWall(WALL_MEM[chatHistKey()]); }
+/* 滤镜 CSS：调暗 + 模糊，保证用户自选亮图上文字依然可读 */
+function wallFilterCSS(o){
+if(!o) return "";
+const dim = Math.min(70, Math.max(0, +o.dim || 0));
+const blur = Math.min(12, Math.max(0, +o.blur || 0));
+const parts = [];
+if(dim > 0) parts.push("brightness(" + (1 - dim/100).toFixed(2) + ")");
+if(blur > 0) parts.push("blur(" + blur + "px)");
+return parts.join(" ");
+}
 async function warmWallpaper(){
 const k = chatHistKey();
-if(k in WALL_MEM) return WALL_MEM[k];
+if(k in WALL_MEM) return getWallOpts();
 let v = "";
 try{ if(typeof RP_STORE!=="undefined") v = await RP_STORE.getItemAsync(wallStoreKey()) || ""; }catch(e){}
-WALL_MEM[k] = v || "";
-return WALL_MEM[k];
+try{ v = JSON.parse(v); }catch(e){ /* 老版本存的是纯 dataURL 字符串 */ }
+WALL_MEM[k] = v || null;
+return getWallOpts();
 }
 /* 选背景优先级：用户上传壁纸 > 角色卡/穿越世界自带 bg > 内置默认图；
    图片加载失败回退渐变，绝不破图。
    预留 setChatBg(url)：以后世界状态/剧情推进可按场景切换背景 */
 function pickChatBgURL(){
 try{
-const wp = WALL_MEM[chatHistKey()];
-if(wp) return wp;
+const o = getWallOpts();
+if(o && o.url) return o.url;
 if(CHAT.mode === "traverse" && typeof RP_TRAVERSE !== "undefined"){
 const trav = RP_TRAVERSE.get(CHAT.travId); if(trav && trav.bg) return trav.bg;
 }else if(CHAT.name && typeof allChars === "function"){
@@ -876,9 +894,10 @@ function paintChatBg(){
 const layer = document.getElementById("chatbglayer");
 if(!layer) return;
 const url = pickChatBgURL();
+const filter = wallFilterCSS(getWallOpts());
 const probe = new Image();
-probe.onload = ()=>{ layer.style.backgroundImage = `url("${url}")`; };
-probe.onerror = ()=>{ layer.style.backgroundImage = ""; };
+probe.onload = ()=>{ layer.style.backgroundImage = `url("${url}")`; layer.style.filter = filter; };
+probe.onerror = ()=>{ layer.style.backgroundImage = ""; layer.style.filter = ""; };
 probe.src = url;
 }
 window.setChatBg = (url)=>{
@@ -890,25 +909,50 @@ window.wallpaperEditor = ()=>{
 __backAction = ()=>showChat();
 document.body.classList.remove("chatmode");
 titleEl.innerHTML = "🖼️ 聊天壁纸"; subEl.textContent = "只换这个聊天的背景，存在本机";
-const cur = WALL_MEM[chatHistKey()];
+const o = getWallOpts(), cur = o && o.url;
+const dim = o ? o.dim : 0, blur = o ? o.blur : 0;
 view.innerHTML = `<button class="back" onclick="__backAction()">${icon("back")} 返回</button>
 <div class="card" style="text-align:center">
-${cur ? `<img src="${cur}" style="max-width:100%;border-radius:8px" alt="当前壁纸">`
-      : `<div style="padding:24px;color:var(--ink-faint)">当前使用默认壁纸</div>`}
+${cur ? `<img id="wall_preview" src="${cur}" style="max-width:100%;border-radius:8px;filter:${wallFilterCSS(o)}" alt="当前壁纸">`
+      : `<div style="padding:24px;color:var(--ink-faint)">当前使用默认壁纸<br><span style="font-size:12px">上传后可调暗度和模糊</span></div>`}
 </div>
+${cur ? `<div class="field"><label>暗度 <span id="wall_dim_v">${dim}%</span></label>
+<input type="range" id="wall_dim" min="0" max="70" value="${dim}" oninput="wallOptUI()"></div>
+<div class="field"><label>模糊 <span id="wall_blur_v">${blur}px</span></label>
+<input type="range" id="wall_blur" min="0" max="12" value="${blur}" oninput="wallOptUI()"></div>` : ""}
 <div class="btnrow">
 <button class="btn" onclick="document.getElementById('wall_file').click()">上传图片</button>
 ${cur ? `<button class="btn ghost" onclick="clearWallpaperUI()">恢复默认</button>` : ""}
 </div>
 <input type="file" id="wall_file" accept="image/*" style="display:none" onchange="uploadWallpaperUI(this)">
-<div class="hint">图片会压缩到最长边 1080px 后存到本机，只影响当前聊天。单聊、群聊、穿越各用各的壁纸。</div>
+<div class="hint">图片会压缩到最长边 1080px 后存到本机，只影响当前聊天。单聊、群聊、穿越各用各的壁纸。图太亮看不清字时，调高暗度或加一点模糊。</div>
 <div style="height:40px"></div>`;
 window.scrollTo(0,0);
 };
-window.saveWallpaper = async (url)=>{
+window.saveWallpaper = async (url, opts)=>{
 const k = chatHistKey();
-WALL_MEM[k] = url;
-try{ if(typeof RP_STORE!=="undefined") await RP_STORE.setItemAsync(wallStoreKey(), url); }catch(e){}
+const o = Object.assign({url:url, dim:0, blur:0}, opts || {});
+o.dim = Math.min(70, +o.dim || 0); o.blur = Math.min(12, +o.blur || 0);
+WALL_MEM[k] = o;
+try{ if(typeof RP_STORE!=="undefined") await RP_STORE.setItemAsync(wallStoreKey(), JSON.stringify(o)); }catch(e){}
+};
+/* 滑杆实时预览 + 防抖落盘 */
+let _wallOptT = 0;
+window.wallOptUI = ()=>{
+const dim = +document.getElementById("wall_dim").value || 0;
+const blur = +document.getElementById("wall_blur").value || 0;
+document.getElementById("wall_dim_v").textContent = dim + "%";
+document.getElementById("wall_blur_v").textContent = blur + "px";
+const pv = document.getElementById("wall_preview");
+if(pv) pv.style.filter = wallFilterCSS({dim:dim, blur:blur});
+clearTimeout(_wallOptT);
+_wallOptT = setTimeout(()=>{
+const k = chatHistKey();
+const cur = getWallOpts() || {url:""};
+const o = {url:cur.url, dim:dim, blur:blur};
+WALL_MEM[k] = o;
+try{ if(typeof RP_STORE!=="undefined") RP_STORE.setItemAsync(wallStoreKey(), JSON.stringify(o)); }catch(e){}
+}, 400);
 };
 window.uploadWallpaperUI = (input)=>{
 const f = input.files && input.files[0];
@@ -939,7 +983,7 @@ rd.readAsDataURL(f);
 };
 window.clearWallpaperUI = async ()=>{
 const k = chatHistKey();
-WALL_MEM[k] = "";
+WALL_MEM[k] = null;
 try{ if(typeof RP_STORE!=="undefined") await RP_STORE.removeItemAsync(wallStoreKey()); }catch(e){}
 alert("已恢复默认壁纸"); wallpaperEditor();
 };

@@ -74,23 +74,30 @@ run('WALL_MEM[chatHistKey()]="data:image/jpeg;base64,AAA"');
 t("wallpaper: 上传壁纸优先级最高", run("pickChatBgURL()") === "data:image/jpeg;base64,AAA");
 run("WALL_MEM={}");
 
-// ---------- warmWallpaper: IDB 回填内存 ----------
+// ---------- warmWallpaper: IDB 回填内存（老版本纯字符串兼容） ----------
 const wk = run("wallStoreKey()");
 idbData[wk] = "data:image/jpeg;base64,BBB";
 run("WALL_MEM={}");
 await runA("await warmWallpaper()");
-t("warmWallpaper: IDB 落盘回填内存", run("WALL_MEM[chatHistKey()]") === "data:image/jpeg;base64,BBB");
+t("warmWallpaper: 老字符串兼容为对象", run("getWallOpts().url") === "data:image/jpeg;base64,BBB");
 t("warmWallpaper: 回填后选中壁纸", run("pickChatBgURL()") === "data:image/jpeg;base64,BBB");
 
-// ---------- saveWallpaper 双写 ----------
-await runA('await saveWallpaper("data:image/jpeg;base64,CCC")');
+// ---------- saveWallpaper 双写（JSON 存 url+dim+blur） ----------
+await runA('await saveWallpaper("data:image/jpeg;base64,CCC", {dim:30, blur:6})');
 t("saveWallpaper: 内存即时生效", run("pickChatBgURL()") === "data:image/jpeg;base64,CCC");
-t("saveWallpaper: IDB 落盘", idbData[run("wallStoreKey()")] === "data:image/jpeg;base64,CCC");
+const saved = JSON.parse(idbData[run("wallStoreKey()")]);
+t("saveWallpaper: IDB 落盘带参数", saved.url === "data:image/jpeg;base64,CCC" && saved.dim === 30 && saved.blur === 6);
+
+// ---------- wallFilterCSS ----------
+t("filter: 暗度30+模糊6", run('wallFilterCSS({dim:30,blur:6})') === "brightness(0.70) blur(6px)");
+t("filter: 全0返回空", run('wallFilterCSS({dim:0,blur:0})') === "");
+t("filter: null 返回空", run('wallFilterCSS(null)') === "");
+t("filter: 上限钳制", run('wallFilterCSS({dim:99,blur:99})') === "brightness(0.30) blur(12px)");
 
 // ---------- clearWallpaperUI 清除 ----------
 ctx.alert = ()=>{};
 await runA("await clearWallpaperUI()");
-t("clearWallpaper: 内存清除", run("WALL_MEM[chatHistKey()]") === "");
+t("clearWallpaper: 内存清除", run("getWallOpts()") === null);
 t("clearWallpaper: IDB 清除", !(run("wallStoreKey()") in idbData));
 t("clearWallpaper: 清除后回退默认", run("pickChatBgURL()") === "bg/chat_night.jpg");
 
