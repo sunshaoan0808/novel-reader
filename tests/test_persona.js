@@ -1,6 +1,7 @@
 const fs = require("fs"), vm = require("vm");
+const WWW = fs.existsSync("assets/www") ? "assets/www" : "www";
 // rp/persona.js: 全局人设 + 按聊天覆盖
-const src = fs.readFileSync("assets/www/rp/persona.js", "utf8");
+const src = fs.readFileSync(WWW+"/rp/persona.js", "utf8");
 const store = {};
 const localStorage = {
   getItem: (k)=> (k in store ? store[k] : null),
@@ -36,21 +37,21 @@ P.saveGlobal({name: "", desc: "", extra: ""});
 t("empty global clears", P.getGlobal() === null && P.resolve("r9") === null);
 
 // prompt.js persona 段存在且四处 preset 都有
-const psrc = fs.readFileSync("assets/www/rp/prompt.js", "utf8");
+const psrc = fs.readFileSync(WWW+"/rp/prompt.js", "utf8");
 t("persona in all presets", (psrc.match(/persona: 6/g) || []).length === 4);
 t("persona add call", psrc.indexOf('add("persona"') >= 0);
 
 // chat.js 四处注入
-const csrc = fs.readFileSync("assets/www/rp/chat.js", "utf8");
+const csrc = fs.readFileSync(WWW+"/rp/chat.js", "utf8");
 t("chat.js injects persona x4",
   (csrc.match(/RP_PERSONA\.renderText\(RP_PERSONA\.resolve\(runId\)\)/g) || []).length === 4);
 
 // index.html 注册
-const html = fs.readFileSync("assets/www/index.html", "utf8");
+const html = fs.readFileSync(WWW+"/index.html", "utf8");
 t("persona.js in index.html", html.indexOf('rp/persona.js') >= 0);
 
 // app.js UI 入口
-const asrc = fs.readFileSync("assets/www/app.js", "utf8");
+const asrc = fs.readFileSync(WWW+"/app.js", "utf8");
 t("personaEditor exists", asrc.indexOf("window.personaEditor") >= 0);
 t("drawer entries", (asrc.match(/personaEditor\(/g) || []).length >= 3);
 

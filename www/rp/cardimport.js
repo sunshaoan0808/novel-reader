@@ -1,0 +1,173 @@
+/* 穿越 P0: 酒馆角色卡导入器
+ * 支持 SillyTavern 角色卡 PNG（tEXt/iTXt chunk，keyword='chara'，base64 JSON）
+ * 与纯 JSON（chara_card_v2 / v1 扁平格式）。
+ * 解析后归一化为内部卡片 {name, fields, scenario, worldbook, raw}，
+ * 存入 nd_imported_cards，可作为魂穿目标与卡片世界来源。
+ */
+const RP_CARDIMPORT = (function(){
+"use strict";
+var STORE = "nd_imported_cards";
+
+function ascii(bytes){
+  var s = "";
+  for(var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return s;
+}
+function b64ToUtf8(b64){
+  var bin = atob(String(b64).replace(/\s+/g, ""));
+  var bytes = new Uint8Array(bin.length);
+  for(var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+/* 从 PNG ArrayBuffer 里提取 chara JSON 字符串；失败抛错 */
+function extractChara(pngBuf){
+  var png = new Uint8Array(pngBuf);
+  var sig = [137, 80, 78, 71, 13, 10, 26, 10], i;
+  if(png.length < 20) throw new Error("不是 PNG 文件");
+  for(i = 0; i < 8; i++) if(png[i] !== sig[i]) throw new Error("不是 PNG 文件");
+  var pos = 8;
+  while(pos + 12 <= png.length){
+    var len = (png[pos] << 24) | (png[pos + 1] << 16) | (png[pos + 2] << 8) | png[pos + 3];
+    if(len < 0 || pos + 12 + len > png.length) break;
+    var type = String.fromCharCode(png[pos + 4], png[pos + 5], png[pos + 6], png[pos + 7]);
+    var data = png.subarray(pos + 8, pos + 8 + len);
+    if(type === "tEXt"){
+      var z = data.indexOf(0);
+      if(z > 0 && ascii(data.subarray(0, z)) === "chara"){
+        return b64ToUtf8(ascii(data.subarray(z + 1)));
+      }
+    } else if(type === "iTXt"){
+      var p = data.indexOf(0);
+      if(p > 0 && ascii(data.subarray(0, p)) === "chara"){
+        var compFlag = data[p + 1], compMethod = data[p + 2];
+        if(compFlag === 0 && compMethod === 0){
+          var q = p + 3, lz = data.indexOf(0, q);
+          if(lz < 0){ pos += 12 + len; continue; }
+          q = lz + 1;
+          var tz = data.indexOf(0, q);
+          if(tz < 0){ pos += 12 + len; continue; }
+          q = tz + 1;
+          // iTXt 文本段为 UTF-8；酒馆卡此处仍常放 base64 JSON
+          var txt = new TextDecoder().decode(data.subarray(q));
+          try { return b64ToUtf8(txt); } catch(e){ return txt; }
+        }
+        // 压缩过的 iTXt 罕见，跳过
+      }
+    } else if(type === "IEND"){
+      break;
+    }
+    pos += 12 + len;
+  }
+  throw new Error("这张 PNG 里没有找到角色卡数据（需要酒馆导出的卡片图）");
+}
+
+function parseCardJson(text){
+  var t = String(text || "").trim().replace(/^\uFEFF/, "");
+  var o = JSON.parse(t);
+  if(o && o.data) return o.data;      // chara_card_v2
+  if(o && (o.name || o.description)) return o;  // v1 扁平
+  throw new Error("JSON 里没有角色卡字段");
+}
+
+/* 从 mes_example 提取 {{char}}: 台词行 */
+function exampleLines(mesExample, charName){
+  var out = [];
+  String(mesExample || "").split(/<START>/i).forEach(function(blk){
+    blk.split("\n").forEach(function(line){
+      var m = line.match(/^\s*\{\{\s*char\s*\}\}\s*:\s*(.+)$/i) ||
+              (charName && line.match(new RegExp("^\\s*" + charName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*[:：]\\s*(.+)$")));
+      if(m && m[1].trim()) out.push(m[1].trim());
+    });
+  });
+  return out;
+}
+
+/* Tavern 卡 -> 内部卡片 */
+function normalizeTavern(d){
+  d = d || {};
+  var name = String(d.name || "未命名").trim() || "未命名";
+  var fields = {};
+  if(d.description) fields.core_identity = String(d.description).trim();
+  if(d.personality) fields.core_traits = String(d.personality).trim();
+  var lines = [];
+  if(d.first_mes) lines.push(String(d.first_mes).trim());
+  exampleLines(d.mes_example, name).forEach(function(l){
+    if(l && lines.indexOf(l) < 0) lines.push(l);
+  });
+  if(lines.length) fields.typical_lines = lines.slice(0, 5);
+  var sysNote = [];
+  if(d.system_prompt) sysNote.push(String(d.system_prompt).trim());
+  if(d.creator_notes) sysNote.push("作者注：" + String(d.creator_notes).trim());
+  var worldbook = [];
+  var book = d.character_book || {};
+  (book.entries || []).forEach(function(e, i){
+    if(!e || !e.content) return;
+    worldbook.push({
+      title: e.name || ("卡片世界书 " + (i + 1)),
+      trigger_keywords: e.keys || e.keywords || [],
+      content: String(e.content),
+      priority: 55, enabled: e.enabled !== false,
+    });
+  });
+  var tags = d.tags || [];
+  return {
+    id: "imp" + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36),
+    name: name,
+    novel: tags[0] || "导入角色卡",
+    fields: fields,
+    scenario: String(d.scenario || "").trim(),
+    sysNote: sysNote.join("\n"),
+    worldbook: worldbook,
+    raw: d,
+    createdAt: Date.now(),
+  };
+}
+
+/* ---- 本地库 ---- */
+function list(){
+  try { return JSON.parse(localStorage.getItem(STORE)) || []; } catch(e){ return []; }
+}
+function save(list){
+  try { localStorage.setItem(STORE, JSON.stringify(list)); } catch(e){}
+}
+function find(name){
+  var l = list();
+  for(var i = 0; i < l.length; i++) if(l[i].name === name) return l[i];
+  return null;
+}
+function findById(id){
+  var l = list();
+  for(var i = 0; i < l.length; i++) if(l[i].id === id) return l[i];
+  return null;
+}
+function add(card){
+  var l = list();
+  l.unshift(card);
+  save(l);
+  return card;
+}
+function del(id){
+  save(list().filter(function(c){ return c.id !== id; }));
+}
+
+/* 文件 -> 归一化卡片（不入库，供预览确认） */
+async function fromFile(file){
+  var buf = await file.arrayBuffer();
+  var name = (file.name || "").toLowerCase();
+  var jsonText;
+  if(name.slice(-4) === ".png"){
+    jsonText = extractChara(buf);
+  } else {
+    jsonText = new TextDecoder().decode(new Uint8Array(buf));
+  }
+  return normalizeTavern(parseCardJson(jsonText));
+}
+
+return {
+  extractChara: extractChara, parseCardJson: parseCardJson,
+  normalizeTavern: normalizeTavern, exampleLines: exampleLines,
+  list: list, find: find, findById: findById, add: add, del: del,
+  fromFile: fromFile,
+};
+})();

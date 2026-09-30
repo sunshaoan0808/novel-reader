@@ -631,3 +631,17 @@ input[type=checkbox]{accent-color:var(--gold);}
   .chargrid .charcard{animation:none;}
   .skel::after{animation:none;}
 }
+
+/* ================= 穿越 P0 ================= */
+.travmodes{display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:6px}
+.travmode{background:#1a1611;border:1px solid var(--line);border-radius:12px;padding:14px 12px;display:flex;gap:10px;align-items:center;cursor:pointer;transition:transform .15s ease,border-color .15s ease;animation:cardin .45s ease both}
+.travmode:nth-child(2){animation-delay:.06s}.travmode:nth-child(3){animation-delay:.12s}.travmode:nth-child(4){animation-delay:.18s}
+.travmode:active{transform:scale(.97)}
+.travmode.locked{opacity:.55;cursor:default}
+.tm-icon{color:var(--gold);flex:none}
+.tm-body{flex:1;min-width:0}
+.tm-name{font-size:15px;font-weight:700;color:var(--ink)}
+.tm-desc{font-size:12px;color:var(--muted);margin-top:2px;line-height:1.5}
+.tm-go{font-size:22px;color:var(--gold);flex:none}
+.wsbar{font-size:12px;color:var(--muted);background:#14110d;border-bottom:1px solid var(--line);padding:6px 12px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wsbar .ic{vertical-align:-2px;color:var(--gold)}

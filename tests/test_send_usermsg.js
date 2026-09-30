@@ -1,4 +1,5 @@
 const fs = require("fs"), vm = require("vm");
+const WWW = fs.existsSync("assets/www") ? "assets/www" : "www";
 // 集成: RP.send 用户消息立即入 history 并触发 onUserMsg (在 LLM 流式完成之前)
 let pass = 0, fail = 0;
 const t = (n, c)=>{ c ? pass++ : (fail++, console.log("FAIL:", n)); };
@@ -19,9 +20,9 @@ const ctx = {console, order,
   applyRegex: (s)=>s, getRegex: ()=>null, userLore: ()=>[],
 };
 vm.createContext(ctx);
-vm.runInContext(fs.readFileSync("assets/www/rp/prompt.js", "utf8"), ctx);
+vm.runInContext(fs.readFileSync(WWW+"/rp/prompt.js", "utf8"), ctx);
 // chat.js 自带 RP_NET 真实网络层: 替换为可控 stub, 验证时序逻辑
-let chatSrc = fs.readFileSync("assets/www/rp/chat.js", "utf8");
+let chatSrc = fs.readFileSync(WWW+"/rp/chat.js", "utf8");
 {
 const start = chatSrc.indexOf("const RP_NET = (function(){");
 if(start === -1) throw new Error("RP_NET block not found");

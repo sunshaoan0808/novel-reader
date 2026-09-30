@@ -61,7 +61,8 @@ b.classList.toggle("active", b.dataset.nav===n));
 window.scrollTo(0,0);
 if(n==="product"){ tabs.classList.toggle("hidden",!RUN); RUN? setTab(TAB,true): showRuns();}
 else if(n==="tasks"){ tabs.classList.add("hidden"); showTasks();}
-else if(n==="chat"){ tabs.classList.add("hidden"); CHAT.name ? showChat() : showChatPicker(); }
+else if(n==="chat"){ tabs.classList.add("hidden"); (CHAT.name||CHAT.mode==="traverse"||CHAT.mode==="group") ? showChat() : showChatPicker(); }
+else if(n==="traverse"){ tabs.classList.add("hidden"); showTraverse(); }
 else if(n==="settings"){ tabs.classList.add("hidden"); showSettings();}
 else if(n==="writer"){ tabs.classList.add("hidden"); showWriter();}
 }
@@ -650,7 +651,9 @@ const saveHist = (k,h)=> localStorage.setItem(k, JSON.stringify(h.slice(-80)));
 
 let CHAT = {mode:"single", runId:null, name:null, members:[], forcedSpeaker:null};
 const groupKey = (runId, members)=> `nd_group_${runId}_${members.slice().sort().join("_")}`;
-const chatHistKey = ()=> CHAT.mode==="group" ? groupKey(CHAT.runId, CHAT.members) : chatKey(CHAT.runId, CHAT.name);
+const chatHistKey = ()=> CHAT.mode==="group" ? groupKey(CHAT.runId, CHAT.members)
+  : CHAT.mode==="traverse" ? `nd_travchat_${CHAT.travId}`
+  : chatKey(CHAT.runId, CHAT.name);
 let STREAM_SPEAKER = null;
 let LAST_SYSTEM = "";
 let LAST_STATS = null;
@@ -659,6 +662,7 @@ function allChars(){
 const cards = (window.__DATA__ && window.__DATA__.rp_cards) || {};
 const out = [];
 try { RP_WRITER.getCustomChars().forEach(c=>out.push({runId:"custom", novel:c.novel, name:c.name})); } catch(e){}
+try { RP_CARDIMPORT.list().forEach(c=>out.push({runId:"imported", novel:c.novel, name:c.name})); } catch(e){}
 for(const r of INDEX){
 const list = cards[r.run_id] || [];
 if(list.length){ list.forEach(c=>out.push({runId:r.run_id, novel:r.novel, name:c.name})); }
@@ -673,6 +677,7 @@ document.body.classList.add("chatmode");
 const cs = allChars();
 const cfg = getCfg();
 if(CHAT.mode==="group") return showGroupChat(cfg);
+if(CHAT.mode==="traverse") return showTraverseChat(cfg);
 if(!CHAT.name && cs.length){
 const last = localStorage.getItem("nd_chat_last");
 const f = cs.find(c=>`${c.runId}|${c.name}`===last) || cs[0];
@@ -896,8 +901,8 @@ if(m.role==="assistant" && m.content.indexOf("⚠️")!==0
 log.innerHTML = h.map((m, idx)=>{
 const mtype = m.mtype || (m.role==="user" ? "player" : "char");
 const who = m.role==="user"
-? (mtype==="narr" ? icon("scroll")+" 旁白" : (mtype==="npc" ? (m.speaker||"我") : "我"))
-: (CHAT.mode==="group"?(m.speaker||"?"):CHAT.name);
+? (mtype==="narr" ? icon("scroll")+" 旁白" : (mtype==="npc" ? (m.speaker||"我") : travPlayerName()))
+: (CHAT.mode==="group"?(m.speaker||"?"):(CHAT.mode==="traverse"?"世界":CHAT.name));
 const ts = m.ts?`<div class="ts">${new Date(m.ts).toLocaleString("zh-CN",{hour:"2-digit",minute:"2-digit",month:"numeric",day:"numeric"})}</div>`:"";
 let extra = "";
 const rateBtns = m.role==="assistant"
@@ -932,6 +937,7 @@ return `<div class="msg ${m.role==="user"?"me":""}${mtype==="narr"?" narr":""}${
 }).join("") || `<div class="empty">还没有对话，打个招呼吧<br><span style="font-size:12px">试试：你是谁？</span></div>`;
 renderCtxBar();
 log.scrollTop = log.scrollHeight;
+renderWsBar();
 }
 /* ============ 上下文用量常驻条 + 世界书触发可视化 (对标 Talkie/Janitor) ============ */
 function renderCtxBar(){
@@ -1049,7 +1055,9 @@ function streamSignal(){ aborter = new AbortController(); return aborter.signal;
 /* 输入栏（含旁白按钮；群聊多发言身份选择） */
 function chatbarInner(disabled){
 if(disabled) return `<input id="chat_in" disabled placeholder="生成中…"><button class="stopbtn" onclick="stopGen()" title="停止">${icon("stop",16)}</button>`;
-const ph = CHAT.mode==="group" ? "在群里说点什么…（@名字可点名）" : `和 ${esc(CHAT.name||"TA")} 说点什么…`;
+const ph = CHAT.mode==="group" ? "在群里说点什么…（@名字可点名）"
+: CHAT.mode==="traverse" ? `以${esc(travPlayerName())}的身份行动…`
+: `和 ${esc(CHAT.name||"TA")} 说点什么…`;
 const spk = CHAT.mode==="group"
 ? `<select id="spksel" onchange="setAsSpeaker(this.value)" title="发言身份"><option value="">我</option>`
 + CHAT.members.map(n=>`<option value="${esc(n)}"${CHAT.asSpeaker===n?" selected":""}>${esc(n)}</option>`).join("") + `</select>` : "";
@@ -1102,6 +1110,7 @@ const h = getHist(k);
 setStreaming(true);
 const t = $("#typing"); if(t) t.remove();
 const isGroup = CHAT.mode==="group";
+const isTrav = CHAT.mode==="traverse";
 let speakers = [];
 if(isGroup){
 let lastSp = null;
@@ -1118,6 +1127,7 @@ else if(RP_GROUP.getOrder(CHAT.runId, gkey)==="list"){
 CHAT.forcedSpeaker = null;
 STREAM_SPEAKER = speakers[0] || null;
 }
+if(isTrav) STREAM_SPEAKER = "世界";
 try{
 const sendOpts = {
 cfg: Object.assign({}, cfg, {maxContext: rcfg.maxContext, summaryModel: rcfg.summaryModel}),
@@ -1139,6 +1149,12 @@ onSystem: (preview, stats)=>{ LAST_SYSTEM = preview + "\n\n【预算】" + JSON.
 };
 const r = isGroup
 ? await RP.sendGroup(CHAT.runId, CHAT.members, speakers, text, sendOpts)
+: isTrav
+? await RP.sendTraverse(CHAT.travId, text, {
+  cfg: sendOpts.cfg, history: h, temperature: sendOpts.temperature,
+  topP: sendOpts.topP, maxTokens: sendOpts.maxTokens, budget: sendOpts.budget,
+  signal: sendOpts.signal, onToken: sendOpts.onToken, onPush: sendOpts.onPush,
+  onUserMsg: sendOpts.onUserMsg, onSystem: sendOpts.onSystem})
 : await RP.send(CHAT.runId, CHAT.name, text, sendOpts);
 saveHist(k, r.history);
 if(r.aborted){
@@ -1527,7 +1543,7 @@ body = (h.map(m=>{
 const who = m.role==="user" ? "我" : nm;
 return `<div class="card"><div class="kv">${esc(who)}</div><div style="font-size:13px">${esc(m.content.slice(0,120))}${m.content.length>120?"…":""}</div></div>`;
 }).join("") || `<div class="empty">还没有聊天记录</div>`)
-+ `<div class="btnrow" style="margin-top:12px"><button class="btn" onclick="chatWith('${runId}','${q}')">${icon("chat")} 和${esc(nm)}开聊</button></div>`;
++ `<div class="btnrow" style="margin-top:12px"><button class="btn" onclick="chatWith('${runId}','${q}')">${icon("chat")} 和${esc(nm)}开聊</button><button class="btn ghost" onclick="soulAnchors('${runId}','${q}')">${icon("user")} 魂穿成${esc(nm)}</button></div>`;
 }
 view.innerHTML = `<button class="back" onclick="detailBack()">${icon("back")} 返回</button>
 <div class="dtabs">` + tabs.map(t=>`<button class="dtab${DETAIL.tab===t[0]?" on":""}" onclick="charTab('${t[0]}')">${t[1]}</button>`).join("") + `</div>
@@ -1998,3 +2014,342 @@ chatWith("custom", name.trim());
 window.setNav = setNav; window.showTasks = showTasks; window.showChat = showChat;
 window.setTab = setTab; window.openRun = openRun;
 boot();
+
+/* ================= 穿越 P0: 魂穿 / 肉身穿越 ================= */
+function travPlayerName(){
+  if(CHAT.mode === "traverse"){
+    const trav = RP_TRAVERSE.get(CHAT.travId);
+    if(trav){
+      if(trav.mode === "soul") return trav.charName;
+      const idt = RP_TRAVERSE.getIdentity(trav.identityId);
+      return (idt && idt.name) || "我";
+    }
+  }
+  return "我";
+}
+function travWorlds(){
+  const out = [];
+  (INDEX || []).forEach(r=>out.push({kind:"book", id:r.run_id,
+    name:"《"+r.novel+"》", sub:"蒸馏世界 · "+r.run_id}));
+  try{ RP_CARDIMPORT.list().forEach(c=>out.push({kind:"card", id:c.id,
+    name:"《"+c.name+"》的世界", sub:"导入角色卡"})); }catch(e){}
+  return out;
+}
+function showTraverse(){
+  __backAction = null;
+  document.body.classList.remove("chatmode");
+  titleEl.innerHTML = icon("book-open")+" 穿越"; subEl.textContent = "进入书里活";
+  const modes = [
+    {id:"soul", ic:"user", name:"魂穿", desc:"成为TA：扮演原著角色，走进TA的人生", ok:true},
+    {id:"body", ic:"users", name:"肉身穿越", desc:"成为自己：现代人直穿，或捏一个古代身份", ok:true},
+    {id:"isekai", ic:"repeat", name:"异世界穿越", desc:"把角色送进另一部作品（林黛玉去水浒）", ok:false, badge:"P2"},
+    {id:"party", ic:"chat", name:"组团穿越", desc:"和多名角色组队一起穿", ok:false, badge:"P3"},
+  ];
+  const recents = RP_TRAVERSE.recent();
+  view.innerHTML = `
+  <div class="travmodes">${modes.map(m=>`
+    <div class="travmode${m.ok?"":" locked"}" ${m.ok?`onclick="travMode('${m.id}')"`:""}>
+      <div class="tm-icon">${icon(m.ic,26)}</div>
+      <div class="tm-body"><div class="tm-name">${m.name}${m.badge?` <span class="badge warn">${m.badge}</span>`:""}</div>
+      <div class="tm-desc">${m.desc}</div></div>
+      ${m.ok?`<div class="tm-go">›</div>`:`<div class="tm-desc">即将到来</div>`}
+    </div>`).join("")}</div>
+  <h2 class="sec">酒馆角色卡</h2>
+  <div class="card"><div class="kv">把 SillyTavern 角色卡（PNG/JSON）导进来，也能穿进 TA 的世界</div>
+  <div class="btnrow" style="margin-top:8px"><button class="btn" onclick="travImport()">${icon("upload")} 导入角色卡</button></div>
+  <div id="impList" style="margin-top:8px">${importedListHTML()}</div></div>
+  <h2 class="sec">最近穿越</h2>
+  <div>${recents.length ? recents.map(travRecentHTML).join("") : `<div class="empty">还没有穿越过，从上面选一种模式开始吧</div>`}</div>
+  <input type="file" id="travFile" accept=".png,.json" style="display:none" onchange="travImportFile(this)">`;
+  window.scrollTo(0,0);
+}
+function importedListHTML(){
+  let list = [];
+  try{ list = RP_CARDIMPORT.list(); }catch(e){}
+  if(!list.length) return `<div class="meta">还没有导入过角色卡</div>`;
+  return list.map(c=>`<div class="kvline" style="display:flex;align-items:center;gap:8px"><span>${esc(c.name)}</span>
+  <span class="meta"> ${esc(c.novel)}</span><span style="flex:1"></span>
+  <button class="btn ghost sm" onclick="event.stopPropagation();travDelImport('${c.id}')">删除</button></div>`).join("");
+}
+function travRecentHTML(t){
+  const who = t.mode==="soul" ? t.charName : ((RP_TRAVERSE.getIdentity(t.identityId)||{}).name || "无名氏");
+  const d = new Date(t.updatedAt).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
+  return `<div class="card" onclick="travResume('${t.id}')">
+  <div class="row"><div class="avatar">${esc(who[0]||"穿")}</div>
+  <div><div class="name">${esc(who)} <span class="badge">${RP_TRAVERSE.MODES[t.mode]||""}</span></div>
+  <div class="meta">${esc(t.worldName)} · ${esc(t.anchorTitle||"")} · ${d}</div></div></div></div>`;
+}
+window.travMode = (m)=>{
+  if(m==="soul") soulPickTarget();
+  else if(m==="body") bodyPickWorld();
+};
+window.travResume = (id)=>{
+  const t = RP_TRAVERSE.get(id); if(!t){ alert("会话已删除"); showTraverse(); return; }
+  CHAT = {mode:"traverse", travId:id};
+  setNav("chat");
+};
+window.travImport = ()=>{ const f=$("#travFile"); if(f){ f.value=""; f.click(); } };
+window.travImportFile = async (inp)=>{
+  const file = inp.files && inp.files[0]; if(!file) return;
+  try{
+    const card = await RP_CARDIMPORT.fromFile(file);
+    if(!confirm(`导入角色卡「${card.name}」？\n${(card.scenario||card.fields.core_identity||"").slice(0,80)}`)) return;
+    RP_CARDIMPORT.add(card);
+    alert(`已导入「${card.name}」：魂穿目标和卡片世界里都能选到`);
+    showTraverse();
+  }catch(e){ alert("导入失败："+e.message); }
+};
+window.travDelImport = (id)=>{
+  if(!confirm("删除这张导入的角色卡？")) return;
+  RP_CARDIMPORT.del(id); showTraverse();
+};
+
+/* ---- 魂穿：选目标 -> 选锚点 -> 开局 ---- */
+function soulPickTarget(){
+  __backAction = ()=>showTraverse();
+  document.body.classList.remove("chatmode");
+  titleEl.innerHTML = icon("user")+" 魂穿"; subEl.textContent = "选择你要成为的角色";
+  const cs = allChars();
+  view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
+  <div class="chargrid">${cs.map(c=>`
+    <div class="charcard" onclick="soulAnchors(${JSON.stringify(c.runId)},${JSON.stringify(c.name)})">
+      <div class="avatar ${charCoverCls(c.name)}">${esc(c.name[0])}</div>
+      <div class="ccname">${esc(c.name)}</div><div class="ccnovel">${esc(c.novel)}</div>
+    </div>`).join("")}</div><div style="height:40px"></div>`;
+  window.scrollTo(0,0);
+}
+function soulOutlineFor(runId, name){
+  try{
+    const p = JSON.parse(localStorage.getItem(`nd_plot_${runId}_${name}`));
+    if(p && p.updatedAt && p.outline) return p.outline;
+  }catch(e){}
+  return (window.CHAR_PLOTS||{})[name] || "";
+}
+window.soulAnchors = (runId, name)=>{
+  __backAction = ()=>soulPickTarget();
+  document.body.classList.remove("chatmode");
+  titleEl.innerHTML = icon("user")+" 魂穿 · "+esc(name); subEl.textContent = "选择进入的剧情锚点";
+  const anchors = RP_TRAVERSE.anchorsFor(soulOutlineFor(runId, name));
+  view.innerHTML = `<button class="back" onclick="soulPickTarget()">${icon("back")} 返回</button>
+  <h2 class="sec">你想从哪里开始成为${esc(name)}？</h2>
+  <div class="card">${anchors.map((a,i)=>`
+    <label class="kvline" style="display:block"><input type="radio" name="anchor" value="${i}"${i===0?" checked":""}> ${esc(a.title)}</label>`).join("")}
+    <label class="kvline" style="display:block"><input type="radio" name="anchor" value="custom"> 自定：<input id="anchorCustom" style="width:60%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px" placeholder="比如：黛玉初进贾府那天"></label>
+  </div>
+  <div class="card"><label class="kvline" style="display:block"><input type="checkbox" id="oocRemind" checked> OOC 提醒：我说的话不符合身份/时代时，世界轻轻点我一下</label></div>
+  <div class="btnrow"><button class="btn" style="flex:1" onclick="soulStart(${JSON.stringify(runId)},${JSON.stringify(name)})">开始穿越</button></div>
+  <div style="height:40px"></div>`;
+  window.scrollTo(0,0);
+};
+window.soulStart = async (runId, name)=>{
+  const rs = document.querySelectorAll('input[name="anchor"]');
+  let idx = 0; rs.forEach(r=>{ if(r.checked) idx = r.value; });
+  let anchorTitle;
+  if(idx === "custom"){
+    anchorTitle = ($("#anchorCustom").value||"").trim() || "故事开端";
+  } else {
+    anchorTitle = RP_TRAVERSE.anchorsFor(soulOutlineFor(runId, name))[parseInt(idx,10)].title;
+  }
+  const oocRemind = $("#oocRemind").checked;
+  let worldKind = "book", worldId = runId;
+  if(runId === "imported"){
+    const c = RP_CARDIMPORT.find(name);
+    worldKind = "card"; worldId = c ? c.id : "";
+  } else if(runId === "custom"){
+    try{
+      const cc = RP_WRITER.findCustom(name);
+      if(cc && cc.worldRunId) worldId = cc.worldRunId;
+    }catch(e){}
+  }
+  const sess = RP_TRAVERSE.newSession({
+    mode:"soul", worldKind, worldId,
+    worldName: RP_TRAVERSE.worldDisplayName(worldKind, worldId),
+    charName:name, anchorTitle, oocRemind,
+  });
+  travBegin(sess);
+};
+/* ---- 肉身穿越：选世界 -> 捏身份 -> 开局 ---- */
+function bodyPickWorld(){
+  __backAction = ()=>showTraverse();
+  document.body.classList.remove("chatmode");
+  titleEl.innerHTML = icon("users")+" 肉身穿越"; subEl.textContent = "选择你要进入的世界";
+  const ws = travWorlds();
+  view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
+  ${ws.length ? ws.map(w=>`
+    <div class="card" onclick="bodyIdentity(${JSON.stringify(w.kind)},${JSON.stringify(w.id)})">
+      <div class="name">${esc(w.name)}</div><div class="meta">${esc(w.sub)}</div>
+    </div>`).join("") : `<div class="empty">还没有可用世界：先导入角色卡，或等蒸馏任务产出</div>`}
+  <div style="height:40px"></div>`;
+  window.scrollTo(0,0);
+}
+window.bodyIdentity = (kind, id)=>{
+  __backAction = ()=>bodyPickWorld();
+  document.body.classList.remove("chatmode");
+  const wname = RP_TRAVERSE.worldDisplayName(kind, id);
+  titleEl.innerHTML = icon("users")+" 肉身穿越"; subEl.textContent = wname+" · 捏造你的身份";
+  view.innerHTML = `<button class="back" onclick="bodyPickWorld()">${icon("back")} 返回</button>
+  <div class="card"><div class="kv">一句话愿望，AI 帮你捏身份</div>
+  <div class="row" style="margin-top:8px"><input id="idWish" style="flex:1;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px" placeholder="比如：我想当个落魄书生混进贾府">
+  <button class="btn" style="white-space:nowrap" onclick="bodyAiGen(${JSON.stringify(kind)},${JSON.stringify(id)})">AI 生成</button></div></div>
+  <div class="card"><label class="kvline" style="display:block"><input type="checkbox" id="idModern"> 现代人直穿：不捏古代身份，以现在的自己进去</label></div>
+  <h2 class="sec">身份卡</h2>
+  <div class="card">
+  ${[["idName","姓名"],["idGender","性别"],["idAge","年龄"],["idOrigin","出身"],["idTraits","性格"],["idTalent","特长"]].map(f=>`
+    <div class="field"><label>${f[1]}</label><input id="${f[0]}" style="width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px"></div>`).join("")}
+  <div class="field"><label>当前处境（开场时身在何处、在做什么）</label>
+  <textarea id="idSituation" style="width:100%;min-height:60px;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px"></textarea></div>
+  </div>
+  <div class="btnrow"><button class="btn" style="flex:1" onclick="bodyStart(${JSON.stringify(kind)},${JSON.stringify(id)})">开始穿越</button></div>
+  <div style="height:40px"></div>`;
+  window.scrollTo(0,0);
+};
+window.bodyAiGen = async (kind, id)=>{
+  const wish = ($("#idWish").value||"").trim();
+  if(!wish){ alert("先写一句愿望，比如：我想当个落魄书生"); return; }
+  const cfg = getCfg();
+  if(!cfg.key||!cfg.base||!cfg.model){ alert("先去「设置」配好 API 地址/Key/模型"); return; }
+  try{
+    const idt = await RP_TRAVERSE.genIdentity(wish, RP_TRAVERSE.worldDisplayName(kind,id),
+      cfg, (c,m,t)=>RP_NET.complete(c,m,t));
+    $("#idName").value = idt.name||""; $("#idGender").value = idt.gender||"";
+    $("#idAge").value = idt.age||""; $("#idOrigin").value = idt.origin||"";
+    $("#idTraits").value = idt.traits||""; $("#idTalent").value = idt.talent||"";
+    $("#idSituation").value = idt.situation||"";
+  }catch(e){ alert("生成失败："+e.message); }
+};
+window.bodyStart = (kind, id)=>{
+  const modern = $("#idModern").checked;
+  const name = ($("#idName").value||"").trim();
+  if(!modern && !name){ alert("给身份起个名字，或勾选现代人直穿"); return; }
+  let finalName = name;
+  if(modern && !finalName){
+    try{ finalName = (RP_PERSONA.resolve("trav").name)||"我"; }catch(e){ finalName = "我"; }
+  }
+  const idt = RP_TRAVERSE.saveIdentity({
+    name: finalName||"无名氏", gender:$("#idGender").value.trim(), age:$("#idAge").value.trim(),
+    origin: modern ? "现代" : $("#idOrigin").value.trim(),
+    traits:$("#idTraits").value.trim(), talent:$("#idTalent").value.trim(),
+    situation:$("#idSituation").value.trim(), modern,
+    worldName: RP_TRAVERSE.worldDisplayName(kind, id),
+  });
+  const sess = RP_TRAVERSE.newSession({
+    mode:"body", worldKind:kind, worldId:id,
+    worldName: RP_TRAVERSE.worldDisplayName(kind, id),
+    identityId: idt.id, anchorTitle: idt.situation||"初入此界", oocRemind:true,
+  });
+  travBegin(sess);
+};
+/* ---- 进入穿越聊天 ---- */
+function travBegin(sess){
+  CHAT = {mode:"traverse", travId: sess.id};
+  LAST_STATS = null;
+  setNav("chat");
+}
+async function showTraverseChat(cfg){
+  __backAction = ()=>exitChat();
+  document.body.classList.add("chatmode");
+  const trav = RP_TRAVERSE.get(CHAT.travId);
+  if(!trav){ setNav("traverse"); return; }
+  const modeName = RP_TRAVERSE.MODES[trav.mode]||"穿越";
+  const title = travPlayerName();
+  view.innerHTML = `
+  <div class="chathead" id="chathead">
+  <button class="backbtn" onclick="exitChat()">‹</button>
+  <div class="avatar">${esc((title||"穿")[0])}</div>
+  <div class="chead-main"><div class="cname">${esc(title)} <span class="badge">${modeName}</span></div>
+  <div class="cstat"><span>${esc(trav.worldName)}</span></div></div>
+  <button class="menubtn" onclick="toggleDrawer(true)" title="菜单">${icon("menu")}</button>
+  </div>
+  <div class="chatwrap">
+  <div id="ctxbar"></div>
+  <div id="wsbar" class="wsbar" onclick="travWsEditor()"></div>
+  <div id="chatlog"></div>
+  <div class="chatbar">${chatbarInner(false)}</div>
+  </div>
+  <div class="scrim" id="scrim" onclick="toggleDrawer(false)"></div>
+  <div class="drawer" id="drawer">
+  <h3>穿越</h3>
+  <button class="ditem" onclick="toggleDrawer(false);travWsEditor()">${icon("scroll")} 世界状态</button>
+  <button class="ditem" onclick="toggleDrawer(false);travIdentityView()">${icon("user")} 我的身份</button>
+  <button class="ditem" onclick="toggleDrawer(false);showSystem()">${icon("settings")} prompt 预览</button>
+  <button class="ditem" onclick="toggleDrawer(false);exportChat()">${icon("download")} 复制聊天记录</button>
+  <button class="ditem danger" onclick="toggleDrawer(false);travEnd()">${icon("x")} 结束穿越</button>
+  </div>`;
+  renderChat(); renderWsBar(); attachHeadHide();
+  const k = chatHistKey();
+  if(!getHist(k).length){
+    try{
+      const opening = await RP_TRAVERSE.genOpening(trav, cfg, (c,m,t)=>RP_NET.complete(c,m,t));
+      const parsed = RP_TRAVERSE.parseWsBlock(opening);
+      if(parsed.patch) RP_TRAVERSE.saveState(trav.id,
+        RP_TRAVERSE.mergeState(RP_TRAVERSE.getState(trav.id), parsed.patch));
+      saveHist(k, [{role:"assistant", content: parsed.clean || opening, ts:Date.now()}]);
+    }catch(e){
+      saveHist(k, [{role:"assistant", content: RP_TRAVERSE.offlineOpening(trav), ts:Date.now()}]);
+    }
+    renderChat(); renderWsBar();
+  }
+}
+function renderWsBar(){
+  const bar = $("#wsbar"); if(!bar || CHAT.mode!=="traverse") return;
+  const st = RP_TRAVERSE.getState(CHAT.travId);
+  bar.innerHTML = `${icon("scroll",13)} ${esc(RP_TRAVERSE.stateLine(st))}`+
+    (st.items.length?` · 物品${st.items.length}`:"")+
+    `<span style="float:right;opacity:.6">查看 ›</span>`;
+}
+window.travWsEditor = ()=>{
+  const trav = RP_TRAVERSE.get(CHAT.travId); if(!trav) return;
+  __backAction = ()=>showChat();
+  document.body.classList.remove("chatmode");
+  const st = RP_TRAVERSE.getState(trav.id);
+  titleEl.innerHTML = icon("scroll")+" 世界状态"; subEl.textContent = trav.worldName;
+  const favRows = Object.keys(st.favor||{}).map(k=>
+    `<div class="kvline">${esc(k)}：好感 ${st.favor[k]}</div>`).join("") || `<div class="meta">暂无</div>`;
+  view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回</button>
+  <div class="card">
+  <div class="field"><label>日期</label><input id="wsDate" style="width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px" value="${esc(st.date||"")}"></div>
+  <div class="field"><label>地点</label><input id="wsLoc" style="width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px" value="${esc(st.loc||"")}"></div>
+  <div class="field"><label>剧情进度</label><input id="wsProg" style="width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px" value="${esc(st.progress||"")}"></div>
+  <div class="btnrow" style="margin-top:8px"><button class="btn" onclick="travWsSave()">保存</button></div>
+  </div>
+  <h2 class="sec">随身物品</h2>
+  <div class="card">${st.items.length? st.items.map(i=>`<div class="kvline">${esc(i)}</div>`).join("") : `<div class="meta">空</div>`}</div>
+  <h2 class="sec">人物好感</h2>
+  <div class="card">${favRows}</div>
+  <div class="hint">世界状态由 AI 在剧情推进时自动更新，你也可以手动修正时间地点。</div>
+  <div style="height:40px"></div>`;
+  window.scrollTo(0,0);
+};
+window.travWsSave = ()=>{
+  const st = RP_TRAVERSE.getState(CHAT.travId);
+  st.date = $("#wsDate").value.trim(); st.loc = $("#wsLoc").value.trim();
+  st.progress = $("#wsProg").value.trim();
+  RP_TRAVERSE.saveState(CHAT.travId, st);
+  showChat();
+};
+window.travIdentityView = ()=>{
+  const trav = RP_TRAVERSE.get(CHAT.travId); if(!trav) return;
+  __backAction = ()=>showChat();
+  document.body.classList.remove("chatmode");
+  titleEl.innerHTML = icon("user")+" 我的身份"; subEl.textContent = RP_TRAVERSE.MODES[trav.mode]||"";
+  const body = trav.mode==="soul"
+    ? `<div class="card"><div class="name" style="font-size:16px">${esc(trav.charName)}</div>
+       <div class="meta">${esc(trav.worldName)} · ${esc(trav.anchorTitle||"")}</div>
+       <div class="kv" style="margin-top:8px">你是玩家本人，正在扮演 TA。能做的只有 TA 能做的，知道的只有 TA 知道的。</div></div>`
+    : (()=>{
+        const idt = RP_TRAVERSE.getIdentity(trav.identityId)||{};
+        const rows = [["姓名",idt.name],["性别",idt.gender],["年龄",idt.age],["出身",idt.origin],
+          ["性格",idt.traits],["特长",idt.talent],["当前处境",idt.situation]];
+        return `<div class="card">${rows.filter(r=>r[1]).map(r=>
+          `<div class="kvline"><span class="kv">${r[0]}</span> ${esc(r[1])}</div>`).join("")}
+          ${idt.modern?`<div class="kvline"><span class="badge">现代人直穿</span></div>`:""}</div>`;
+      })();
+  view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回</button>${body}
+  <div style="height:40px"></div>`;
+  window.scrollTo(0,0);
+};
+window.travEnd = ()=>{
+  if(!confirm("结束这次穿越？聊天记录和世界状态会保留在「最近穿越」里。")) return;
+  CHAT = {mode:"single", runId:null, name:null, members:[], forcedSpeaker:null};
+  setNav("traverse");
+};

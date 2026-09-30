@@ -1,4 +1,5 @@
 const fs = require("fs"), vm = require("vm");
+const WWW = fs.existsSync("assets/www") ? "assets/www" : "www";
 // ---- 轻量 DOM/环境桩 ----
 const els = {};
 function mkEl(){ return {innerHTML:"", textContent:"", value:"", classList:{add(){},remove(){},toggle(){}},
@@ -15,15 +16,15 @@ const ctx = {localStorage: ls, document, console,
 ctx.window = ctx; ctx.globalThis = ctx;
 ctx.__DATA__ = {index:[{run_id:"r1",novel:"测试小说"}], runs:{r1:{novel:"测试小说",worldbook:[],relations:[]}}, rp_cards:{}};
 vm.createContext(ctx);
-for(const f of ["assets/www/rp/cardwriter.js"]) vm.runInContext(fs.readFileSync(f,"utf8"), ctx);
+for(const f of [WWW+"/rp/cardwriter.js"]) vm.runInContext(fs.readFileSync(f,"utf8"), ctx);
 // app.js 需要的桩: $ esc getCfg RP_NET chatWith 等
 vm.runInContext(`
 localStorage.setItem("nd_api_cfg_v1", JSON.stringify({key:"k", base:"b", model:"m"}));
 const RP_NET = {complete: async ()=> "Ruby 回复"};
 const chatWith = (r,n)=>{ globalThis.__chatWith = [r,n]; };
 `, ctx);
-vm.runInContext(fs.readFileSync("assets/www/icons.js","utf8"), ctx);
-vm.runInContext(fs.readFileSync("assets/www/app.js","utf8"), ctx);
+vm.runInContext(fs.readFileSync(WWW+"/icons.js","utf8"), ctx);
+vm.runInContext(fs.readFileSync(WWW+"/app.js","utf8"), ctx);
 let pass=0, fail=0;
 const t=(n,c)=>{c?pass++:(fail++,console.log("FAIL:",n));};
 

@@ -1,6 +1,7 @@
 const {execSync} = require("child_process");
 const fs = require("fs");
-const src = fs.readFileSync("assets/www/rp/cardwriter.js", "utf8");
+const WWW = fs.existsSync("assets/www") ? "assets/www" : "www";
+const src = fs.readFileSync(WWW+"/rp/cardwriter.js", "utf8");
 const sandbox = {localStorage: null};
 const Module = require("module");
 const ls = (function(){

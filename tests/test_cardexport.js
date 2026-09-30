@@ -1,6 +1,9 @@
 const fs = require("fs"), vm = require("vm");
+const WWW = fs.existsSync("assets/www") ? "assets/www" : "www";
+const JDIR = fs.existsSync("src/com/ling/novelreader/MainActivity.java") ? "src" : (fs.existsSync("app/src") ? "app/src" : "android/src");
+const MF = fs.existsSync("AndroidManifest.xml") ? "AndroidManifest.xml" : (fs.existsSync("app/AndroidManifest.xml") ? "app/AndroidManifest.xml" : "android/AndroidManifest.xml");
 // rp/cardexport.js: Tavern v2 卡构建 + chara tEXt 嵌入 (纯函数部分)
-const src = fs.readFileSync("assets/www/rp/cardexport.js", "utf8");
+const src = fs.readFileSync(WWW+"/rp/cardexport.js", "utf8");
 const ctx = {console, btoa: (s)=>Buffer.from(s, "binary").toString("base64"), atob: (s)=>Buffer.from(s, "base64").toString("binary")};
 vm.createContext(ctx);
 vm.runInContext(src, ctx); // 加载时不碰 document/window, 安全
@@ -85,15 +88,15 @@ try{ X.embedChara(new ArrayBuffer(8), "e30="); }catch(e){ threw = true; }
 t("rejects non-png", threw);
 
 // --- 静态: 原生层与 UI 入口 ---
-const java = fs.readFileSync("src/com/ling/novelreader/MainActivity.java", "utf8");
+const java = fs.readFileSync(JDIR+"/com/ling/novelreader/MainActivity.java", "utf8");
 t("JsBridge sharePng", java.indexOf("sharePng") >= 0 && java.indexOf("@JavascriptInterface") >= 0);
 t("addJavascriptInterface", java.indexOf('addJavascriptInterface(new JsBridge(), "Android")') >= 0);
-t("provider file exists", fs.existsSync("src/com/ling/novelreader/SharedFileProvider.java"));
-const mf = fs.readFileSync("AndroidManifest.xml", "utf8");
+t("provider file exists", fs.existsSync(JDIR+"/com/ling/novelreader/SharedFileProvider.java"));
+const mf = fs.readFileSync(MF, "utf8");
 t("manifest provider", mf.indexOf("SharedFileProvider") >= 0 && mf.indexOf("com.ling.novelreader.shared") >= 0);
-const html = fs.readFileSync("assets/www/index.html", "utf8");
+const html = fs.readFileSync(WWW+"/index.html", "utf8");
 t("cardexport.js in index.html", html.indexOf("rp/cardexport.js") >= 0);
-const asrc = fs.readFileSync("assets/www/app.js", "utf8");
+const asrc = fs.readFileSync(WWW+"/app.js", "utf8");
 t("exportCard exists", asrc.indexOf("window.exportCard") >= 0);
 t("export button on card", asrc.indexOf("exportCard('${c.id}')") >= 0);
 

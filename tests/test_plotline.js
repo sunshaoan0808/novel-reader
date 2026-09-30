@@ -1,4 +1,5 @@
 const fs = require("fs"), vm = require("vm");
+const WWW = fs.existsSync("assets/www") ? "assets/www" : "www";
 let pass=0, fail=0; const t=(n,c)=>{c?pass++:(fail++,console.log("FAIL:",n));};
 
 function takeDecl(src, name){
@@ -26,7 +27,7 @@ throw new Error("unbalanced fn "+name);
 }
 
 // ---- data/char_plots.js: 原著剧情大纲数据 ----
-const dsrc = fs.readFileSync("assets/www/data/char_plots.js","utf8");
+const dsrc = fs.readFileSync(WWW+"/data/char_plots.js","utf8");
 const dctx = {console, window:{}};
 vm.createContext(dctx);
 vm.runInContext(dsrc, dctx);
@@ -39,7 +40,7 @@ t("含原著剧情脉络标识", PLOTS["林黛玉"].includes("原著剧情脉络
 t("黛玉有焚稿/南归级关键事件", /焚稿|南归|葬花/.test(PLOTS["林黛玉"]));
 
 // ---- chat.js: plotRef 参考式注入(非指令) ----
-const csrc = fs.readFileSync("assets/www/rp/chat.js","utf8");
+const csrc = fs.readFileSync(WWW+"/rp/chat.js","utf8");
 const cctx = {console}; vm.createContext(cctx);
 vm.runInContext(takeFn(csrc,"plotRef"), cctx);
 const ref = vm.runInContext('plotRef("测试大纲")', cctx);
@@ -51,7 +52,7 @@ t("单聊+群聊+重生都注入 plotRef", (csrc.match(/plotRef\(opts\.plotOutli
 t("无 plotGoal 残留",!csrc.includes("plotGoal"));
 
 // ---- app.js: 剧情线存取 v27 ----
-const asrc = fs.readFileSync("assets/www/app.js","utf8");
+const asrc = fs.readFileSync(WWW+"/app.js","utf8");
 const store = {};
 const actx = {console, CHAT:{mode:"single",runId:"r1",name:"林黛玉",members:[]},
 window:{CHAR_PLOTS:PLOTS},
@@ -79,6 +80,6 @@ t("编辑器无目标语义",!asrc.includes("保存目标") &&!asrc.includes("�
 t("发送透传 plotOutline", (asrc.match(/plotOutline: activePlotOutline\(\)/g)||[]).length===2);
 t("正文区无 plotbar 入口", !asrc.includes('id="plotbar"') && !asrc.includes("原著剧情大纲 · 点击编辑"));
 t("抽屉入口改名", asrc.includes('icon("book-open")') && asrc.includes("剧情线") &&!asrc.includes("🎯 剧情线"));
-t("index.html 引入数据", fs.readFileSync("assets/www/index.html","utf8").includes('src="data/char_plots.js"'));
+t("index.html 引入数据", fs.readFileSync(WWW+"/index.html","utf8").includes('src="data/char_plots.js"'));
 console.log(`plotline: ${pass} pass, ${fail} fail`);
 process.exit(fail?1:0);

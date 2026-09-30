@@ -1,6 +1,7 @@
 const fs = require("fs"), vm = require("vm");
+const WWW = fs.existsSync("assets/www") ? "assets/www" : "www";
 // 群聊 v2: planSpeakers / findMentioned / nextInList / talkativeness / order
-const src = fs.readFileSync("assets/www/rp/group.js", "utf8");
+const src = fs.readFileSync(WWW+"/rp/group.js", "utf8");
 const ctx = {console};
 vm.createContext(ctx);
 vm.runInContext(src, ctx);

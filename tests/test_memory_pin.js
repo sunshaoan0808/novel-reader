@@ -1,6 +1,7 @@
 const fs = require("fs"), vm = require("vm");
+const WWW = fs.existsSync("assets/www") ? "assets/www" : "www";
 // memory.js 的 pin / 删除 / parseState 保留 pin / renderPrompt 置顶区
-const memSrc = fs.readFileSync("assets/www/rp/memory.js", "utf8");
+const memSrc = fs.readFileSync(WWW+"/rp/memory.js", "utf8");
 function extract(src, name){
 const re = new RegExp("(?:function\\s+" + name + "|(?:let|const|var)\\s+" + name + "\\s*=\\s*function)\\s*\\(");
 const m = src.match(re);

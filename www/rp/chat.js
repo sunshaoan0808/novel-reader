@@ -209,6 +209,10 @@ function findCard(runId, name){
     var cc = RP_WRITER.findCustom(name);
     if(cc) return {name: cc.name, fields: cc.fields || {}};
   }
+  if(runId === "imported" && typeof RP_CARDIMPORT !== "undefined"){
+    var ic = RP_CARDIMPORT.find(name);
+    if(ic) return {name: ic.name, fields: ic.fields || {}};
+  }
   var cards = (window.__DATA__ && window.__DATA__.rp_cards || {})[runId] || [];
   for(var i = 0; i < cards.length; i++) if(cards[i].name === name) return cards[i];
   return null;
@@ -490,6 +494,68 @@ async function genOneSpeaker(runId, run, members, speaker, text, h, opts, budget
   return {stats: b.stats, failed: false, aborted: false};
 }
 
+/* 穿越发送一轮：玩家扮演身份，AI 扮演世界+NPC。
+ * opts: {cfg, history, onPush, onToken, onSystem, budget, signal, temperature} */
+async function sendTraverse(travId, text, opts){
+  opts = opts || {};
+  var cfg = opts.cfg || {};
+  var h = opts.history || [];
+  var trav = RP_TRAVERSE.get(travId);
+  if(!trav) throw new Error("穿越会话不存在");
+
+  h.push(newMsg("user", text));
+  if(opts.onPush) opts.onPush();
+  if(opts.onUserMsg) opts.onUserMsg();
+
+  var cardHint = "穿越世界";
+  await RP_MEM.maybeAnalyze("trav", travId, h, cfg,
+    function(c, ms, t){ return RP_NET.complete(c, ms, t); }, cardHint);
+  var memPrompt = RP_MEM.renderPrompt(RP_MEM.get("trav", travId));
+
+  var budget = opts.budget || {};
+  if(!budget.maxContext && cfg.maxContext) budget.maxContext = cfg.maxContext;
+  var worldRunId = trav.worldKind === "book" ? trav.worldId : "";
+  var b = RP_TRAVERSE.buildMessages(trav, {
+    history: mapHistory(h),
+    memory: memPrompt,
+    // run.worldbook 已由 buildWorldBible 注入, 这里只补用户世界书, 避免重复
+    worldbook: userLore(worldRunId),
+  }, budget);
+  if(opts.onSystem) opts.onSystem(b.preview, b.stats);
+
+  var reply = "";
+  var ctrl = {aborted: false};
+  try {
+    if(opts.stream === false){
+      reply = await RP_NET.complete(cfg, b.messages, opts.temperature);
+    } else {
+      reply = await RP_NET.stream(cfg, b.messages,
+        {temperature: opts.temperature, signal: opts.signal}, opts.onToken);
+    }
+  } catch(e){
+    if(e && e.name === "AbortError"){ ctrl.aborted = true; }
+    else {
+      h.push(newMsg("assistant", "⚠️ 出错了：" + e.message +
+        "\n请检查设置里的 API 地址/Key/模型，以及手机网络。"));
+      return {history: h, aborted: false, stats: b.stats};
+    }
+  }
+  if(ctrl.aborted) return {history: h, aborted: true, stats: b.stats};
+
+  // 解析 <ws> 世界状态块：合并进世界状态，正文里去掉
+  var parsed = RP_TRAVERSE.parseWsBlock(reply);
+  if(parsed.patch){
+    var st = RP_TRAVERSE.getState(travId);
+    RP_TRAVERSE.saveState(travId, RP_TRAVERSE.mergeState(st, parsed.patch));
+  }
+  reply = parsed.clean || reply;
+
+  h.push(newMsg("assistant", reply));
+  return {history: h, aborted: false, stats: b.stats,
+          worldState: RP_TRAVERSE.getState(travId)};
+}
+
 return {send: send, regenerate: regenerate, swipe: swipe, sendGroup: sendGroup,
+        sendTraverse: sendTraverse,
         greeting: greeting, findCard: findCard, mapHistory: mapHistory, tagUserMsg: tagUserMsg};
 })();

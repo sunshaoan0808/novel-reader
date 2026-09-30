@@ -1,7 +1,8 @@
 const fs = require("fs"), vm = require("vm");
+const WWW = fs.existsSync("assets/www") ? "assets/www" : "www";
 // 从 app.js / chat.js 抽取纯函数做单元测试 (不依赖 DOM)
-const appSrc = fs.readFileSync("assets/www/app.js", "utf8");
-const chatSrc = fs.readFileSync("assets/www/rp/chat.js", "utf8");
+const appSrc = fs.readFileSync(WWW+"/app.js", "utf8");
+const chatSrc = fs.readFileSync(WWW+"/rp/chat.js", "utf8");
 function extract(src, name){
   // 提取 function name(...) {...} (顶层函数, 大括号配对)
   const re = new RegExp("(?:function\\s+" + name + "|(?:let|const|var)\\s+" + name + "\\s*=\\s*function)\\s*\\(");

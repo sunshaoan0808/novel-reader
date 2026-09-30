@@ -1,6 +1,7 @@
 const fs = require("fs"), vm = require("vm");
+const WWW = fs.existsSync("assets/www") ? "assets/www" : "www";
 // chat.js: mapHistory（消息分型 → 模型历史映射）+ tagUserMsg（打标记）
-const src = fs.readFileSync("assets/www/rp/chat.js", "utf8");
+const src = fs.readFileSync(WWW+"/rp/chat.js", "utf8");
 function extract(src, name){
 const pats = [
 "(?:let|const|var)\\s+"+name+"\\s*=\\s*function\\s*\\(",

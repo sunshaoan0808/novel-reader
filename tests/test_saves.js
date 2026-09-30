@@ -1,6 +1,7 @@
 const fs = require("fs"), vm = require("vm");
+const WWW = fs.existsSync("assets/www") ? "assets/www" : "www";
 // app.js: 平行存档（新建/加载/改名/删除），localStorage + 函数桩
-const src = fs.readFileSync("assets/www/app.js", "utf8");
+const src = fs.readFileSync(WWW+"/app.js", "utf8");
 function extract(src, name){
   const pats = [
     "function\\s+"+name+"\\s*\\(",

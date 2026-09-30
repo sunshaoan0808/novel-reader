@@ -1,0 +1,362 @@
+/* 穿越 P0: 魂穿 / 肉身穿越 核心
+* 会话 / 世界卡 / 世界状态 / prompt 组装 / 开场生成 / AI 身份向导（简版）
+* 依赖: RP_PROMPT（token 估算/lore/字段渲染）、RP_GROUP（在场简介）、RP_CARDIMPORT（卡片世界）
+*/
+const RP_TRAVERSE = (function(){
+"use strict";
+var SES_PRE = "nd_trav_";
+var LIST_KEY = "nd_trav_list";
+var WS_PRE = "nd_travws_";
+var IDENT_PRE = "nd_identity_";
+var MODES = {soul: "魂穿", body: "肉身穿越"};
+
+/* ================= 会话 ================= */
+function newSession(o){
+var s = {
+id: "t" + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36),
+mode: o.mode, // soul | body
+worldKind: o.worldKind, // book | card
+worldId: o.worldId, // runId | cardId
+worldName: o.worldName || "",
+charName: o.charName || "", // 魂穿目标
+identityId: o.identityId || "",// 肉身身份卡 id
+anchorTitle: o.anchorTitle || "",
+oocRemind: o.oocRemind!== false,
+createdAt: Date.now(), updatedAt: Date.now(),
+};
+save(s);
+var ids = recentIds();
+ids.unshift(s.id);
+try { localStorage.setItem(LIST_KEY, JSON.stringify(ids.slice(0, 20)));} catch(e){}
+return s;
+}
+function get(id){
+try { return JSON.parse(localStorage.getItem(SES_PRE + id)) || null;} catch(e){ return null;}
+}
+function save(s){
+s.updatedAt = Date.now();
+try { localStorage.setItem(SES_PRE + s.id, JSON.stringify(s));} catch(e){}
+}
+function del(id){
+try { localStorage.removeItem(SES_PRE + id);} catch(e){}
+try {
+localStorage.setItem(LIST_KEY, JSON.stringify(recentIds().filter(function(x){ return x!== id;})));
+} catch(e){}
+}
+function recentIds(){
+try { return JSON.parse(localStorage.getItem(LIST_KEY)) || [];} catch(e){ return [];}
+}
+function recent(){
+return recentIds().map(get).filter(Boolean);
+}
+
+/* ================= 身份卡（肉身穿越） ================= */
+function saveIdentity(idt){
+if(!idt.id) idt.id = "i" + Date.now().toString(36);
+try { localStorage.setItem(IDENT_PRE + idt.id, JSON.stringify(idt));} catch(e){}
+return idt;
+}
+function getIdentity(id){
+try { return JSON.parse(localStorage.getItem(IDENT_PRE + id)) || null;} catch(e){ return null;}
+}
+/* AI 一句话向导（简版）：愿望 -> 完整身份卡 JSON */
+async function genIdentity(wish, worldName, cfg, callChat){
+var scfg = {base: cfg.base, key: cfg.key, model: cfg.summaryModel || cfg.model};
+var prompt = "玩家想以「" + wish + "」穿越到" + worldName + "的世界。请生成一个合理的古代身份卡，" +
+"只输出一个 JSON 对象，不要解释：{\"name\":\"姓名\",\"gender\":\"男/女\",\"age\":\"年龄\"," +
+"\"origin\":\"出身（一句话）\",\"traits\":\"性格（一句话）\",\"talent\":\"特长（一句话）\"," +
+"\"situation\":\"当前处境（一句话，交代开场时身在何处、在做什么）\"}。" +
+"要求：身份必须符合该世界的时代与逻辑，具体不悬浮。";
+var raw = await callChat(scfg, [{role: "user", content: prompt}], 0.7);
+var t = String(raw || "").replace(/```json|```/g, "");
+var a = t.indexOf("{"), b = t.lastIndexOf("}");
+if(a < 0 || b <= a) throw new Error("身份生成失败，换个说法重试");
+var o = JSON.parse(t.slice(a, b + 1));
+return {
+name: o.name || "无名氏", gender: o.gender || "", age: o.age || "",
+origin: o.origin || "", traits: o.traits || "", talent: o.talent || "",
+situation: o.situation || "", modern: false, wish: wish, worldName: worldName,
+};
+}
+
+/* ================= 世界 ================= */
+function worldDisplayName(kind, id){
+if(kind === "book"){
+var r = (window.__DATA__ && window.__DATA__.runs || {})[id];
+return r? ("《" + r.novel + "》"): "未知世界";
+}
+if(typeof RP_CARDIMPORT!== "undefined"){
+var c = RP_CARDIMPORT.findById(id);
+return c? ("《" + c.name + "》的世界"): "未知世界";
+}
+return "未知世界";
+}
+/* 世界卡（World Bible v1）：书中世界=小说+常驻世界书；卡片世界=卡片设定+自带世界书 */
+function buildWorldBible(kind, id){
+var name = worldDisplayName(kind, id);
+var bg = "", loreEntries = [];
+if(kind === "book"){
+var run = (window.__DATA__ && window.__DATA__.runs || {})[id] || {};
+bg = name + "的世界。时间、地点、人物关系、社会风俗严格遵循原著；" +
+"没有原著依据的事，不要编造得违背常识。";
+var wb = run.worldbook || [];
+wb.forEach(function(e){
+if(e && (e.constant || e.enabled!== false)) loreEntries.push(e);
+});
+} else if(typeof RP_CARDIMPORT!== "undefined"){
+var card = RP_CARDIMPORT.findById(id);
+if(card){
+var f = card.fields || {};
+bg = "世界设定：" + (card.scenario || f.core_identity || "（卡片未写明世界设定）") +
+"\n主角：" + card.name + (f.core_traits? "，" + String(f.core_traits).slice(0, 80): "");
+loreEntries = (card.worldbook || []).filter(function(e){ return e.enabled!== false;});
+}
+}
+return {key: kind + ":" + id, name: name, bg: bg, loreEntries: loreEntries};
+}
+
+/* ================= 世界状态 ================= */
+function defaultState(){
+return {date: "", loc: "", favor: {}, items: [], progress: "", flags: {}};
+}
+function getState(travId){
+try {
+return JSON.parse(localStorage.getItem(WS_PRE + travId)) || defaultState();
+} catch(e){ return defaultState();}
+}
+function saveState(travId, st){
+try { localStorage.setItem(WS_PRE + travId, JSON.stringify(st));} catch(e){}
+}
+/* 从回复里提取最后一个 <ws>{...}</ws> 块；返回 {clean, patch} */
+function parseWsBlock(text){
+var re = /<ws>([\s\S]*?)<\/ws>/g, m, last = null;
+while((m = re.exec(text))) last = m;
+var clean = String(text || "").replace(/<ws>[\s\S]*?<\/ws>/g, "").trim();
+if(!last) return {clean: clean, patch: null};
+var patch = null;
+try { patch = JSON.parse(last[1]);} catch(e){ patch = null;}
+return {clean: clean, patch: patch};
+}
+function mergeState(st, patch){
+if(!patch) return st;
+["date", "loc", "progress"].forEach(function(k){
+if(patch[k]!= null && String(patch[k]).trim()!== "") st[k] = String(patch[k]).trim();
+});
+if(patch.favor && typeof patch.favor === "object"){
+Object.keys(patch.favor).forEach(function(k){
+var v = parseInt(patch.favor[k], 10);
+if(!isNaN(v)) st.favor[k] = v;
+});
+}
+(patch.addItems || []).forEach(function(it){
+it = String(it).trim();
+if(it && st.items.indexOf(it) < 0) st.items.push(it);
+});
+(patch.removeItems || []).forEach(function(it){
+st.items = st.items.filter(function(x){ return x!== String(it).trim();});
+});
+if(patch.flags && typeof patch.flags === "object"){
+Object.keys(patch.flags).forEach(function(k){ st.flags[k] = patch.flags[k];});
+}
+return st;
+}
+function stateLine(st){
+var parts = [];
+if(st.date) parts.push(st.date);
+if(st.loc) parts.push(st.loc);
+return parts.join(" · ") || "时间地点未定";
+}
+
+/* ================= 剧情锚点 ================= */
+function anchorsFor(outlineText){
+var out = [{id: "start", title: "从头开始：刚睁开眼"}];
+String(outlineText || "").split(/[·•]/).forEach(function(seg){
+seg = seg.trim();
+if(!seg || /原著剧情脉络|读者可自行编辑|蒸馏管线/.test(seg)) return;
+var title = seg.split(/[：:]/)[0].replace(/[　「」『』【】]/g, "").trim();
+var hd = title.indexOf("】");
+if(hd >= 0) title = title.slice(hd + 1).trim();
+title = title.slice(0, 22);
+if(title.length >= 4 && out.length < 9 &&
+!out.some(function(a){ return a.title === title;})){
+out.push({id: "a" + out.length, title: title});
+}
+});
+return out;
+}
+
+/* ================= prompt ================= */
+function soulCard(trav){
+if(trav.worldKind === "card" && typeof RP_CARDIMPORT!== "undefined")
+return RP_CARDIMPORT.findById(trav.worldId);
+if(typeof RP!== "undefined" && RP.findCard)
+return RP.findCard(trav.worldId, trav.charName);
+return null;
+}
+function identityBlock(trav){
+if(trav.mode === "soul"){
+var card = soulCard(trav) || {name: trav.charName, fields: {}};
+var f = card.fields || {};
+var ref = "";
+if(typeof RP_PROMPT!== "undefined"){
+ref = RP_PROMPT.renderFields(card, ["core_identity", "gender", "age_stage",
+"core_traits", "speech_style", "signature_phrases", "taboo_topics"]);
+}
+return "「你的身份」你是" + trav.charName + "，玩家本人正在扮演 TA。\n" +
+(ref? "人设参考：\n" + ref + "\n": "") +
+"守则：你能做的只有" + trav.charName + "能做的，你知道的只有" + trav.charName +
+"知道的；言行举止必须符合 TA 的性格、身份与时代，绝不跳出角色。\n" +
+"「当前处境」" + (trav.anchorTitle || "故事开端");
+}
+var idt = getIdentity(trav.identityId) || {};
+var lines = [];
+[["姓名", idt.name], ["性别", idt.gender], ["年龄", idt.age],
+["出身", idt.origin], ["性格", idt.traits], ["特长", idt.talent]
+].forEach(function(p){ if(p[1]) lines.push(p[0] + "：" + p[1]);});
+if(idt.modern) lines.unshift("（现代人直穿：带着现代知识与记忆，身体是自己）");
+if(idt.situation) lines.push("当前处境：" + idt.situation);
+return "「你的身份」你是玩家本人，以以下身份活在书中世界：\n" + lines.join("\n") +
+"\n守则：你的言行举止必须符合这个身份的见识与能力；" +
+(idt.modern? "现代知识是你的秘密，谨慎使用，别轻易暴露。": "不要带入现代知识。");
+}
+function castBriefs(trav){
+var out = [];
+if(trav.worldKind === "book" && typeof RP!== "undefined" && RP.findCard &&
+typeof RP_GROUP!== "undefined"){
+var cards = (window.__DATA__ && window.__DATA__.rp_cards || {})[trav.worldId] || [];
+cards.forEach(function(c){
+if(trav.mode === "soul" && c.name === trav.charName) return;
+out.push(RP_GROUP.memberBrief(c));
+});
+} else if(trav.worldKind === "card" && typeof RP_CARDIMPORT!== "undefined"){
+var card = RP_CARDIMPORT.findById(trav.worldId);
+if(card &&!(trav.mode === "soul")){
+var t = ((card.fields || {}).core_identity || "");
+out.push(card.name + "：" + String(t).replace(/\s+/g, " ").slice(0, 42));
+}
+}
+return out.slice(0, 8).join("\n");
+}
+function postInstructions(trav){
+var except = trav.mode === "soul"? "（除玩家扮演的" + trav.charName + "之外）": "";
+var s = "「穿越规则」\n" +
+"1. 你是世界引擎：扮演旁白、环境与所有 NPC" + except + "，推动剧情向前走。\n" +
+"2. 绝不替玩家说话、行动或做决定；绝不写玩家的心理活动。\n" +
+"3. 世界按原著/卡片设定的逻辑对玩家的身份做出真实反应；NPC 不知道自己是 NPC。\n" +
+"4. 世界状态变化时，在回复末尾另起一行输出 <ws>JSON</ws>，" +
+"形如 <ws>{\"date\":\"康熙年间某月某日\",\"loc\":\"潇湘馆\",\"favor\":{\"贾宝玉\":5},\"addItems\":[\"通灵宝玉\"],\"progress\":\"刚进贾府\"}</ws>；" +
+"无变化则不输出，不要写进正文。\n";
+if(trav.oocRemind){
+s += "5. 若玩家的言行明显不符合其身份/时代（如古人谈论手机），在回复末尾另起一行输出「OOC提醒」+一句话轻轻点醒，不要说教；若无则不输出。\n";
+}
+s += "6. 回复像小说一样简洁自然，保持剧情张力。";
+return s;
+}
+/* 主入口：返回 {messages, stats, preview}。ctx: {history, memory, worldbook, persona(忽略)} */
+function buildMessages(trav, ctx, budget){
+ctx = ctx || {}; budget = budget || {};
+var P = (typeof RP_PROMPT!== "undefined")? RP_PROMPT: null;
+var est = P? P.estTokens: function(s){ return String(s || "").length;};
+var maxCtx = budget.maxContext || 8192;
+var avail = Math.max(1024, maxCtx - (budget.response || 512) - (budget.priming || 200));
+
+var bible = buildWorldBible(trav.worldKind, trav.worldId);
+var st = getState(trav.id);
+var recentText = (ctx.history || []).slice(-4).map(function(m){ return m.content;}).join("\n");
+
+var segs = []; // {text, pri}
+function add(text, pri){ if(text) segs.push({text: text, pri: pri});}
+add("「世界」" + bible.name + "\n" + bible.bg, 5);
+add(identityBlock(trav), 6);
+var cast = castBriefs(trav);
+add(cast? "「在场人物」\n" + cast: "", 10);
+add(ctx.memory? "「长期记忆」\n" + ctx.memory: "", 20);
+var wb = (bible.loreEntries || []).concat(ctx.worldbook || []);
+// 去重: 同一 title+content 只保留一条 (防调用方把 run.worldbook 又传一遍)
+var seen = {}, wb2 = [];
+wb.forEach(function(e){
+var k = (e && (e.title || "") + "￨" + (e.content || e.rules || "")).slice(0, 200);
+if(!seen[k]){ seen[k] = 1; wb2.push(e); }
+});
+wb = wb2;
+if(P && wb.length){
+var loreRes = P.buildLore(wb, recentText, Math.min(900, Math.floor(avail * 0.15)));
+add(loreRes.text? "「世界书」\n" + loreRes.text: "", 70);
+}
+var stTxt = "「当前世界状态」" + stateLine(st) +
+(st.progress? "\n剧情进度：" + st.progress: "") +
+(st.items.length? "\n随身物品：" + st.items.join("、"): "");
+add(stTxt, 8);
+
+segs.sort(function(a, b){ return a.pri - b.pri;});
+var sysParts = [], used = 0;
+segs.forEach(function(sg){
+var t = est(sg.text);
+if(used + t > avail) return;
+sysParts.push(sg.text); used += t;
+});
+var left = avail - used, hist = [], hUsed = 0, hDropped = 0;
+var src = ctx.history || [];
+for(var j = src.length - 1; j >= 0; j--){
+var m = src[j], mt = est(m.content) + 6;
+if(hUsed + mt > left){ hDropped = j + 1; break;}
+hist.unshift({role: m.role, content: m.content});
+hUsed += mt;
+}
+var post = postInstructions(trav);
+var messages = [{role: "system", content: sysParts.join("\n\n")}];
+for(var k = 0; k < hist.length; k++) messages.push(hist[k]);
+messages.push({role: "system", content: post});
+return {
+messages: messages,
+stats: {maxCtx: maxCtx, avail: avail, sysTokens: used, histTokens: hUsed,
+histKept: hist.length, histDropped: hDropped, preset: "穿越"},
+preview: sysParts.join("\n\n") + "\n\n" + post,
+};
+}
+
+/* ================= 开场 ================= */
+function identityOneLiner(trav){
+if(trav.mode === "soul") return "扮演" + trav.charName;
+var idt = getIdentity(trav.identityId) || {};
+return (idt.modern? "现代人": "") + (idt.name || "无名氏") +
+(idt.origin? "（" + idt.origin + "）": "");
+}
+async function genOpening(trav, cfg, callChat){
+var bible = buildWorldBible(trav.worldKind, trav.worldId);
+if(cfg && cfg.key){
+try {
+var prompt = "你是穿越剧的开场旁白。\n世界：" + bible.name + "\n" +
+String(bible.bg).slice(0, 400) + "\n玩家身份：" + identityOneLiner(trav) + "\n" +
+"开场锚点：" + (trav.anchorTitle || "故事开端") + "\n" +
+"写一段 150 字内的开场：环境氛围 + 玩家此刻的处境 + 一个钩子。用第二人称“你”。" +
+"然后另起一行输出 <ws>{\"date\":\"…\",\"loc\":\"…\",\"progress\":\"…\"}</ws> 给出初始时间地点。" +
+"只输出开场正文和 ws 块，不要解释。";
+var scfg = {base: cfg.base, key: cfg.key, model: cfg.model};
+var t = await callChat(scfg, [{role: "user", content: prompt}], 0.9);
+if(t && t.trim()) return t.trim();
+} catch(e){ /* 回退模板 */}
+}
+return offlineOpening(trav);
+}
+function offlineOpening(trav){
+var bible = buildWorldBible(trav.worldKind, trav.worldId);
+var who = trav.mode === "soul"? ("你成了" + trav.charName): ("你以" + identityOneLiner(trav) + "的身份");
+return "「" + bible.name + " · " + (trav.anchorTitle || "故事开端") + "」\n" +
+who + "，睁开眼，周围的一切既陌生又真实。\n" +
+"（开场由 AI 生成会更精彩：去「设置」配好大模型后重开即可）";
+}
+
+return {
+MODES: MODES,
+newSession: newSession, get: get, save: save, del: del, recent: recent, recentIds: recentIds,
+saveIdentity: saveIdentity, getIdentity: getIdentity, genIdentity: genIdentity,
+worldDisplayName: worldDisplayName, buildWorldBible: buildWorldBible,
+defaultState: defaultState, getState: getState, saveState: saveState,
+parseWsBlock: parseWsBlock, mergeState: mergeState, stateLine: stateLine,
+anchorsFor: anchorsFor,
+identityBlock: identityBlock, castBriefs: castBriefs, postInstructions: postInstructions,
+buildMessages: buildMessages, identityOneLiner: identityOneLiner,
+genOpening: genOpening, offlineOpening: offlineOpening,
+};
+})();

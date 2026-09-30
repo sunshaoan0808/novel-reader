@@ -1,6 +1,7 @@
 const fs = require("fs"), vm = require("vm");
+const WWW = fs.existsSync("assets/www") ? "assets/www" : "www";
 // prompt.js: matchLore 命中 + buildMessages stats.loreHits (世界书触发可视化数据源)
-const src = fs.readFileSync("assets/www/rp/prompt.js", "utf8");
+const src = fs.readFileSync(WWW+"/rp/prompt.js", "utf8");
 const ctx = {console};
 vm.createContext(ctx);
 vm.runInContext(src, ctx);

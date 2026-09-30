@@ -1,11 +1,12 @@
 const fs = require("fs"), vm = require("vm");
+const WWW = fs.existsSync("assets/www") ? "assets/www" : "www";
 // 视角/人称切换: postInstructions / groupPostInstructions / 抽屉 chips / 持久化
 let pass = 0, fail = 0;
 const t = (n, c)=>{ c ? pass++ : (fail++, console.log("FAIL:", n)); };
 
 // ---- rp/prompt.js ----
 {
-const src = fs.readFileSync("assets/www/rp/prompt.js", "utf8");
+const src = fs.readFileSync(WWW+"/rp/prompt.js", "utf8");
 const ctx = {console};
 vm.createContext(ctx);
 vm.runInContext(src, ctx);
@@ -41,7 +42,7 @@ t("post instruction is last system msg", lastSys.role === "system" && lastSys.co
 
 // ---- rp/group.js ----
 {
-const src = fs.readFileSync("assets/www/rp/group.js", "utf8");
+const src = fs.readFileSync(WWW+"/rp/group.js", "utf8");
 const ctx = {console};
 vm.createContext(ctx);
 vm.runInContext(src, ctx);
@@ -57,7 +58,7 @@ t("group char+third", g2.includes("以贾宝玉为中心") && g2.includes("第�
 
 // ---- app.js: POVS/PERSONS + povChipsHTML + setPov/setPerson + 持久化 ----
 {
-const src = fs.readFileSync("assets/www/app.js", "utf8");
+const src = fs.readFileSync(WWW+"/app.js", "utf8");
 function extract(name){
 const pats = [
 "(?:let|const|var)\\s+"+name+"\\s*=\\s*function\\s*\\(",
@@ -90,7 +91,7 @@ const ctx = {console, window:{},
   toggleDrawer:()=>{}, showChat:()=>{}};
 vm.createContext(ctx);
 ctx.window = ctx;
-vm.runInContext(fs.readFileSync("assets/www/icons.js","utf8"), ctx);
+vm.runInContext(fs.readFileSync(WWW+"/icons.js","utf8"), ctx);
 vm.runInContext(extract("POVS"), ctx);
 vm.runInContext(extract("PERSONS"), ctx);
 vm.runInContext(extract("povStoreKey"), ctx);
@@ -132,15 +133,15 @@ t("chips reflect char active", html2.includes("🎭以角色为主") && /povchip
 
 // ---- sendChatText sendOpts 含 pov/person/onUserMsg; chat.js 调用 onUserMsg ----
 {
-const src = fs.readFileSync("assets/www/app.js", "utf8");
+const src = fs.readFileSync(WWW+"/app.js", "utf8");
 t("sendOpts has pov", /pov:\s*CHAT\.pov\s*\|\|\s*"player"/.test(src));
 t("sendOpts has person", /person:\s*CHAT\.person\s*\|\|\s*"second"/.test(src));
 t("sendOpts has onUserMsg", /onUserMsg:\s*\(\)=>\{\s*renderChat\(\);\s*\}/.test(src));
-const cs = fs.readFileSync("assets/www/rp/chat.js", "utf8");
+const cs = fs.readFileSync(WWW+"/rp/chat.js", "utf8");
 t("chat.js fires onUserMsg after push", /if\(opts\.onPush\) opts\.onPush\(\);\n  if\(opts\.onUserMsg\) opts\.onUserMsg\(\);/.test(cs));
 t("chat.js ctx gets pov/person", (cs.match(/pov: opts\.pov, person: opts\.person,/g)||[]).length === 3);
 t("group post gets pov/person", cs.includes("groupPostInstructions(speaker, others, opts.pov, opts.person)"));
-const gs = fs.readFileSync("assets/www/rp/group.js", "utf8");
+const gs = fs.readFileSync(WWW+"/rp/group.js", "utf8");
 t("group.js signature updated", /function groupPostInstructions\(active, others, pov, person\)/.test(gs));
 }
 
