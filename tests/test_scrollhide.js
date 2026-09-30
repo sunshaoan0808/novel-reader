@@ -81,28 +81,41 @@ const scrollTo = (st)=>{ log.scrollTop = st; log.onscroll(); };
 
 scrollTo(500); // 下滑过140 -> 隐藏
 t("hide: 顶栏marginTop收起", head.style.marginTop === "-65px");
-t("hide: 底栏marginBottom收起", bar.style.marginBottom === "-69px");
+t("hide: 底栏fixed脱离文档流", bar.style.position === "fixed" && bar.style.bottom === "0" && bar.style.left === "0" && bar.style.right === "0");
 t("hide: 底栏transform移出", bar.style.transform === "translateY(110%)");
 t("hide: 底栏hidebar类", toggles.some(x=>x[0]==="bar"&&x[1]==="hidebar"&&x[2]));
 
 scrollTo(480); // 小幅上滑, 在迟滞带内 -> 保持隐藏
-t("hysteresis: 小幅上滑不反复显示", head.style.marginTop === "-65px" && bar.style.marginBottom === "-69px");
+t("hysteresis: 小幅上滑不反复显示", head.style.marginTop === "-65px" && bar.style.position === "fixed");
 
 scrollTo(400); // 自隐藏点上行超64 -> 显示
 t("hysteresis: 上行超64恢复顶栏", head.style.marginTop === "");
-t("hysteresis: 上行超64恢复底栏", bar.style.marginBottom === "" && bar.style.transform === "");
+t("hysteresis: 上行超64恢复底栏", bar.style.position === "" && bar.style.transform === "");
 
 scrollTo(500); // 再隐藏
 t("rehide: 再次下滑隐藏", head.style.marginTop === "-65px");
 scrollTo(100); // 回到110以内 -> 显示
-t("rehide: 回顶110以内恢复", head.style.marginTop === "" && bar.style.marginBottom === "");
+t("rehide: 回顶110以内恢复", head.style.marginTop === "" && bar.style.position === "");
 
 // 输入聚焦时不藏底栏
 document.activeElement = {tagName: "INPUT"};
 scrollTo(600);
 t("typing: 输入时顶栏仍可藏", head.style.marginTop === "-65px");
-t("typing: 输入时底栏不藏", bar.style.marginBottom === "" && bar.style.transform === "");
+t("typing: 输入时底栏不藏", bar.style.position === "" && bar.style.transform === "");
 document.activeElement = null;
+
+/* 深层回归: 隐藏后浏览器因布局变化钳制 scrollTop(绝对值变小但离底距离不变),
+   状态机不得把它当成用户上滑而误显示 (v33 视觉回归抓到的根因) */
+scrollTo(0);                         /* 先回到已知状态: 显示 */
+scrollTo(500);                       /* 隐藏, distHide = 2400-500 = 1900 */
+log.scrollHeight = 2900;             /* 模拟: chatlog 变高, maxST 2400->2300 */
+scrollTo(400);                       /* 浏览器钳制: 绝对值掉了100, 但离底距离仍是1900 */
+t("clamp: 布局钳制不误显示", head.style.marginTop === "-65px" && bar.style.position === "fixed");
+scrollTo(380);                       /* 用户真上滑20: 离底距离 1920, 差值20<64 */
+t("clamp: 小幅上滑仍保持隐藏", head.style.marginTop === "-65px" && bar.style.position === "fixed");
+scrollTo(300);                       /* 上滑100: 离底距离 2000, 差值100>64 */
+t("clamp: 上滑超64恢复", head.style.marginTop === "" && bar.style.position === "");
+log.scrollHeight = 3000;
 })();
 
 // ---------- streamToken: 上滑时不拽回底部 ----------

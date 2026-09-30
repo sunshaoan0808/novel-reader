@@ -1,0 +1,82 @@
+{
+ "url": "file:///home/hatch/workspace/github/novel-reader/www/index.html",
+ "results": [
+  {
+   "name": "ctxbar-no-stray",
+   "ok": true,
+   "detail": {
+    "low": {
+     "tail0": false,
+     "hasNaN": false,
+     "tail": "触发：大观园</div>"
+    },
+    "high": {
+     "tail0": false,
+     "hasNaN": false,
+     "hasWarn": true,
+     "tail": "会一直保留。</div>"
+    }
+   }
+  },
+  {
+   "name": "scroll-no-jitter",
+   "ok": true,
+   "detail": {
+    "s0": 60,
+    "s1": 60,
+    "s2": 60,
+    "s3": 60,
+    "lastAI": 17,
+    "twRan": true,
+    "twDrift": 0,
+    "streamDrift": 0
+   }
+  },
+  {
+   "name": "scroll-hidebars",
+   "ok": true,
+   "detail": {
+    "maxST": 3581,
+    "hidden": true,
+    "h0": 389,
+    "h1": 526,
+    "grown": true,
+    "barTop": 807,
+    "winH": 800,
+    "barGone": true,
+    "stillHidden": true,
+    "shown": true
+   }
+  },
+  {
+   "name": "layout-no-overlap",
+   "ok": true,
+   "detail": {
+    "chat": {
+     "overlaps": 0,
+     "overflows": 0,
+     "pageOverflow": false,
+     "nLeaf": 159,
+     "overlapSample": [],
+     "overflowSample": []
+    },
+    "settings": {
+     "overlaps": 0,
+     "overflows": 0,
+     "pageOverflow": false,
+     "nLeaf": 100,
+     "overlapSample": [],
+     "overflowSample": []
+    },
+    "traverse": {
+     "overlaps": 0,
+     "overflows": 0,
+     "pageOverflow": false,
+     "nLeaf": 29,
+     "overlapSample": [],
+     "overflowSample": []
+    }
+   }
+  }
+ ]
+}

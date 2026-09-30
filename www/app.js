@@ -1051,7 +1051,7 @@ const log = document.getElementById("chatlog");
 if(!log) return;
 const head = document.getElementById("chathead");
 const bar = document.querySelector(".chatbar");
-let lastST = log.scrollTop || 0, hidden = false, hideST = 0, headH = 0, barH = 0, ticking = false;
+let lastST = log.scrollTop || 0, hidden = false, distHide = 0, headH = 0, ticking = false;
 const raf = (typeof requestAnimationFrame !== "undefined") ? requestAnimationFrame : (fn)=>fn();
 /* 顶栏/底栏联动显隐: 下滑阅读时一起收起让出空间, 上滑/回顶时恢复;
    输入框聚焦(键盘弹起)时不藏底栏 */
@@ -1066,11 +1066,15 @@ head.classList.toggle("hide", hide);
 head.style.marginTop = (hide && headH) ? (-headH + "px") : "";
 }
 if(bar && !(hide && typing)){
-if(hide) barH = bar.offsetHeight || barH;
 bar.classList.toggle("hidebar", hide);
-/* 底栏是纵向最后一个元素: transform 负责视觉移出, 负 margin 负责收起占位让聊天区伸长 */
+/* 底栏隐藏用 fixed 脱离文档流: 正文自动补位(无需负 margin),
+   bottom:0 + translateY(110%) 保证整体移出视口, 与布局/安全区无关;
+   v33 的 sticky+负 margin 会被浏览器重新锚定抵消位移, 实际没藏住 */
+bar.style.position = hide ? "fixed" : "";
+bar.style.left = hide ? "0" : "";
+bar.style.right = hide ? "0" : "";
+bar.style.bottom = hide ? "0" : "";
 bar.style.transform = hide ? "translateY(110%)" : "";
-bar.style.marginBottom = (hide && barH) ? (-barH + "px") : "";
 }
 }
 window.__setHeadHidden = setHidden; /* 测试钩子 */
@@ -1078,9 +1082,14 @@ function onScroll(){
 ticking = false;
 const st = log.scrollTop;
 const down = st > lastST + 2, up = st < lastST - 2;
-/* 迟滞阈值: 下滑过 140 藏; 上滑回到 110 以内、或自隐藏点上行超 64 才显示, 避免阈值附近反复横跳 */
-if(!hidden && down && st > 140){ hideST = st; setHidden(true); }
-else if(hidden && up && (st < 110 || hideST - st > 64)){ setHidden(false); }
+/* 离底距离判定: 显隐改变 chatlog 高度时浏览器会钳制 scrollTop(把用户保持在底部),
+   钳制/滚动锚定只改变绝对 scrollTop, 不改变离底距离; 只有用户真正上滑才会拉开
+   离底距离。用它做显示阈值天然免疫布局变化引发的 scroll 事件, 状态机不会被
+   自己的显隐反复横跳(v33 视觉回归抓到的深层根因) */
+const dist = Math.max(0, (log.scrollHeight - log.clientHeight) - st);
+/* 迟滞阈值: 下滑过 140 藏; 上滑回到 110 以内、或离底距离比隐藏时拉开超 64 才显示 */
+if(!hidden && down && st > 140){ distHide = dist; setHidden(true); }
+else if(hidden && up && (st < 110 || dist - distHide > 64)){ setHidden(false); }
 lastST = st;
 }
 log.onscroll = ()=>{ if(!ticking){ ticking = true; raf(onScroll); } };
