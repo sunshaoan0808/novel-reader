@@ -258,13 +258,39 @@ async function temporalFor(storyKey, card, novel, h){
     return await RP_TEMPORAL.retrieveTemporal(storyKey, card, novel, recent, 5);
   }catch(e){ return null; }
 }
-/* P0-3: 人物弧光 prompt 段 (无弧光卡返回空字符串, 注入层自行跳过) */
-function arcTextFor(card, runId){
+/* P0-3: 人物弧光 prompt 段 (无弧光卡返回空字符串, 注入层自行跳过)
+ * 2026-09-30 修: 形参顺序与三处调用点 (runId, name, card) 对齐;
+ * 之前定义为 (card, runId) 导致 renderArcPrompt 拿到字符串 card, 弧光恒为空。 */
+function arcTextFor(runId, name, card){
   try{
     if(typeof RP_ARC !== "undefined" && RP_ARC.renderArcPrompt)
       return RP_ARC.renderArcPrompt(card, runId) || "";
   }catch(e){}
   return "";
+}
+/* PPA 二遍对齐的对齐依据: 铁律 + 弧光 + 画像库(profile3) + 故事进度约束一句话 */
+function ppaBasisFor(runId, name, card, storyKey, arcText){
+  var basis = {iron: "", arc: arcText || "", profile: [], storyLine: ""};
+  try{
+    var cardId = (card && (card.id || card.cardId)) || null;
+    if(typeof RP_MEM !== "undefined"){
+      basis.iron = String(RP_MEM.getIronLaw(runId, name, cardId) || "").slice(0, 400);
+      var st = RP_MEM.get(runId, name) || {};
+      basis.profile = (st.profile3 || []).map(function(p){ return p && p.text; }).filter(Boolean);
+    }
+  }catch(e){}
+  try{
+    if(typeof RP_TEMPORAL !== "undefined" && storyKey){
+      var s = RP_TEMPORAL.getS(storyKey, card || null);
+      if(s && s.chapter)
+        basis.storyLine = "当前故事进度为第" + s.chapter + "回; 该回之后发生的事角色一概不知, 初稿若有提及必须删改。";
+    }
+  }catch(e){}
+  return basis;
+}
+/* 导演文本是否含关键情节点: 委托 RP_PPA.isKeyRound (启发式, 见 ppa.js) */
+function ppaKeyRound(dirText){
+  return (typeof RP_PPA !== "undefined") ? RP_PPA.isKeyRound(dirText) : false;
 }
 
 async function greeting(runId, name, cfg, novel){
@@ -333,11 +359,12 @@ async function send(runId, name, text, opts){
         hint: wsHint, cardBrief: cardBriefOf(card)});
   }catch(e){}
   var temporal = await temporalFor(wsId, card, run.novel, h);
+  var arcText = arcTextFor(runId, name, card); // PPA 对齐依据复用, 避免重复计算
   var b = RP_PROMPT.buildMessages(card, {
     novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: run.relations,
     memory: memPrompt, memTasks: memTasks,
     memBudgeted: memCtxFor(runId, name, card, run.novel, temporal, text),
-    arc: arcTextFor(runId, name, card),
+    arc: arcText,
     history: mapHistory(h),
     persona: RP_PERSONA.renderText(RP_PERSONA.resolve(runId)),
     pov: opts.pov, person: opts.person,
@@ -412,7 +439,26 @@ async function send(runId, name, text, opts){
       if(wres.changed) reply = wres.clean;
     }
   }catch(e){}
+  /* PPA 二遍对齐 (arXiv:2506.11857): 第一遍已流式输出; 第二遍只修人设/知识边界,
+   * 失败/超时保留第一遍。气泡 "对齐中…" 经由 opts.onAligning 提示。 */
+  var ppaR = null;
+  try{
+    if(typeof RP_PPA !== "undefined"){
+      ppaR = await RP_PPA.maybeAlign({
+        ppa: opts.ppa, userText: text, keyRound: ppaKeyRound(dirText),
+        callChat: function(c, ms, t, m){ return RP_NET.complete(c, ms, t, m); },
+        cfg: cfg, name: name, draft: reply,
+        basis: ppaBasisFor(runId, name, card, wsId, arcText),
+        onAligning: opts.onAligning
+      });
+      if(ppaR) reply = ppaR.text;
+    }
+  }catch(e){ ppaR = null; }
   h.push(newMsg("assistant", reply));
+  if(ppaR){
+    b.stats.ppa = {ran: true, changed: ppaR.changed, mode: ppaR.mode}; // P0-5: 诊断用
+    try{ RP_PPA.recordAlign(wsId, h.length, ppaR.changed); }catch(e){}
+  }
   return {history: h, aborted: false, stats: b.stats};
 }
 
@@ -436,12 +482,13 @@ async function regenerate(runId, name, opts){
   }
   var wsIdRe = (typeof chatKey !== "undefined") ? chatKey(runId, name) : (runId + "|" + name);
   var temporalRe = await temporalFor(wsIdRe, card, run.novel, h.slice(0, upto));
+  var arcTextRe = arcTextFor(runId, name, card);
   var b = RP_PROMPT.buildMessages(card, {
     novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: run.relations,
     memory: RP_MEM.renderBudgeted ? "" : RP_MEM.renderPrompt(mem),
     memTasks: RP_TASKS.renderPrompt(runId, name, lastUserText),
     memBudgeted: memCtxFor(runId, name, card, run.novel, temporalRe, lastUserText),
-    arc: arcTextFor(runId, name, card),
+    arc: arcTextRe,
     history: mapHistory(h.slice(0, upto)),
     persona: RP_PERSONA.renderText(RP_PERSONA.resolve(runId)),
     pov: opts.pov, person: opts.person,
@@ -457,6 +504,21 @@ async function regenerate(runId, name, opts){
   if(opts.onSystem) opts.onSystem(b.preview, b.stats);
   var reply = await RP_NET.stream(cfg, b.messages,
     {temperature: (opts.temperature || 0.9) + 0.15, signal: opts.signal}, opts.onToken);
+  /* PPA 二遍对齐: regenerate 同样走对齐 (无导演轮, 只看关键词/档位) */
+  var ppaReR = null;
+  try{
+    if(typeof RP_PPA !== "undefined"){
+      ppaReR = await RP_PPA.maybeAlign({
+        ppa: opts.ppa, userText: lastUserText, keyRound: false,
+        callChat: function(c, ms, t, m){ return RP_NET.complete(c, ms, t, m); },
+        cfg: cfg, name: name, draft: reply,
+        basis: ppaBasisFor(runId, name, card, wsIdRe, arcTextRe),
+        onAligning: opts.onAligning
+      });
+      if(ppaReR) reply = ppaReR.text;
+    }
+  }catch(e){ ppaReR = null; }
+  if(ppaReR){ try{ RP_PPA.recordAlign(wsIdRe, h.length, ppaReR.changed); }catch(e){} }
   if(!RP_OOC.check(reply, name)){
     last.candidates = last.candidates || [last.content];
     last.candidates.push(reply);
@@ -536,12 +598,13 @@ async function genOneSpeaker(runId, run, members, speaker, text, h, opts, budget
     function(c, ms, t){ return RP_NET.complete(c, ms, t); }, spHint);
   var wsIdSpk = (typeof groupKey !== "undefined") ? groupKey(runId, members) : (runId + "|" + speaker);
   var temporalSpk = await temporalFor(wsIdSpk, activeCard, run.novel, h);
+  var arcTextSpk = arcTextFor(runId, speaker, activeCard);
   var b = RP_PROMPT.buildMessages(activeCard, {
     novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: run.relations,
     memory: RP_MEM.renderBudgeted ? "" : RP_MEM.renderPrompt(RP_MEM.get(runId, speaker)),
     memTasks: RP_TASKS.renderPrompt(runId, speaker, text),
     memBudgeted: memCtxFor(runId, speaker, activeCard, run.novel, temporalSpk, text),
-    arc: arcTextFor(runId, speaker, activeCard),
+    arc: arcTextSpk,
     history: mapHistory(h),
     persona: RP_PERSONA.renderText(RP_PERSONA.resolve(runId)),
     pov: opts.pov, person: opts.person,
@@ -623,9 +686,24 @@ async function genOneSpeaker(runId, run, members, speaker, text, h, opts, budget
       if(wresG.changed) reply = wresG.clean;
     }
   }catch(e){}
+  /* PPA 二遍对齐: 群聊每位发言人独立对齐, 关键轮按群聊导演文本判定 */
+  var ppaSpkR = null;
+  try{
+    if(typeof RP_PPA !== "undefined"){
+      ppaSpkR = await RP_PPA.maybeAlign({
+        ppa: opts.ppa, userText: text, keyRound: ppaKeyRound(opts._dirText),
+        callChat: function(c, ms, t, m){ return RP_NET.complete(c, ms, t, m); },
+        cfg: cfg, name: speaker, draft: reply,
+        basis: ppaBasisFor(runId, speaker, activeCard, wsIdSpk, arcTextSpk),
+        onAligning: opts.onAligning
+      });
+      if(ppaSpkR) reply = ppaSpkR.text;
+    }
+  }catch(e){ ppaSpkR = null; }
   var msg = newMsg("assistant", reply);
   msg.speaker = speaker;
   h.push(msg);
+  if(ppaSpkR){ try{ RP_PPA.recordAlign(wsIdSpk, h.length, ppaSpkR.changed); }catch(e){} }
   return {stats: b.stats, failed: false, aborted: false};
 }
 
@@ -722,8 +800,23 @@ async function sendTraverse(travId, text, opts){
       if(wresT.changed) reply = wresT.clean;
     }
   }catch(e){}
+  /* PPA 二遍对齐: 穿越链路同样接入, 无对齐依据 (无铁律/弧光/故事进度) 时自动跳过 */
+  var ppaTR = null;
+  try{
+    if(typeof RP_PPA !== "undefined"){
+      ppaTR = await RP_PPA.maybeAlign({
+        ppa: opts.ppa, userText: text, keyRound: ppaKeyRound(dirTextT),
+        callChat: function(c, ms, t, m){ return RP_NET.complete(c, ms, t, m); },
+        cfg: cfg, name: trav.anchorTitle || trav.worldName || "世界", draft: reply,
+        basis: ppaBasisFor("trav", travId, null, wsIdT, ""),
+        onAligning: opts.onAligning
+      });
+      if(ppaTR) reply = ppaTR.text;
+    }
+  }catch(e){ ppaTR = null; }
 
   h.push(newMsg("assistant", reply));
+  if(ppaTR){ try{ RP_PPA.recordAlign(wsIdT, h.length, ppaTR.changed); }catch(e){} }
   return {history: h, aborted: false, stats: b.stats,
           worldState: RP_TRAVERSE.getState(travId)};
 }

@@ -714,6 +714,7 @@ const getRpCfg = ()=> Object.assign({maxContext:8192, respTokens:512, summaryMod
   temperature:0.9, topP:1, ooc:true, preset:"classic", optCards:false, optCount:4, optMood:"none", ttsAuto:false, typewriter:true,
   worldsim:true, wsPerMsg:3, wsStepMin:30, wsWxAuto:true, wsWxEvery:5, temporal:true, leanmem:true,
   memCycle:10, memPoolRatio:"50/30/20",
+  ppaMode:"key", ppaModel:"",
   director:true, directorTier:"sentinel", directorStyle:"slowburn", directorEvery:5, directorStale:8, directorModel:""}, JSON.parse(localStorage.getItem(RPCFG_KEY)||"{}"));
 const saveRpCfg = (c)=> localStorage.setItem(RPCFG_KEY, JSON.stringify(c));
 const chatKey = (runId, name)=> `nd_chat_${runId}_${name}`;
@@ -1728,6 +1729,13 @@ onSpeaker: (sp)=>{ STREAM_SPEAKER = sp; },
 onSpeakerDone: ()=>{ saveHist(k, h); renderChat(); },
 onPush: ()=>{ saveHist(k, h); },
 onSystem: (preview, stats)=>{ LAST_SYSTEM = preview + "\n\n【预算】" + JSON.stringify(stats); LAST_STATS = stats; recordLastPrompt(stats); },
+/* PPA 二遍对齐: 档位/模型经由 opts.ppa 透传; onAligning 在气泡上提示"对齐中…" */
+ppa: {mode: rcfg.ppaMode||"key", model: (rcfg.ppaModel||"").trim(), summaryModel: rcfg.summaryModel||""},
+onAligning: (on, finalText)=>{
+  const live = document.getElementById("live");
+  if(on){ if(live && !document.getElementById("ppa-aligning")) live.insertAdjacentHTML("beforeend", `<span id="ppa-aligning" style="opacity:.55">（对齐中…）</span>`); }
+  else { const a = document.getElementById("ppa-aligning"); if(a) a.remove(); if(live && finalText != null) live.textContent = finalText; }
+},
 };
 /* P1: 出戏值检测（穿越模式下每次玩家发言都算一次） */
 if(isTrav) travOocCheck(CHAT.travId, text);
@@ -1739,6 +1747,7 @@ const r = isGroup
   topP: sendOpts.topP, maxTokens: sendOpts.maxTokens, budget: sendOpts.budget,
   signal: sendOpts.signal, onToken: sendOpts.onToken, onPush: sendOpts.onPush,
   onUserMsg: sendOpts.onUserMsg, onSystem: sendOpts.onSystem,
+  ppa: sendOpts.ppa, onAligning: sendOpts.onAligning,
   extraPrompt: travExtraPrompt(CHAT.travId, text)})
 : await RP.send(CHAT.runId, CHAT.name, text, sendOpts);
 saveHist(k, r.history);
@@ -2304,6 +2313,22 @@ memPools: (stats && stats.memPools) || null};
 const DIAG_SEG_LABELS = {identity:"身份", persona:"玩家人设", narrator:"叙事者模式", core:"核心人设",
 memory:"长期记忆", speech:"说话方式", examples:"对话示例", background:"背景", relations:"人物关系", lore:"世界书"};
 const DIAG_POOL_LABELS = {important:"重要池（铁律/置顶/画像库/心境）", recent:"近期池（事件库）", similar:"长远池（记录库/往事）"};
+/* 人设保真行 (Persistent Personas? 方法论落地): 只展示机制状态, 不编造偏离度分数。
+ * 铁律/弧光 = 本轮 prompt 是否真实注入了对应段; 末尾纠偏恒为 ✓ (prompt 末位 system 必有);
+ * 二遍对齐 = 上次对齐距今轮数与是否改动 (localStorage 记录, 如实呈现)。 */
+const ppaFidelityText = ()=>{
+try{
+let key = null;
+if(CHAT.mode === "group") key = groupKey(CHAT.runId, CHAT.members||[]);
+else if(CHAT.mode === "traverse") key = "nd_travchat_" + CHAT.travId;
+else key = chatKey(CHAT.runId, CHAT.name);
+const raw = (typeof RP_PPA !== "undefined") ? RP_PPA.lastAlign(key) : null;
+if(!raw) return "未运行";
+const cur = getHist(chatHistKey()).length;
+const n = Math.max(0, cur - (raw.len||0));
+return (n === 0 ? "本轮" : n + " 轮前") + (raw.changed ? " · 已修正" : " · 无修改");
+}catch(e){ return "未运行"; }
+};
 window.promptDiag = ()=>{
 const lp = window.__LAST_PROMPT__;
 if(!lp || !lp.stats){ alert("先发一句话，引擎组装好 prompt 后这里才能诊断。"); return; }
@@ -2317,6 +2342,12 @@ const p = lp.memPools[k];
 return `<div class="storow"><span>${DIAG_POOL_LABELS[k] || k}</span><span>${p.tokens} tok · ${p.items} 条${p.dropped ? ` · 丢弃 ${p.dropped}` : ""}${p.source ? ` · ${p.source}` : ""}</span></div>`;
 }).join("");
 const dropped = (s.droppedSegs || []).map(k=>DIAG_SEG_LABELS[k] || k).join("、");
+const sysPreview = String(window.LAST_SYSTEM || "");
+const fidelityRows =
+`<div class="storow"><span>铁律注入</span><span>${sysPreview.indexOf("【铁律记忆】")>=0?"✓ 已注入":"✗ 未注入"}</span></div>`+
+`<div class="storow"><span>人物弧光注入</span><span>${sysPreview.indexOf("【人物弧光】")>=0?"✓ 已注入":"✗ 未注入"}</span></div>`+
+`<div class="storow"><span>末尾纠偏指令</span><span>✓ 常驻</span></div>`+
+`<div class="storow"><span>二遍对齐 PPA</span><span>${ppaFidelityText()}</span></div>`;
 __backAction = ()=>showChat();
 titleEl.innerHTML = icon("chart") + " Prompt 诊断"; subEl.textContent = CHAT.name || "";
 view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回聊天</button>
@@ -2329,6 +2360,7 @@ view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返�
 <div class="card"><div class="name" style="font-size:14px">记忆三池</div>${poolRows || '<div class="empty">本轮未注入记忆</div>'}
 <div class="storow"><span>世界模拟注入</span><span>${lp.hasWorldsim ? "有" : "无"}</span></div>
 <div class="storow"><span>导演指令注入</span><span>${lp.hasDirector ? "有" : "无"}</span></div></div>
+<div class="card"><div class="name" style="font-size:14px">人设保真</div>${fidelityRows}</div>
 <div class="card"><div class="name" style="font-size:14px">丢弃情况</div>
 <div class="kv">${dropped ? "整段丢弃：" + esc(dropped) : "无整段丢弃"}</div>
 ${(s.loreHits && s.loreHits.length) ? `<div class="kv" style="margin-top:6px">世界书命中：${s.loreHits.map(esc).join("、")}</div>` : ""}</div>
@@ -2463,6 +2495,10 @@ view.innerHTML = renderStorageCard() + `
 <div class="field"><label>记忆三池预算比例（近期 / 长远 / 重要，如 50/30/20）</label>
 <input id="r_mempool" placeholder="50/30/20" value=""></div>
 <div class="field"><label><input id="r_leanmem_on" type="checkbox" style="width:auto"> 启用三库记忆（LeanMem：画像 / 事件 / 记录分流，检索按问题类型自适应）</label></div>
+<div class="field"><label>二遍对齐 PPA（第一遍自由生成，第二遍对照铁律/弧光改写，只修人设与穿帮）</label>
+<select id="r_ppa_mode"><option value="off">关闭</option><option value="key">关键轮触发（默认）</option><option value="always">每轮都跑</option></select></div>
+<div class="field"><label>二遍对齐模型（留空=用摘要模型，再空=用主模型，建议填便宜小模型）</label>
+<input id="r_ppa_model" placeholder="留空跟随" value=""></div>
 <div class="btnrow"><button class="btn" onclick="saveRpCfgUI()">保存 RP 设置</button><button class="btn ghost" onclick="importStPreset()">${icon("download")} 导入 ST 预设(采样参数)</button></div>
 <div class="hint">每 N 条消息，引擎自动整理一次记忆：LeanMem 三库分流（画像库 / 事件库 / 记录库）+ 当前心境（1 次模型调用），存在本机；关闭三库记忆则回退为三池旧行为。</div>
 <div class="hint">Key 只保存在本机, 聊天时由手机直接请求你填的接口, 不经过任何中转。
@@ -2560,6 +2596,8 @@ window.storeCleanup = async ()=>{
 document.getElementById("r_memcycle").value = rc.memCycle||10;
 document.getElementById("r_mempool").value = rc.memPoolRatio||"50/30/20";
 document.getElementById("r_leanmem_on").checked = rc.leanmem!==false;
+document.getElementById("r_ppa_mode").value = rc.ppaMode||"key";
+document.getElementById("r_ppa_model").value = rc.ppaModel||"";
 (function(){ const gp = RP_PERSONA.getGlobal();
 const el = document.getElementById("persona_sum");
 if(el) el.textContent = gp ? ("当前：" + (gp.name||"") + " " + String(gp.desc||"").slice(0,40)) : "未设置（建议填一下，AI 聊天时会知道你是谁）"; })();
@@ -2652,6 +2690,8 @@ ttsAuto:$("#r_ttsauto").checked, typewriter:$("#r_typewriter").checked,
 memCycle:Math.max(5,parseInt($("#r_memcycle").value)||10),
 memPoolRatio:(($("#r_mempool")&&$("#r_mempool").value)||"50/30/20").trim()||"50/30/20",
 leanmem:$("#r_leanmem_on")?$("#r_leanmem_on").checked:true,
+ppaMode:$("#r_ppa_mode")?$("#r_ppa_mode").value:"key",
+ppaModel:$("#r_ppa_model")?$("#r_ppa_model").value.trim():"",
 /* 世界模拟三件套 */
 worldsim:$("#r_ws_on")?$("#r_ws_on").checked:true,
 wsPerMsg:Math.max(1,parseInt($("#r_ws_permsg")?$("#r_ws_permsg").value:"3")||3),
