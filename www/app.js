@@ -1238,7 +1238,7 @@ const log = document.getElementById("chatlog");
 if(!log) return;
 const head = document.getElementById("chathead");
 const bar = document.querySelector(".chatbar");
-let hidden = false, headH = 0, ticking = false;
+let hidden = false, headH = 0, simH = 0, ticking = false;
 /* 离底距离 */
 const distNow = ()=>Math.max(0, ((log.scrollHeight || 0) - (log.clientHeight || 0)) - log.scrollTop);
 let lastDist = distNow();
@@ -1256,6 +1256,13 @@ if(head){
 if(hide) headH = head.offsetHeight || headH;
 head.classList.toggle("hide", hide);
 head.style.marginTop = (hide && headH) ? (-headH + "px") : "";
+}
+/* 世界模拟条跟随顶栏一起藏: 沉浸式阅读历史时不留一条空白带(此前漏接) */
+const sim = (typeof document !== "undefined") ? document.getElementById("simbar") : null;
+if(sim){
+if(hide) simH = sim.offsetHeight || simH;
+sim.style.marginTop = (hide && simH) ? (-simH + "px") : "";
+sim.style.transform = hide ? "translateY(-105%)" : "";
 }
 if(bar && !(hide && typing)){
 bar.classList.toggle("hidebar", hide);

@@ -75,6 +75,7 @@ bar.classList = {add(){}, remove(){}, toggle(c, on){ toggles.push(["bar", c, !!o
 const log = mkEl();
 Object.assign(log, {scrollHeight: 3000, scrollTop: 2400, clientHeight: 600}); /* 初始钉在底部 */
 els["chathead"] = head; els["chatlog"] = log; els["__chatbar"] = bar;
+const sim = mkEl(); sim.offsetHeight = 32; els["simbar"] = sim; /* 世界模拟条 */
 const bodyToggles = [];
 document.body = {classList: {add(){}, remove(){}, toggle(c, on){ bodyToggles.push([c, !!on]); }, contains(){ return false; }}};
 document.activeElement = null;
@@ -90,6 +91,7 @@ t("hide: 底栏fixed脱离文档流", bar.style.position === "fixed" && bar.styl
 t("hide: 底栏transform移出", bar.style.transform === "translateY(110%)");
 t("hide: 底栏hidebar类", toggles.some(x=>x[0]==="bar"&&x[1]==="hidebar"&&x[2]));
 t("hide: body挂immersive", bodyToggles.some(x=>x[0]==="immersive"&&x[1]));
+t("hide: 世界条跟随顶栏收起", sim.style.marginTop === "-32px" && sim.style.transform === "translateY(-105%)");
 
 scrollTo(1900); // 小幅下滑但没到底(dist=500): 保持隐藏，不到滑到底不退出
 t("hysteresis: 未滑到底保持隐藏", head.style.marginTop === "-65px" && bar.style.position === "fixed");
@@ -100,6 +102,7 @@ t("hysteresis: 历史区内上滑不退出", head.style.marginTop === "-65px");
 scrollTo(2380); // 滑到底: dist=20<24 -> 退出沉浸式
 t("show: 滑到底恢复顶栏", head.style.marginTop === "");
 t("show: 滑到底恢复底栏", bar.style.position === "" && bar.style.transform === "");
+t("show: 滑到底恢复世界条", sim.style.marginTop === "" && sim.style.transform === "");
 t("show: 滑到底摘immersive", bodyToggles.filter(x=>x[0]==="immersive").pop()[1] === false);
 
 // 输入聚焦时不藏底栏（顶栏照藏）

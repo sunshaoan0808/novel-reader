@@ -38,18 +38,20 @@
    "detail": {
     "maxST": 2058,
     "preHidden": false,
-    "dist": 1832,
+    "dist": 1800,
     "hidden": true,
     "scenGone": true,
+    "simGone": true,
     "h0": 374,
-    "h1": 592,
+    "h1": 624,
     "grown": true,
     "barTop": 797,
     "winH": 800,
     "barGone": true,
     "stillHidden": true,
     "shown": true,
-    "scenBack": true
+    "scenBack": true,
+    "simBack": true
    }
   },
   {

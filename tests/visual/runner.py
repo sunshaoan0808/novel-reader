@@ -130,7 +130,7 @@ async def case_jitter(c):
 
 
 async def case_hidebars(c):
-    """上滑看历史（离底>140）进入沉浸式：顶栏收起+底栏移出+场景条收起+顶罩减弱；
+    """上滑看历史（离底>140）进入沉浸式：顶栏收起+底栏移出+场景条收起+世界条收起+顶罩减弱；
        未滑到底保持隐藏；只有滑到底（离底<24）才退出沉浸式。"""
     await c.ev(SHOW_CHAT, await_promise=True)
     await asyncio.sleep(0.6)
@@ -139,6 +139,7 @@ async def case_hidebars(c):
       var head = document.getElementById("chathead");
       var bar = document.querySelector(".chatbar");
       var scen = document.getElementById("scenbar");
+      var sim = document.getElementById("simbar");
       var out = {};
       out.maxST = log.scrollHeight - log.clientHeight;
       if (out.maxST < 160) return {skip: true, reason: "滚动空间不足"};
@@ -154,6 +155,9 @@ async def case_hidebars(c):
         && document.body.classList.contains("immersive");
       out.scenGone = getComputedStyle(scen).maxHeight === "0px"
         && getComputedStyle(scen).opacity === "0";
+      out.simGone = !!sim && parseFloat(sim.style.marginTop) < 0
+        && sim.style.transform === "translateY(-105%)"
+        && sim.getBoundingClientRect().bottom <= 2;
       out.h0 = h0; out.h1 = log.clientHeight;
       out.grown = out.h1 > h0 + 40;
       var brect = bar.getBoundingClientRect();
@@ -169,13 +173,15 @@ async def case_hidebars(c):
         && !bar.style.transform && !bar.style.position && !head.style.marginTop
         && !document.body.classList.contains("immersive");
       out.scenBack = getComputedStyle(scen).opacity === "1";
+      out.simBack = !!sim && !sim.style.marginTop && !sim.style.transform
+        && sim.getBoundingClientRect().bottom > 20;
       return out;
     })()'''
     r = await c.ev(js, await_promise=True)
     if r.get("skip"):
         return False, r
-    ok = (r["hidden"] and r["scenGone"] and r["grown"] and r["barGone"] and r["stillHidden"]
-          and r["shown"] and r["scenBack"] and not r["preHidden"])
+    ok = (r["hidden"] and r["scenGone"] and r["simGone"] and r["grown"] and r["barGone"] and r["stillHidden"]
+          and r["shown"] and r["scenBack"] and r["simBack"] and not r["preHidden"])
     return ok, r
 
 
