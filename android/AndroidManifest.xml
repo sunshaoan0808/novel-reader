@@ -5,7 +5,7 @@
     <!-- Tier3-24: 角色召回本地通知（Android 13+ 运行时权限，JS 开关控制是否真发） -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
-        android:label="蒸馏工坊"
+        android:label="浮生"
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/AppTheme"
         android:allowBackup="false">

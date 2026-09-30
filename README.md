@@ -1,4 +1,4 @@
-# novel-reader · 蒸馏工坊
+# novel-reader · 浮生
 
 单机 WebView 的小说人物 RP 聊天 App：自研 RP 引擎，App 内直接开聊，无后端、用户自配 LLM Key。
 

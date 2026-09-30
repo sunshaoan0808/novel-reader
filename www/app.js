@@ -1,4 +1,4 @@
-/* 蒸馏工坊 v3: 产物浏览器 + 任务管理 + RP 聊天 (纯手机端, 数据内联) */
+/* 浮生 v3: 产物浏览器 + 任务管理 + RP 聊天 (纯手机端, 数据内联) */
 const $ = (s) => document.querySelector(s);
 const view = $("#view"), titleEl = $("#title"), subEl = $("#sub"),
 tabs = $("#tabs"), mainnav = $("#mainnav");
@@ -82,7 +82,7 @@ showRuns();
 /* ================= 产物浏览 (原有) ================= */
 function showRuns(){
 __backAction = null;
-titleEl.textContent = "蒸馏工坊";
+titleEl.textContent = "浮生";
 subEl.textContent = `${INDEX.length} 个蒸馏任务 · 离线浏览`;
 view.innerHTML = INDEX.map(r=>`
 <div class="card" onclick='openRun(${JSON.stringify(r.run_id)})'>
