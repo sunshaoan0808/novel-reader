@@ -2459,7 +2459,10 @@ window.clearChat = ()=>{
 const label = CHAT.mode==="group" ? "这个群聊" : CHAT.name;
 /* Tier2 #16: 星野 "设置·重启对话会清空记忆和关系，从头来过" — 明确告知后果 */
 if(!confirm(`清空和${label}的聊天记录？\n会清空记忆和关系，从头来过。`)) return;
-localStorage.removeItem(chatHistKey());
+const hk = chatHistKey();
+localStorage.removeItem(hk);
+/* 大历史可能已搬进 IDB/文件层（MEM 镜像也要清，否则清完还显示旧记录） */
+try{ if(typeof RP_STORE!=="undefined" && RP_STORE.removeItemAsync){ RP_STORE.removeItemAsync(hk).catch(()=>{}); } }catch(e){}
 if(CHAT.mode==="single") RP_MEM.clear(CHAT.runId, CHAT.name);
 renderChat();
 };
@@ -3620,8 +3623,12 @@ const STORAGE_GROUPS = [
 window.fmtBytes = (b)=>{
 if(b < 1024) return b + " B";
 if(b < 1024*1024) return (b/1024).toFixed(1) + " KB";
-return (b/1024/1024).toFixed(2) + " MB";
+if(b < 1024*1024*1024) return (b/1024/1024).toFixed(2) + " MB";
+return (b/1024/1024/1024).toFixed(2) + " GB";
 };
+/* 本地存储总配额 2GB：localStorage（5MB 硬上限，浏览器规定改不了）+ IndexedDB（系统按磁盘余量算）
+ * + 原生文件层（App 私有目录 files/ndblob/，2GB 自设上限，真机大文件走这里）。 */
+window.ND_QUOTA_BYTES = 2*1024*1024*1024;
 window.storageUsage = ()=>{
 const groups = STORAGE_GROUPS.map(g=>({label: g.label, bytes: 0, keys: 0}));
 const other = {label: "配置与其他", bytes: 0, keys: 0};
@@ -3639,8 +3646,17 @@ if(STORAGE_GROUPS[j].prefixes.some(p=>k.indexOf(p) === 0)){ gi = j; break; }
 const t = gi >= 0 ? groups[gi] : other;
 t.bytes += b; t.keys += 1;
 }
+/* 文件层（原生 2GB）不计入 localStorage，单独加上 */
+let fileBytes = 0, fileCount = 0;
+try{
+if(typeof RP_STORE!=="undefined"){
+if(RP_STORE.fileBytes){ const fb = RP_STORE.fileBytes(); if(typeof fb==="number" && fb > 0) fileBytes = fb; }
+if(RP_STORE.fileCount){ fileCount = RP_STORE.fileCount()||0; }
+}
+}catch(e){}
+total += fileBytes;
 groups.push(other);
-return {total: total, quota: 5*1024*1024, groups: groups.filter(g=>g.keys > 0)};
+return {total: total, quota: window.ND_QUOTA_BYTES, fileBytes: fileBytes, fileCount: fileCount, groups: groups.filter(g=>g.keys > 0)};
 };
 window.renderStorageCard = ()=>{
 const su = storageUsage();
@@ -3648,8 +3664,9 @@ const pct = Math.min(100, su.total / su.quota * 100);
 const warn = su.total / su.quota >= 0.8;
 return `<div class="setcard"><h3>本地存储用量</h3>
 <div class="storbar"><div class="storbar-fg${warn?" warn":""}" style="width:${pct.toFixed(1)}%"></div></div>
-<div class="stornum${warn?" warn":""}">${fmtBytes(su.total)} / 5 MB（${pct.toFixed(0)}%）${warn?" · 空间告急，建议清理":""}</div>
+<div class="stornum${warn?" warn":""}">${fmtBytes(su.total)} / 2 GB（${pct.toFixed(0)}%）${warn?" · 空间告急，建议清理":""}</div>
 ${su.groups.map(g=>`<div class="storow"><span>${g.label}</span><span>${g.keys} 项 · ${fmtBytes(g.bytes)}</span></div>`).join("")}
+<div class="storow" id="fileline"><span>大文件存储（App 私有目录，上限 2GB）</span><span>${su.fileCount} 个文件 · ${fmtBytes(su.fileBytes)}</span></div>
 <div class="storow" id="idbline"><span>浏览器大文件存储（估算）</span><span>统计中…</span></div>
 <div class="storow" id="idbcopied"><span>已备份到大文件存储</span><span>—</span></div>
 <div class="btnrow"><button class="btn ghost" onclick="if(confirm('清空所有单聊/群聊/穿越聊天记录？\n会清空记忆和关系，从头来过。'))clearChat()">清空聊天记录</button>
@@ -4087,6 +4104,8 @@ inp.click();
 window.wipeAll = ()=>{
 if(!confirm("清空所有任务、聊天记录和 API 配置? 产物数据不受影响。")) return;
 Object.keys(localStorage).filter(k=>k.startsWith("nd_")).forEach(k=>localStorage.removeItem(k));
+/* 大文件层（IDB 整库 + 原生 2GB 文件 + 内存镜像 + 标记）一起清，否则清完重启又冒出来 */
+try{ if(typeof RP_STORE!=="undefined" && RP_STORE.wipeAll){ RP_STORE.wipeAll().catch(()=>{}); } }catch(e){}
 alert("已清空"); showSettings();
 };
 
@@ -4565,6 +4584,8 @@ await boot();
 /* P2: 应用壁纸/字体；后台把大文件复制到 IndexedDB（复制模式：localStorage 副本保留，同步读取不受影响；失败自动回退 localStorage） */
 try{ applyAppearance(); }catch(e){}
 try{ if(typeof RP_STORE!=="undefined"){ RP_STORE.warmCache().catch(()=>{}); RP_STORE.migrate().catch(()=>{}); } }catch(e){}
+/* 存储配额：向系统申请持久化存储，避免大文件被自动清理；超大文件走原生文件层（2GB，App 私有目录） */
+try{ if(typeof navigator!=="undefined" && navigator.storage && typeof navigator.storage.persist==="function"){ navigator.storage.persist().catch(()=>{}); } }catch(e){}
 /* Tier3-24: 冷启动也算一次"回到前台"，检查是否需要角色召回本地通知 */
 try{ maybeRecallNotify(); }catch(e){}
 if(!localStorage.getItem("nd_onboarded")) showOnboard(1);

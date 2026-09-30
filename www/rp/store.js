@@ -1,7 +1,8 @@
 /* RP 存储适配层：大体积数据（角色卡、大聊天历史）走 IndexedDB，
+ * 超大体积（>256KB 且有原生桥接）走 App 私有文件（2GB 配额，不受 WebView 限制），
  * localStorage 只留索引；迁移幂等（版本标记）、失败回退 localStorage；
  * 无 IndexedDB 环境（Node 测试）时全部走 localStorage 回退。
- * 浏览器 / Node 双环境兼容：indexedDB / navigator 引用前均有 typeof 守卫。
+ * 浏览器 / Node 双环境兼容：indexedDB / navigator / NDFILE 引用前均有 typeof 守卫。
  */
 var RP_STORE = (function(){
 "use strict";
@@ -13,9 +14,11 @@ var MIGRATE_VERSION = 1;
 var MARK_KEY = "nd_store_v";
 var IDX_PREFIX = "nd_idbidx_";
 var COPY_PREFIX = "nd_idbcopied_"; /* 已复制到 IDB 的键标记（localStorage 副本仍保留，保证同步读取不丢数据） */
-/* 同步读取缓存：IDB 内容的内存镜像，保证 localStorage 副本被手动清理后同步读取仍能命中 */
+var FILE_PREFIX = "nd_fileidx_"; /* 已搬进文件层的键标记（localStorage 副本已删，同步读走 MEM 内存镜像） */
+/* 同步读取缓存：IDB/文件内容的内存镜像，保证 localStorage 副本被手动清理后同步读取仍能命中 */
 var MEM = {};
 var BIG_MIN_BYTES = 64 * 1024;
+var FILE_MIN_BYTES = 256 * 1024; /* 超过此体积且有原生桥接时走文件层（2GB），否则走 IDB */
 
 /* 大键前缀表：命中即视为候选大体积数据 */
 var BIG_PREFIXES = [
@@ -120,9 +123,31 @@ function _tx(mode, fn){
   });
 }
 
-/* ---- 对外异步读写：优先 IDB，失败同步回退 localStorage ---- */
-function getItemAsync(key){
-  var k = String(key);
+/* ---- 文件层（NDFILE，原生桥接，2GB 配额） ---- */
+function fileOK(){
+  try{
+    return typeof NDFILE !== "undefined" && NDFILE &&
+      typeof NDFILE.SUPPORTED === "function" && NDFILE.SUPPORTED();
+  }catch(e){ return false; }
+}
+function hasFileMark(k){ return _lsGet(FILE_PREFIX + k) === "1"; }
+/* 文件层写入：成功记标记 + 删 localStorage/IDB 副本（只留一份）；失败抛错由调用方回退 */
+function fileSetItem(k, v){
+  MEM[k] = v;
+  return NDFILE.setItem(k, v).then(function(){
+    _lsSet(FILE_PREFIX + k, "1");
+    _lsDel(k); _lsDel(IDX_PREFIX + k); _lsDel(COPY_PREFIX + k);
+    if(SUPPORTED()){
+      _tx("readwrite", function(s){ return s.delete(k); }).then(function(){}, function(){});
+    }
+  }, function(err){
+    delete MEM[k];
+    throw err;
+  });
+}
+
+/* ---- 对外异步读写：优先文件层，其次 IDB，失败同步回退 localStorage ---- */
+function idbGet(k){
   if(SUPPORTED()){
     return _tx("readonly", function(s){ return s.get(k); }).then(function(rec){
       if(rec && rec.v !== undefined && rec.v !== null) return rec.v;
@@ -133,9 +158,18 @@ function getItemAsync(key){
   }
   return Promise.resolve(_lsGet(k));
 }
+function getItemAsync(key){
+  var k = String(key);
+  if(fileOK() && hasFileMark(k)){
+    return NDFILE.getItem(k).then(function(v){
+      if(v != null) return v;
+      return idbGet(k); /* 文件丢失：回退 IDB/localStorage */
+    }, function(){ return idbGet(k); });
+  }
+  return idbGet(k);
+}
 
-function setItemAsync(key, value){
-  var k = String(key), v = String(value);
+function idbSetItem(k, v){
   if(SUPPORTED()){
     return _tx("readwrite", function(s){ return s.put({k: k, v: v}); }).then(function(){
       _lsSet(IDX_PREFIX + k, "1"); /* localStorage 只留索引标记 */
@@ -146,10 +180,28 @@ function setItemAsync(key, value){
   _lsSet(k, v);
   return Promise.resolve();
 }
+function setItemAsync(key, value){
+  var k = String(key), v = String(value);
+  if(fileOK() && v.length > FILE_MIN_BYTES){
+    return fileSetItem(k, v).then(function(){}, function(){
+      return idbSetItem(k, v); /* 文件层失败（配额/IO）：回退 IDB */
+    });
+  }
+  if(fileOK() && hasFileMark(k)){
+    /* 值缩小到阈值下：撤下文件层，回 IDB/localStorage */
+    _lsDel(FILE_PREFIX + k);
+    NDFILE.removeItem(k).then(function(){}, function(){});
+    delete MEM[k];
+  }
+  return idbSetItem(k, v);
+}
 
 function removeItemAsync(key){
   var k = String(key);
   _lsDel(IDX_PREFIX + k); /* 索引标记一并清除 */
+  _lsDel(FILE_PREFIX + k);
+  delete MEM[k];
+  if(fileOK()) NDFILE.removeItem(k).then(function(){}, function(){});
   if(SUPPORTED()){
     return _tx("readwrite", function(s){ return s.delete(k); }).then(function(){
       _lsDel(k);
@@ -207,13 +259,30 @@ function migrate(onProgress){
 /* 同步读取缓存：IDB 内容的内存镜像，保证 localStorage 副本被手动清理后同步读取仍能命中 */
 function cacheGet(key){ var k = String(key); return (k in MEM)? MEM[k]: null; }
 function cacheSet(key, value){ MEM[String(key)] = String(value); }
-/* 大键双写：localStorage 写入后，若值超过阈值则异步同步一份到 IDB（失败静默，读走 localStorage）。 */
+/* 大键双写：localStorage 写入后，若值超过阈值则异步搬到 IDB/文件层（失败静默，读走 localStorage）。
+ * 有原生桥接且值 >256KB 时走文件层并删除 localStorage 副本（这就是 5MB 上限的来源），
+ * 同步读取走 MEM 内存镜像不受影响。 */
 function syncBig(key, value){
   var k = String(key), v = (value == null)? "": String(value);
   if(!isBigKey(k) || v.length <= BIG_MIN_BYTES) return;
   MEM[k] = v;
+  if(fileOK() && v.length > FILE_MIN_BYTES){
+    NDFILE.setItem(k, v).then(function(){
+      _lsSet(FILE_PREFIX + k, "1");
+      _lsDel(k); _lsDel(IDX_PREFIX + k); _lsDel(COPY_PREFIX + k);
+      if(SUPPORTED()){
+        _tx("readwrite", function(s){ return s.delete(k); }).then(function(){}, function(){});
+      }
+    }, function(){
+      /* 文件层失败（配额/IO）：回退原 IDB 路径 */
+      if(SUPPORTED()){
+        idbSetItem(k, v).then(function(){ _lsSet(COPY_PREFIX + k, "1"); }, function(){});
+      }
+    });
+    return;
+  }
   if(SUPPORTED()){
-    setItemAsync(k, v).then(function(){ _lsSet(COPY_PREFIX + k, "1"); }, function(){});
+    idbSetItem(k, v).then(function(){ _lsSet(COPY_PREFIX + k, "1"); }, function(){});
   }
 }
 /* 纯 IDB 读取（不回退 localStorage），供 cleanup 验证落盘用 */
@@ -224,17 +293,28 @@ function getIdbOnly(key){
     return (rec && rec.v !== undefined && rec.v !== null)? rec.v: null;
   }, function(){ return null; });
 }
-/* 启动时预热：把已复制到 IDB 的大键读回内存镜像（异步，不阻塞 UI）。 */
+/* 启动时预热：把已复制到 IDB/文件层的大键读回内存镜像（异步，不阻塞 UI）。 */
 function warmCache(){
-  if(!SUPPORTED()) return Promise.resolve(0);
-  var keys = _lsKeys().filter(function(k){ return k.indexOf(COPY_PREFIX) === 0; })
-    .map(function(k){ return k.slice(COPY_PREFIX.length); });
+  if(!SUPPORTED() && !fileOK()) return Promise.resolve(0);
   var chain = Promise.resolve(), n = 0;
-  keys.forEach(function(k){
-    chain = chain.then(function(){
-      return getIdbOnly(k).then(function(v){ if(v != null){ MEM[k] = v; n++; } }, function(){});
+  if(SUPPORTED()){
+    var keys = _lsKeys().filter(function(k){ return k.indexOf(COPY_PREFIX) === 0; })
+      .map(function(k){ return k.slice(COPY_PREFIX.length); });
+    keys.forEach(function(k){
+      chain = chain.then(function(){
+        return getIdbOnly(k).then(function(v){ if(v != null){ MEM[k] = v; n++; } }, function(){});
+      });
     });
-  });
+  }
+  if(fileOK()){
+    var fkeys = _lsKeys().filter(function(k){ return k.indexOf(FILE_PREFIX) === 0; })
+      .map(function(k){ return k.slice(FILE_PREFIX.length); });
+    fkeys.forEach(function(k){
+      chain = chain.then(function(){
+        return NDFILE.getItem(k).then(function(v){ if(v != null){ MEM[k] = v; n++; } }, function(){});
+      });
+    });
+  }
   return chain.then(function(){ return n; });
 }
 /* 手动释放：删除 localStorage 里已确认落盘 IDB 的大键副本（返回释放字节数）。内存镜像保留，同步读取不受影响。 */
@@ -259,6 +339,41 @@ function cleanupCopied(){
 function copiedCount(){
   return _lsKeys().filter(function(k){ return k.indexOf(COPY_PREFIX) === 0; }).length;
 }
+/* 清空全部：删 IDB 整库 + 文件层全部文件 + MEM + 各类标记。
+ * localStorage 的 nd_ 业务键由调用方（wipeAll）清理。 */
+function wipeAll(){
+  try{ for(var k in MEM){ delete MEM[k]; } }catch(e){}
+  var pending = [];
+  /* 文件层：用 FILE_PREFIX 标记反推原键（文件名带 hash 后缀不可反解，但 removeItem 传原键即可） */
+  if(fileOK()){
+    try{
+      _lsKeys().forEach(function(k){
+        if(k.indexOf(FILE_PREFIX) === 0){
+          var orig = k.slice(FILE_PREFIX.length);
+          pending.push(NDFILE.removeItem(orig).then(function(){}, function(){}));
+        }
+      });
+    }catch(e){}
+  }
+  try{
+    _lsKeys().forEach(function(k){
+      if(k.indexOf(FILE_PREFIX) === 0 || k.indexOf(IDX_PREFIX) === 0 ||
+         k.indexOf(COPY_PREFIX) === 0 || k === MARK_KEY) _lsDel(k);
+    });
+  }catch(e){}
+  var idbDone = Promise.resolve();
+  if(SUPPORTED()){
+    try{
+      idbDone = new Promise(function(resolve){
+        var req = indexedDB.deleteDatabase(DB_NAME);
+        req.onsuccess = function(){ resolve(); };
+        req.onerror = function(){ resolve(); };
+        req.onblocked = function(){ resolve(); };
+      });
+    }catch(e){}
+  }
+  return Promise.all(pending.concat([idbDone])).then(function(){ return true; });
+}
 
 /* 估算 IDB 用量（字节）。无 navigator.storage.estimate 时返回 null，Node 下不报错。 */
 function idbBytes(){
@@ -273,24 +388,46 @@ function idbBytes(){
   return null;
 }
 
+/* 文件层总字节数（同步；无桥接返回 -1）。供存储页展示。 */
+function fileBytes(){
+  try{
+    if(typeof NDFILE !== "undefined" && NDFILE &&
+       typeof NDFILE.totalBytes === "function") return NDFILE.totalBytes();
+  }catch(e){}
+  return -1;
+}
+/* 文件层键数量（供存储页展示） */
+function fileCount(){
+  try{
+    if(typeof NDFILE !== "undefined" && NDFILE &&
+       typeof NDFILE.listKeys === "function") return NDFILE.listKeys().length;
+  }catch(e){}
+  return 0;
+}
+
 return {
   SUPPORTED: SUPPORTED,
   BIG_PREFIXES: BIG_PREFIXES,
   MIGRATE_VERSION: MIGRATE_VERSION,
   MARK_KEY: MARK_KEY,
   IDX_PREFIX: IDX_PREFIX,
+  FILE_PREFIX: FILE_PREFIX,
   BIG_MIN_BYTES: BIG_MIN_BYTES,
+  FILE_MIN_BYTES: FILE_MIN_BYTES,
   isBigKey: isBigKey,
   getItemAsync: getItemAsync,
   setItemAsync: setItemAsync,
   removeItemAsync: removeItemAsync,
   migrate: migrate,
   idbBytes: idbBytes,
+  fileBytes: fileBytes,
+  fileCount: fileCount,
   cacheGet: cacheGet,
   cacheSet: cacheSet,
   syncBig: syncBig,
   warmCache: warmCache,
   cleanupCopied: cleanupCopied,
-  copiedCount: copiedCount
+  copiedCount: copiedCount,
+  wipeAll: wipeAll
 };
 })();

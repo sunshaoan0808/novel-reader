@@ -22,6 +22,7 @@ import android.webkit.WebViewClient;
 import android.widget.EditText;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 
 public class MainActivity extends Activity {
@@ -57,6 +58,103 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 android.util.Log.e("novelreader", "sharePng failed", e);
             }
+        }
+
+        /** JS 桥: 大文件本地存储（2GB 配额）。localStorage 只有 5MB 硬上限且改不了，
+         *  IndexedDB 配额由系统按磁盘余量算、保证不了；App 私有目录只受磁盘空间限制，
+         *  在此自设 2GB 上限。文件名白名单过滤，防路径穿越。所有方法同步返回，
+         *  跑在 JavaBridge 线程，可直接做文件 IO。 */
+        private static final long ND_BLOB_QUOTA = 2L * 1024 * 1024 * 1024;
+        private File ndBlobDir(){
+            File d = new File(getFilesDir(), "ndblob");
+            d.mkdirs();
+            return d;
+        }
+        private String ndSafeName(String name){
+            String s = name == null ? "" : name.replaceAll("[^A-Za-z0-9_.-]", "_");
+            s = s.replaceAll("\\.+", ".");
+            if(s.isEmpty() || s.equals(".") || s.equals("..")) s = "unnamed";
+            if(s.length() > 100) s = s.substring(0, 100);
+            /* 防碰撞：中文键净化后可能相同（如 nd_chat_r1_林黛玉 vs nd_chat_r1_王熙凤都变下划线），
+             * 缀上原名 hashCode，保证不同键落不同文件。JS 侧永远传原键，无需反解。 */
+            s = s + "_" + Integer.toHexString(name == null ? 0 : name.hashCode());
+            return s;
+        }
+        @JavascriptInterface
+        public String ndFileWrite(final String name, final String text){
+            try{
+                File dir = ndBlobDir();
+                File f = new File(dir, ndSafeName(name));
+                byte[] data = text == null ? new byte[0]
+                        : text.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                long total = 0;
+                File[] fs = dir.listFiles();
+                if(fs != null) for(File x : fs) total += x.length();
+                long old = f.exists() ? f.length() : 0;
+                if(total - old + data.length > ND_BLOB_QUOTA) return "err:quota";
+                FileOutputStream os = new FileOutputStream(f);
+                os.write(data);
+                os.close();
+                return "ok";
+            }catch(Exception e){
+                android.util.Log.e("novelreader", "ndFileWrite failed", e);
+                return "err:io";
+            }
+        }
+        @JavascriptInterface
+        public String ndFileRead(final String name){
+            try{
+                File f = new File(ndBlobDir(), ndSafeName(name));
+                if(!f.exists()) return null;
+                FileInputStream is = new FileInputStream(f);
+                java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+                byte[] buf = new byte[65536];
+                int n;
+                while((n = is.read(buf)) > 0) bos.write(buf, 0, n);
+                is.close();
+                return bos.toString("UTF-8");
+            }catch(Exception e){
+                android.util.Log.e("novelreader", "ndFileRead failed", e);
+                return null;
+            }
+        }
+        @JavascriptInterface
+        public boolean ndFileDelete(final String name){
+            try{
+                File f = new File(ndBlobDir(), ndSafeName(name));
+                return !f.exists() || f.delete();
+            }catch(Exception e){ return false; }
+        }
+        @JavascriptInterface
+        public long ndFileSize(final String name){
+            try{
+                File f = new File(ndBlobDir(), ndSafeName(name));
+                return f.exists() ? f.length() : -1;
+            }catch(Exception e){ return -1; }
+        }
+        @JavascriptInterface
+        public long ndFileTotal(){
+            try{
+                long total = 0;
+                File[] fs = ndBlobDir().listFiles();
+                if(fs != null) for(File x : fs) total += x.length();
+                return total;
+            }catch(Exception e){ return -1; }
+        }
+        @JavascriptInterface
+        public String ndFileList(){
+            try{
+                StringBuilder sb = new StringBuilder("[");
+                File[] fs = ndBlobDir().listFiles();
+                boolean first = true;
+                if(fs != null) for(File x : fs){
+                    if(!first) sb.append(",");
+                    first = false;
+                    sb.append("\"").append(x.getName().replace("\"", "_")).append("\"");
+                }
+                sb.append("]");
+                return sb.toString();
+            }catch(Exception e){ return "[]"; }
         }
 
         /** JS 桥: 角色召回本地通知（Tier3-24）。纯本地通知，不走任何推送服务器。

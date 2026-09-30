@@ -22,8 +22,8 @@
    "name": "scroll-no-jitter",
    "ok": true,
    "detail": {
-    "s0": 60,
-    "s1": 60,
+    "s0": 0,
+    "s1": 0,
     "s2": 60,
     "s3": 60,
     "lastAI": 17,
@@ -36,9 +36,20 @@
    "name": "scroll-hidebars",
    "ok": true,
    "detail": {
-    "maxST": 2058,
     "preHidden": false,
-    "dist": 1800,
+    "cleanStart": true,
+    "maxST": 2058,
+    "immediate": true,
+    "distAfter20": 20,
+    "trace": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ],
+    "noFlickerSlow": true,
     "hidden": true,
     "scenGone": true,
     "simGone": true,
@@ -48,10 +59,21 @@
     "barTop": 797,
     "winH": 800,
     "barGone": true,
+    "flick": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ],
+    "noFlickerTop": true,
     "stillHidden": true,
     "shown": true,
+    "shownGeo": true,
     "scenBack": true,
-    "simBack": true
+    "simBack": true,
+    "distEnd": 0
    }
   },
   {
@@ -84,7 +106,7 @@
      "overlaps": 0,
      "overflows": 0,
      "pageOverflow": false,
-     "nLeaf": 100,
+     "nLeaf": 102,
      "overlapSample": [],
      "overflowSample": []
     },

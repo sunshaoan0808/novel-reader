@@ -90,7 +90,8 @@ t("空分组被过滤", su.groups.every(x => x.keys > 0));
 // ---- 渲染卡片 ----
 const card = vm.runInContext("renderStorageCard()", ctx);
 t("卡片有标题", card.indexOf("本地存储用量") >= 0);
-t("卡片显示5MB", card.indexOf("5 MB") >= 0);
+t("卡片显示2GB配额", card.indexOf("2 GB") >= 0);
+t("卡片有大文件存储行", card.indexOf("fileline") >= 0 && card.indexOf("上限 2GB") >= 0);
 t("卡片有分组行", card.indexOf("单聊历史") >= 0 && card.indexOf("记忆事件簿") >= 0);
 t("卡片复用clearChat", card.indexOf("clearChat()") >= 0);
 t("卡片复用wipeAll", card.indexOf("wipeAll()") >= 0);
@@ -100,13 +101,17 @@ t("未超80%无告警", card.indexOf("空间告急") < 0);
 t("fmtBytes B", vm.runInContext("fmtBytes(500)", ctx) === "500 B");
 t("fmtBytes KB", vm.runInContext("fmtBytes(2048)", ctx) === "2.0 KB");
 t("fmtBytes MB", vm.runInContext("fmtBytes(5*1024*1024)", ctx) === "5.00 MB");
+t("fmtBytes GB", vm.runInContext("fmtBytes(2*1024*1024*1024)", ctx) === "2.00 GB");
+t("配额常量2GB", vm.runInContext("ND_QUOTA_BYTES", ctx) === 2*1024*1024*1024);
 
-// ---- 80% 告警 ----
-store["nd_chat_big"] = "q".repeat(2100000); // ~4.2MB
+// ---- 80% 告警（临时调小配额，确定性触发；2GB 下 4MB 不该告警） ----
+const cardNoWarn = vm.runInContext("renderStorageCard()", ctx);
+t("2GB配额下小用量无告警", cardNoWarn.indexOf("空间告急") < 0);
+vm.runInContext("ND_QUOTA_BYTES = 1024", ctx); // 1KB 配额，种子约 5KB，必超 80%
 const card2 = vm.runInContext("renderStorageCard()", ctx);
 t("超80%显示告警", card2.indexOf("空间告急") >= 0);
 t("超80%进度条warn", card2.indexOf("storbar-fg warn") >= 0);
-delete store["nd_chat_big"];
+vm.runInContext("ND_QUOTA_BYTES = 2*1024*1024*1024", ctx); // 还原
 
 // ---- 设置页顶部挂载 ----
 vm.runInContext("showSettings()", ctx);

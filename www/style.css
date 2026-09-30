@@ -567,6 +567,7 @@ border-radius:18px; padding:28px 24px 20px; text-align:center;}
 .stornum.warn{color:#e07a5f; font-weight:bold;}
 .storow{display:flex; justify-content:space-between; font-size:13px; color:var(--ink-dim);
 padding:6px 0; border-bottom:1px solid var(--line-soft);}
+.storow span:last-child{white-space:nowrap; margin-left:12px; flex-shrink:0;}
 .storow:last-of-type{border-bottom:0;}
 .ctxnum{white-space:nowrap; color:var(--ink-faint);}
 .ctxlore{margin-top:4px; color:var(--gold-soft); font-size:12px;}
