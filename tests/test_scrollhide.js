@@ -116,6 +116,29 @@ t("clamp: 小幅上滑仍保持隐藏", head.style.marginTop === "-65px" && bar.
 scrollTo(300);                       /* 上滑100: 离底距离 2000, 差值100>64 */
 t("clamp: 上滑超64恢复", head.style.marginTop === "" && bar.style.position === "");
 log.scrollHeight = 3000;
+
+/* 新回归: 打开聊天页后约1s内字体/布局沉降让 scrollTop 原地抖动
+   (实测 ±84px), 但离底距离不变; 不得误判成用户下滑而隐藏 */
+(function(){
+const head2 = mkEl(); head2.offsetHeight = 65;
+head2.classList = {add(){}, remove(){}, toggle(c, on){ if(on) head2["_h_"+c]=1; else delete head2["_h_"+c]; }, contains(c){ return !!head2["_h_"+c]; }};
+const bar2 = mkEl();
+bar2.classList = {add(){}, remove(){}, toggle(c, on){ if(on) bar2["_h_"+c]=1; else delete bar2["_h_"+c]; }, contains(c){ return !!bar2["_h_"+c]; }};
+const log2 = mkEl();
+/* 用户钉在底部: scrollHeight 3970, clientHeight 632, scrollTop 3338, dist=0 */
+Object.assign(log2, {scrollHeight: 3970, scrollTop: 3338, clientHeight: 632});
+els["chathead"] = head2; els["chatlog"] = log2; els["__chatbar"] = bar2;
+run("attachHeadHide()");
+/* 浏览器行为：scrollHeight 抖动时把用户钉在底部，scrollTop 被钳制到 maxST，
+   离底距离恒为 0。用 [st, sh] 对模拟（sh 跟着 st 变，保证 dist=0） */
+const jit = (st, sh)=>{ log2.scrollHeight = sh;
+  log2.scrollTop = Math.min(st, sh - log2.clientHeight); log2.onscroll(); };
+[[3338,3970],[3364,3996],[3280,3912],[3270,3902],[3287,3919],
+ [3277,3909],[3268,3900],[3261,3893],[3255,3887]].forEach(([st,sh])=>jit(st,sh));
+t("settle: 布局抖动不误隐藏顶栏", !head2.classList.contains("hide"));
+t("settle: 布局抖动不误隐藏底栏", !bar2.classList.contains("hidebar"));
+els["chathead"] = head; els["chatlog"] = log; els["__chatbar"] = bar;
+})();
 })();
 
 // ---------- streamToken: 上滑时不拽回底部 ----------

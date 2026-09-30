@@ -212,7 +212,7 @@ const head = mkEl();
 head.offsetHeight = 65;
 head.classList = {add(){}, remove(){},
 toggle(c, on){ toggles.push([c, !!on]); }, contains(){ return false; }};
-const log = mkEl(); log.scrollTop = 0; log.scrollHeight = 3000;
+const log = mkEl(); log.scrollTop = 0; log.scrollHeight = 3000; log.clientHeight = 600;
 els["chathead"] = head; els["chatlog"] = log;
 vm.runInContext("attachHeadHide()", ctx);
 log.scrollTop = 500; log.onscroll();           // 下滑过 140 -> 隐藏

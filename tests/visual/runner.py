@@ -141,6 +141,11 @@ async def case_hidebars(c):
       out.maxST = log.scrollHeight - log.clientHeight;
       if (out.maxST < 160) return {skip: true, reason: "滚动空间不足"};
       var h0 = log.clientHeight;
+      /* 先回到顶部再滑到底：模拟真实用户下滑手势。注意不能直接设到底部，
+         showChat 进来时本来就在底部，那样是 no-op，测不到隐藏逻辑 */
+      log.scrollTop = 0;
+      await new Promise(function(r){ setTimeout(r, 400); });
+      out.preHidden = bar.classList.contains("hidebar") || head.classList.contains("hide");
       log.scrollTop = out.maxST;
       await new Promise(function(r){ setTimeout(r, 500); });
       var st1 = log.scrollTop;
@@ -167,7 +172,7 @@ async def case_hidebars(c):
     if r.get("skip"):
         return False, r
     ok = (r["hidden"] and r["grown"] and r["barGone"] and r["stillHidden"]
-          and r["shown"])
+          and r["shown"] and not r["preHidden"])
     return ok, r
 
 
@@ -203,10 +208,43 @@ async def case_layout(c):
     return ok, detail
 
 
+async def case_immersive(c):
+    """沉浸式聊天背景：全屏层存在、盖满视口、气泡有毛玻璃、呼吸动效未被降级关掉。"""
+    await c.ev(SEED_JS)
+    await c.ev(SHOW_CHAT, await_promise=True)
+    await asyncio.sleep(1.0)
+    r = await c.ev("""(function(){
+      var bg = document.getElementById("chatbg"),
+          layer = bg ? bg.querySelector(".bglayer") : null,
+          shade = bg ? bg.querySelector(".bgshade") : null,
+          bgr = bg ? bg.getBoundingClientRect() : null,
+          vw = window.innerWidth, vh = window.innerHeight;
+      var bub = document.querySelector(".bubble"),
+          bstyle = bub ? getComputedStyle(bub) : null,
+          head = document.getElementById("chathead"),
+          hstyle = head ? getComputedStyle(head) : null,
+          layerStyle = layer ? getComputedStyle(layer) : null;
+      return {
+        bgExists: !!bg, layerExists: !!layer, shadeExists: !!shade,
+        full: !!(bgr && Math.abs(bgr.width - vw) < 2 && Math.abs(bgr.height - vh) < 2
+                 && bgr.top <= 0 && bgr.left <= 0),
+        bubbleBlur: bstyle ? (bstyle.backdropFilter || bstyle.webkitBackdropFilter || "") : "",
+        headBlur: hstyle ? (hstyle.backdropFilter || hstyle.webkitBackdropFilter || "") : "",
+        anim: layerStyle ? layerStyle.animationName : "",
+        reduced: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      };
+    })()""")
+    ok = (r["bgExists"] and r["layerExists"] and r["shadeExists"] and r["full"]
+          and "blur" in r["bubbleBlur"] and "blur" in r["headBlur"]
+          and (r["reduced"] or r["anim"] == "chatbreathe"))
+    return ok, r
+
+
 CASES = [
     ("ctxbar-no-stray", case_ctxbar),
     ("scroll-no-jitter", case_jitter),
     ("scroll-hidebars", case_hidebars),
+    ("immersive-bg", case_immersive),
     ("layout-no-overlap", case_layout),
 ]
 

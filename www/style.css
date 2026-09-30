@@ -232,8 +232,10 @@ body.chatmode #app{ background:var(--bg); }
 .drawer .whoami.active .name{ color:var(--gold-soft); }
 
 /* 聊天区占满 */
+body.chatmode #view{ position:relative; }
 body.chatmode .chatwrap{
   flex:1; min-height:0; height:auto; border:0; border-radius:0; background:transparent;
+  position:relative; z-index:1;
 }
 body.chatmode .chathead{ flex:none; }
 body.chatmode #chatlog{ min-height:0; }
@@ -241,6 +243,56 @@ body.chatmode #chatlog{ min-height:0; }
 .chatbar{
   position:sticky; bottom:0; padding:10px 12px calc(10px + env(safe-area-inset-bottom));
   align-items:center; transition:margin-bottom .25s ease, transform .25s ease;
+}
+
+/* ===== 沉浸式聊天：场景背景层（对标猫箱 CreatorSkin） ===== */
+/* 背景层挂在 #view 下随聊天页渲染；absolute 相对 #view 覆盖整个聊天视口。
+   内容层（chathead z30 / chatwrap z1）浮于其上；抽屉(z41)/遮罩(z40)不受影响 */
+.chatbg{
+  position:absolute; inset:0; z-index:0; overflow:hidden; pointer-events:none;
+  background:
+    radial-gradient(130% 55% at 50% -10%, #2a2114 0%, rgba(42,33,20,0) 55%),
+    radial-gradient(120% 50% at 50% 115%, #1c1610 0%, rgba(28,22,16,0) 60%),
+    linear-gradient(180deg, #16120d 0%, #0d0b09 55%, #0a0806 100%);
+}
+.chatbg .bglayer{
+  position:absolute; inset:-5%;
+  background-size:cover; background-position:center 28%; background-repeat:no-repeat;
+  animation:chatbreathe 26s ease-in-out infinite;
+  will-change:transform;
+}
+/* 呼吸感：26 秒一轮缓慢推近，营造"活的"场景（猫箱 CreatorSkinRespiratory 的 CSS 版） */
+@keyframes chatbreathe{ 0%,100%{ transform:scale(1);} 50%{ transform:scale(1.07);} }
+/* 渐变罩：顶部给顶栏让可读性，底部给输入栏托底，整体轻微压暗保对比度 */
+.chatbg .bgshade{
+  position:absolute; inset:0;
+  background:linear-gradient(180deg,
+    rgba(6,5,4,.80) 0%, rgba(6,5,4,.22) 20%, rgba(6,5,4,0) 38%,
+    rgba(6,5,4,0) 60%, rgba(6,5,4,.34) 82%, rgba(6,5,4,.84) 100%);
+}
+@media (prefers-reduced-motion:reduce){ .chatbg .bglayer{ animation:none; } }
+/* 顶栏半透明悬浮，露出背景 */
+body.chatmode .chathead{
+  background:rgba(13,11,9,.58);
+  border-bottom:1px solid rgba(212,162,78,.14);
+}
+/* 气泡半透明毛玻璃，浮在场景上 */
+body.chatmode .bubble{
+  background:rgba(34,30,25,.74);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+}
+body.chatmode .msg.me .bubble{
+  background:linear-gradient(180deg, rgba(74,61,36,.84), rgba(56,45,27,.84));
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+}
+/* 底栏悬浮胶囊；隐藏时 JS 写行内 fixed+位移覆盖，不冲突 */
+body.chatmode .chatbar{
+  margin:8px 12px calc(10px + env(safe-area-inset-bottom));
+  border-radius:22px;
+  background:rgba(16,14,11,.72);
+  backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  border:1px solid rgba(212,162,78,.16);
+  padding:8px 8px 8px 16px;
 }
 
 /* 消息工具条（点按浮现） */

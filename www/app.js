@@ -839,6 +839,35 @@ else { const run = window.__DATA__.runs[r.run_id];
 }
 return out;
 }
+/* ===== 沉浸式聊天背景（CreatorSkin 式场景层） ===== */
+/* 背景层 HTML：bglayer 放场景图（无图时透明，露出 .chatbg 的氛围渐变兜底） */
+function chatBgHTML(){
+return `<div class="chatbg" id="chatbg" aria-hidden="true"><div class="bglayer" id="chatbglayer"></div><div class="bgshade"></div></div>`;
+}
+/* 选背景：角色卡/穿越世界自带 bg 优先；默认用内置水墨夜景；图片加载失败回退渐变，绝不破图。
+   预留 setChatBg(url)：以后世界状态/剧情推进可按场景切换背景 */
+function paintChatBg(){
+const layer = document.getElementById("chatbglayer");
+if(!layer) return;
+let url = "";
+try{
+if(CHAT.mode === "traverse" && typeof RP_TRAVERSE !== "undefined"){
+const trav = RP_TRAVERSE.get(CHAT.travId); url = (trav && trav.bg) || "";
+}else if(CHAT.name && typeof allChars === "function"){
+const c = (allChars() || []).find(x => x.runId === CHAT.runId && x.name === CHAT.name);
+url = (c && c.bg) || "";
+}
+}catch(e){}
+if(!url) url = "bg/chat_night.jpg";
+const probe = new Image();
+probe.onload = ()=>{ layer.style.backgroundImage = `url("${url}")`; };
+probe.onerror = ()=>{ layer.style.backgroundImage = ""; };
+probe.src = url;
+}
+window.setChatBg = (url)=>{
+const layer = document.getElementById("chatbglayer");
+if(layer) layer.style.backgroundImage = url ? `url("${url}")` : "";
+};
 async function showChat(){
 __backAction = ()=>exitChat();
 document.body.classList.add("chatmode");
@@ -855,6 +884,7 @@ const run = (window.__DATA__.runs||{})[CHAT.runId] || {};
 let memN = 0;
 try{ const mst = RP_MEM.get(CHAT.runId, CHAT.name); memN = (mst && mst.short ? mst.short.length : 0); }catch(e){}
 view.innerHTML = `
+${chatBgHTML()}
 <div class="chathead" id="chathead">
 <button class="backbtn" onclick="exitChat()">‹</button>
 <div class="avatar">${esc((CHAT.name||"?")[0])}</div>
@@ -901,6 +931,7 @@ ${povChipsHTML()}
 ${!cfg.key?`<div class="hint" style="margin:10px 14px">还没配大模型接口，先去「设置」里填 API 地址/Key/模型，聊天才能用。Key 只存在你手机上。</div>`:""}`;
 renderChat();
 renderScenChips();
+paintChatBg();
 attachHeadHide();
 const k = chatKey(CHAT.runId, CHAT.name);
 if(!getHist(k).length){
@@ -920,6 +951,7 @@ const gkey = ms.slice().sort().join("_");
 const gorder = RP_GROUP.getOrder(CHAT.runId, gkey);
 const stack = ms.slice(0,4).map(n=>`<div class="avatar sm stacka">${esc(n[0])}</div>`).join("");
 view.innerHTML = `
+${chatBgHTML()}
 <div class="chathead" id="chathead">
 <button class="backbtn" onclick="exitChat()">‹</button>
 <div class="stack">${stack}</div>
@@ -971,6 +1003,7 @@ ${!cfg.key?`<div class="hint" style="margin:10px 14px">还没配大模型接口�
 renderChat();
 renderScenChips();
 renderGRelBox();
+paintChatBg();
 attachHeadHide();
 if(!getHist(k).length){
 const sp = ms[Math.floor(Math.random()*ms.length)];
@@ -1051,7 +1084,10 @@ const log = document.getElementById("chatlog");
 if(!log) return;
 const head = document.getElementById("chathead");
 const bar = document.querySelector(".chatbar");
-let lastST = log.scrollTop || 0, hidden = false, distHide = 0, headH = 0, ticking = false;
+let hidden = false, distHide = 0, headH = 0, ticking = false;
+/* 离底距离 */
+const distNow = ()=>Math.max(0, ((log.scrollHeight || 0) - (log.clientHeight || 0)) - log.scrollTop);
+let lastDist = distNow();
 const raf = (typeof requestAnimationFrame !== "undefined") ? requestAnimationFrame : (fn)=>fn();
 /* 顶栏/底栏联动显隐: 下滑阅读时一起收起让出空间, 上滑/回顶时恢复;
    输入框聚焦(键盘弹起)时不藏底栏 */
@@ -1081,16 +1117,22 @@ window.__setHeadHidden = setHidden; /* 测试钩子 */
 function onScroll(){
 ticking = false;
 const st = log.scrollTop;
-const down = st > lastST + 2, up = st < lastST - 2;
+/* 方向判定必须用离底距离, 不能用绝对 scrollTop：打开聊天页后约 1s 内
+   字体加载/布局沉降会让 scrollTop 原地抖动（实测 ±84px），但离底距离
+   恒为 0；用绝对值判 down/up 会把这次抖动当成用户下滑而误隐藏，
+   导致进聊天页顶栏/底栏就是藏起来的。只有离底距离真的变了，
+   才说明是用户手指在滚动 */
+const dist = distNow();
+const movingDown = (lastDist - dist) > 1; /* 离底距离缩小 = 手指往下滑（看新消息） */
+const movingUp = (dist - lastDist) > 1;   /* 离底距离拉大 = 手指往上滑（看历史） */
 /* 离底距离判定: 显隐改变 chatlog 高度时浏览器会钳制 scrollTop(把用户保持在底部),
    钳制/滚动锚定只改变绝对 scrollTop, 不改变离底距离; 只有用户真正上滑才会拉开
    离底距离。用它做显示阈值天然免疫布局变化引发的 scroll 事件, 状态机不会被
    自己的显隐反复横跳(v33 视觉回归抓到的深层根因) */
-const dist = Math.max(0, (log.scrollHeight - log.clientHeight) - st);
 /* 迟滞阈值: 下滑过 140 藏; 上滑回到 110 以内、或离底距离比隐藏时拉开超 64 才显示 */
-if(!hidden && down && st > 140){ distHide = dist; setHidden(true); }
-else if(hidden && up && (st < 110 || dist - distHide > 64)){ setHidden(false); }
-lastST = st;
+if(!hidden && movingDown && st > 140){ distHide = dist; setHidden(true); }
+else if(hidden && movingUp && (st < 110 || dist - distHide > 64)){ setHidden(false); }
+lastDist = dist;
 }
 log.onscroll = ()=>{ if(!ticking){ ticking = true; raf(onScroll); } };
 }
@@ -4602,6 +4644,7 @@ async function showTraverseChat(cfg){
   const modeName = _comps0.length? "组团穿越" : trav.mode==="isekai"? "异世界" : (RP_TRAVERSE.MODES[trav.mode]||"穿越");
   const title = travPlayerName();
   view.innerHTML = `
+  ${chatBgHTML()}
   <div class="chathead" id="chathead">
   <button class="backbtn" onclick="exitChat()">‹</button>
   <div class="avatar">${esc((title||"穿")[0])}</div>
@@ -4627,7 +4670,7 @@ async function showTraverseChat(cfg){
   <button class="ditem" onclick="toggleDrawer(false);exportChat()">${icon("download")} 复制聊天记录</button>
   <button class="ditem danger" onclick="toggleDrawer(false);travEnd()">${icon("x")} 结束穿越</button>
   </div>`;
-  renderChat(); renderWsBar(); attachHeadHide();
+  renderChat(); renderWsBar(); paintChatBg(); attachHeadHide();
   const k = chatHistKey();
   if(!getHist(k).length){
     try{
