@@ -844,21 +844,38 @@ return out;
 function chatBgHTML(){
 return `<div class="chatbg" id="chatbg" aria-hidden="true"><div class="bglayer" id="chatbglayer"></div><div class="bgshade"></div></div>`;
 }
-/* 选背景：角色卡/穿越世界自带 bg 优先；默认用内置水墨夜景；图片加载失败回退渐变，绝不破图。
+/* 用户上传壁纸：按聊天存（单聊/群聊/穿越各一套），IDB 落盘 + 内存镜像保证同步读取不闪。
+   dataURL 在上传时已压缩到最长边 1080px JPEG，不会撑爆存储 */
+const wallStoreKey = ()=> "nd_wallpaper_" + chatHistKey();
+let WALL_MEM = {};
+async function warmWallpaper(){
+const k = chatHistKey();
+if(k in WALL_MEM) return WALL_MEM[k];
+let v = "";
+try{ if(typeof RP_STORE!=="undefined") v = await RP_STORE.getItemAsync(wallStoreKey()) || ""; }catch(e){}
+WALL_MEM[k] = v || "";
+return WALL_MEM[k];
+}
+/* 选背景优先级：用户上传壁纸 > 角色卡/穿越世界自带 bg > 内置默认图；
+   图片加载失败回退渐变，绝不破图。
    预留 setChatBg(url)：以后世界状态/剧情推进可按场景切换背景 */
+function pickChatBgURL(){
+try{
+const wp = WALL_MEM[chatHistKey()];
+if(wp) return wp;
+if(CHAT.mode === "traverse" && typeof RP_TRAVERSE !== "undefined"){
+const trav = RP_TRAVERSE.get(CHAT.travId); if(trav && trav.bg) return trav.bg;
+}else if(CHAT.name && typeof allChars === "function"){
+const c = (allChars() || []).find(x => x.runId === CHAT.runId && x.name === CHAT.name);
+if(c && c.bg) return c.bg;
+}
+}catch(e){}
+return "bg/chat_night.jpg";
+}
 function paintChatBg(){
 const layer = document.getElementById("chatbglayer");
 if(!layer) return;
-let url = "";
-try{
-if(CHAT.mode === "traverse" && typeof RP_TRAVERSE !== "undefined"){
-const trav = RP_TRAVERSE.get(CHAT.travId); url = (trav && trav.bg) || "";
-}else if(CHAT.name && typeof allChars === "function"){
-const c = (allChars() || []).find(x => x.runId === CHAT.runId && x.name === CHAT.name);
-url = (c && c.bg) || "";
-}
-}catch(e){}
-if(!url) url = "bg/chat_night.jpg";
+const url = pickChatBgURL();
 const probe = new Image();
 probe.onload = ()=>{ layer.style.backgroundImage = `url("${url}")`; };
 probe.onerror = ()=>{ layer.style.backgroundImage = ""; };
@@ -867,6 +884,64 @@ probe.src = url;
 window.setChatBg = (url)=>{
 const layer = document.getElementById("chatbglayer");
 if(layer) layer.style.backgroundImage = url ? `url("${url}")` : "";
+};
+/* ============ 聊天壁纸（上传 / 恢复默认） ============ */
+window.wallpaperEditor = ()=>{
+__backAction = ()=>showChat();
+document.body.classList.remove("chatmode");
+titleEl.innerHTML = "🖼️ 聊天壁纸"; subEl.textContent = "只换这个聊天的背景，存在本机";
+const cur = WALL_MEM[chatHistKey()];
+view.innerHTML = `<button class="back" onclick="__backAction()">${icon("back")} 返回</button>
+<div class="card" style="text-align:center">
+${cur ? `<img src="${cur}" style="max-width:100%;border-radius:8px" alt="当前壁纸">`
+      : `<div style="padding:24px;color:var(--ink-faint)">当前使用默认壁纸</div>`}
+</div>
+<div class="btnrow">
+<button class="btn" onclick="document.getElementById('wall_file').click()">上传图片</button>
+${cur ? `<button class="btn ghost" onclick="clearWallpaperUI()">恢复默认</button>` : ""}
+</div>
+<input type="file" id="wall_file" accept="image/*" style="display:none" onchange="uploadWallpaperUI(this)">
+<div class="hint">图片会压缩到最长边 1080px 后存到本机，只影响当前聊天。单聊、群聊、穿越各用各的壁纸。</div>
+<div style="height:40px"></div>`;
+window.scrollTo(0,0);
+};
+window.saveWallpaper = async (url)=>{
+const k = chatHistKey();
+WALL_MEM[k] = url;
+try{ if(typeof RP_STORE!=="undefined") await RP_STORE.setItemAsync(wallStoreKey(), url); }catch(e){}
+};
+window.uploadWallpaperUI = (input)=>{
+const f = input.files && input.files[0];
+input.value = "";
+if(!f) return;
+if(!/^image\//.test(f.type || "")){ alert("请选择图片文件"); return; }
+const rd = new FileReader();
+rd.onload = ()=>{
+const img = new Image();
+img.onload = ()=>{
+try{
+const MAX = 1080;
+let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+if(!w || !h) throw new Error("图片尺寸异常");
+const s = Math.min(1, MAX / Math.max(w, h));
+w = Math.max(1, Math.round(w * s)); h = Math.max(1, Math.round(h * s));
+const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+cv.getContext("2d").drawImage(img, 0, 0, w, h);
+const url = cv.toDataURL("image/jpeg", 0.85);
+saveWallpaper(url).then(()=>{ alert("壁纸已更换"); wallpaperEditor(); });
+}catch(e){ alert("图片处理失败：" + (e && e.message || e)); }
+};
+img.onerror = ()=>alert("图片读取失败，换一张试试");
+img.src = rd.result;
+};
+rd.onerror = ()=>alert("文件读取失败");
+rd.readAsDataURL(f);
+};
+window.clearWallpaperUI = async ()=>{
+const k = chatHistKey();
+WALL_MEM[k] = "";
+try{ if(typeof RP_STORE!=="undefined") await RP_STORE.removeItemAsync(wallStoreKey()); }catch(e){}
+alert("已恢复默认壁纸"); wallpaperEditor();
 };
 async function showChat(){
 __backAction = ()=>exitChat();
@@ -883,6 +958,7 @@ CHAT = {runId:f.runId, name:f.name};
 const run = (window.__DATA__.runs||{})[CHAT.runId] || {};
 let memN = 0;
 try{ const mst = RP_MEM.get(CHAT.runId, CHAT.name); memN = (mst && mst.short ? mst.short.length : 0); }catch(e){}
+await warmWallpaper(); /* 先读用户壁纸，避免先闪默认图 */
 view.innerHTML = `
 ${chatBgHTML()}
 <div class="chathead" id="chathead">
@@ -911,6 +987,7 @@ ${cs.map(c=>`<button class="whoami ${c.runId===CHAT.runId&&c.name===CHAT.name?"a
 ${povChipsHTML()}
 <h3>聊天</h3>
 <button class="ditem" onclick="toggleDrawer(false);openAlbum(CHAT.runId,CHAT.name)">${icon("books")} 记忆事件簿</button>
+<button class="ditem" onclick="toggleDrawer(false);wallpaperEditor()">🖼️ 聊天壁纸</button>
 <button class="ditem" onclick="toggleDrawer(false);openSaves()">${icon("save")} 平行存档</button>
 <button class="ditem" onclick="toggleDrawer(false);newChatSameRole()">${icon("plus")} 开新聊天</button>
 <button class="ditem" onclick="toggleDrawer(false);personaEditor(CHAT.runId,'chat')">${icon("user")} 我的人设（本次覆盖）</button>
@@ -950,6 +1027,7 @@ const k = chatHistKey();
 const gkey = ms.slice().sort().join("_");
 const gorder = RP_GROUP.getOrder(CHAT.runId, gkey);
 const stack = ms.slice(0,4).map(n=>`<div class="avatar sm stacka">${esc(n[0])}</div>`).join("");
+await warmWallpaper(); /* 先读用户壁纸，避免先闪默认图 */
 view.innerHTML = `
 ${chatBgHTML()}
 <div class="chathead" id="chathead">
@@ -989,6 +1067,7 @@ ${povChipsHTML()}
 <button class="ditem" onclick="toggleDrawer(false);showATasks()">${icon("chart")} 分析任务</button>
 <button class="ditem" onclick="toggleDrawer(false);plotEditor()">${icon("book-open")} 剧情线</button>
 <button class="ditem" onclick="toggleDrawer(false);openSaves()">${icon("save")} 平行存档</button>
+<button class="ditem" onclick="toggleDrawer(false);wallpaperEditor()">🖼️ 聊天壁纸</button>
 <button class="ditem" onclick="toggleDrawer(false);personaEditor(null,'chat')">${icon("user")} 我的人设（全局）</button>
 <button class="ditem" onclick="toggleDrawer(false);loreEditor(CHAT.runId,'chat')">${icon("book-open")} 世界书管理</button>
 <button class="ditem" onclick="toggleDrawer(false);regexEditor(CHAT.runId,null,'chat')">🔤 正则替换</button>
@@ -4643,6 +4722,7 @@ async function showTraverseChat(cfg){
   const _comps0 = (typeof RP_TRAVERSE2!=="undefined")? RP_TRAVERSE2.getCompanions(trav.id):[];
   const modeName = _comps0.length? "组团穿越" : trav.mode==="isekai"? "异世界" : (RP_TRAVERSE.MODES[trav.mode]||"穿越");
   const title = travPlayerName();
+  await warmWallpaper(); /* 先读用户壁纸，避免先闪默认图 */
   view.innerHTML = `
   ${chatBgHTML()}
   <div class="chathead" id="chathead">
@@ -4666,6 +4746,7 @@ async function showTraverseChat(cfg){
   <button class="ditem" onclick="toggleDrawer(false);travWsEditor()">${icon("scroll")} 世界状态</button>
   <button class="ditem" onclick="toggleDrawer(false);travIdentityView()">${icon("user")} 我的身份</button>
   <button class="ditem" onclick="toggleDrawer(false);travPartyView()">${icon("users")} 队伍</button>
+  <button class="ditem" onclick="toggleDrawer(false);wallpaperEditor()">🖼️ 聊天壁纸</button>
   <button class="ditem" onclick="toggleDrawer(false);showSystem()">${icon("settings")} prompt 预览</button>
   <button class="ditem" onclick="toggleDrawer(false);exportChat()">${icon("download")} 复制聊天记录</button>
   <button class="ditem danger" onclick="toggleDrawer(false);travEnd()">${icon("x")} 结束穿越</button>
