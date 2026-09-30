@@ -772,3 +772,31 @@ input[type=checkbox]{accent-color:var(--gold);}
 .tm-go{font-size:22px;color:var(--gold);flex:none}
 .wsbar{font-size:12px;color:var(--muted);background:#14110d;border-bottom:1px solid var(--line);padding:6px 12px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wsbar .ic{vertical-align:-2px;color:var(--gold)}
+
+/* ============ P2: 聊天壁纸（深色友好，不影响可读性） ============ */
+body[data-wallpaper="xuanmo"] #chatlog{background:linear-gradient(160deg,#14161c 0%,#1b1e28 45%,#12141a 100%)}
+body[data-wallpaper="daiqing"] #chatlog{background:linear-gradient(160deg,#12211f 0%,#16302b 50%,#101c1a 100%)}
+body[data-wallpaper="zhejin"] #chatlog{background:linear-gradient(160deg,#241b10 0%,#2e2113 50%,#1d150c 100%)}
+body[data-wallpaper="zitan"] #chatlog{background:linear-gradient(160deg,#221418 0%,#2c1a22 50%,#1a1114 100%)}
+body[data-wallpaper="xuanmo"] #chatlog::before,body[data-wallpaper="daiqing"] #chatlog::before,
+body[data-wallpaper="zhejin"] #chatlog::before,body[data-wallpaper="zitan"] #chatlog::before{
+content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
+background-image:radial-gradient(rgba(212,162,78,.06) 1px,transparent 1px);background-size:22px 22px}
+#chatlog{position:relative}
+
+/* ============ P2: 字体选择 ============ */
+body[data-font="song"]{font-family:"Noto Serif SC","Songti SC","SimSun",serif}
+body[data-font="song"] .bubble{font-family:"Noto Serif SC","Songti SC","SimSun",serif}
+body[data-font="kai"]{font-family:"Kaiti SC","STKaiti","KaiTi","TW-Kai",cursive,serif}
+body[data-font="kai"] .bubble{font-family:"Kaiti SC","STKaiti","KaiTi","TW-Kai",cursive,serif}
+
+/* ============ P2: 打字机光标 ============ */
+.twcur{display:inline-block;width:2px;height:1em;background:var(--gold);vertical-align:-2px;margin-left:1px;animation:twblink .8s steps(2) infinite}
+@keyframes twblink{50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.twcur{animation:none}}
+
+/* ---- 穿越 P1/P2/P3（2026-09-30） ---- */
+.linkbtn{background:none;border:none;color:var(--gold);font-size:12px;padding:2px 6px;cursor:pointer}
+.linkbtn.danger{color:#d66}
+.charcard.sel{outline:2px solid var(--gold);border-radius:10px}
+.ooc{color:#e0a33e;font-weight:600}

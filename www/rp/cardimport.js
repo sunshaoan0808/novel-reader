@@ -134,10 +134,18 @@ function normalizeTavern(d){
 
 /* ---- 本地库 ---- */
 function list(){
-  try { return JSON.parse(localStorage.getItem(STORE)) || []; } catch(e){ return []; }
+  try {
+    var s = localStorage.getItem(STORE);
+    /* P2: localStorage 副本被清理后，回退 IDB 内存镜像 */
+    if(s == null && typeof RP_STORE!=="undefined") s = RP_STORE.cacheGet(STORE);
+    return JSON.parse(s) || [];
+  } catch(e){ return []; }
 }
 function save(list){
-  try { localStorage.setItem(STORE, JSON.stringify(list)); } catch(e){}
+  var s = JSON.stringify(list);
+  try { localStorage.setItem(STORE, s); } catch(e){}
+  /* P2: 大体积角色卡 IDB 双写（复制模式） */
+  try{ if(typeof RP_STORE!=="undefined"){ RP_STORE.cacheSet(STORE, s); RP_STORE.syncBig(STORE, s); } }catch(e){}
 }
 function find(name){
   var l = list();

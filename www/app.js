@@ -711,11 +711,19 @@ const RPCFG_KEY = "nd_rp_cfg_v1";
 const getCfg = ()=>{ try{return JSON.parse(localStorage.getItem(CFG_KEY))||{}}catch(e){return{}}};
 const saveCfg = (c)=> localStorage.setItem(CFG_KEY, JSON.stringify(c));
 const getRpCfg = ()=> Object.assign({maxContext:8192, respTokens:512, summaryModel:"",
-  temperature:0.9, topP:1, ooc:true, preset:"classic", optCards:false, optCount:4, optMood:"none", ttsAuto:false}, JSON.parse(localStorage.getItem(RPCFG_KEY)||"{}"));
+  temperature:0.9, topP:1, ooc:true, preset:"classic", optCards:false, optCount:4, optMood:"none", ttsAuto:false, typewriter:true}, JSON.parse(localStorage.getItem(RPCFG_KEY)||"{}"));
 const saveRpCfg = (c)=> localStorage.setItem(RPCFG_KEY, JSON.stringify(c));
 const chatKey = (runId, name)=> `nd_chat_${runId}_${name}`;
-const getHist = (k)=>{ try{return JSON.parse(localStorage.getItem(k))||[]}catch(e){return[]}};
-const saveHist = (k,h)=> localStorage.setItem(k, JSON.stringify(h.slice(-80)));
+const getHist = (k)=>{ try{
+  /* P2: 优先读 IDB 内存镜像（localStorage 副本被清理后仍能命中），再回退 localStorage */
+  if(typeof RP_STORE!=="undefined"){ const c = RP_STORE.cacheGet(k); if(c!=null) return JSON.parse(c)||[]; }
+  return JSON.parse(localStorage.getItem(k))||[];
+}catch(e){return[]}};
+const saveHist = (k,h)=>{ const s = JSON.stringify(h.slice(-80));
+  localStorage.setItem(k, s);
+  /* P2: 大键双写 IDB（异步，失败静默回退 localStorage） */
+  try{ if(typeof RP_STORE!=="undefined"){ RP_STORE.cacheSet(k, s); RP_STORE.syncBig(k, s); } }catch(e){}
+};
 
 let CHAT = {mode:"single", runId:null, name:null, members:[], forcedSpeaker:null};
 const groupKey = (runId, members)=> `nd_group_${runId}_${members.slice().sort().join("_")}`;
@@ -1063,6 +1071,8 @@ finally{ CHAT.narrMode = keepNarr; CHAT.asSpeaker = keepSpk; }
 };
 window.toggleTools = (ev, idx)=>{
 if(_pressFired){ _pressFired = false; return; }
+/* P2: 打字机动画中点气泡 = 立即打断完成 */
+if(typeof twFinish!=="undefined" && TW.timer && TW.idx===idx){ twFinish(); return; }
 if(ev.target.closest(".msgtools") || ev.target.closest(".swipe")) return;
 const msgs = document.querySelectorAll("#chatlog .msg");
 const el = msgs[idx];
@@ -1284,7 +1294,35 @@ bar.innerHTML = `<div class="csbar">`
 + `<button onclick="chatSearchGo(1)" title="下一个">›</button>`
 + `<button onclick="toggleChatSearch(false)" title="关闭">${icon("x",14)}</button></div>`;
 }
+/* ============ P2: 打字机效果（AI 回复逐字呈现，可打断） ============ */
+let TW = {timer:null, key:"", idx:-1};
+function twStop(){ if(TW.timer){ clearInterval(TW.timer); TW.timer = null; } }
+/* 立即打断完成：停掉定时器并整页重渲染出全文 */
+window.twFinish = ()=>{ if(!TW.timer) return; twStop(); renderChat(); };
+function twStart(idx, bodyText, cardHTML){
+const log = $("#chatlog"); if(!log) return;
+const frames = (typeof RP_TYPEWRITER!=="undefined") ? RP_TYPEWRITER.progressFrames(bodyText) : [bodyText];
+let fi = 0;
+TW.idx = idx;
+/* 首帧立即置空+光标，避免 45ms 后才改造成的全文闪烁 */
+const el0 = document.getElementById("smsg-"+idx);
+if(el0){ const b0 = el0.querySelector(".bubble"); if(b0) b0.innerHTML = `<span class="twcur"></span>`; }
+TW.timer = setInterval(()=>{
+fi++;
+const done = fi >= frames.length;
+const el = document.getElementById("smsg-"+idx);
+if(!el){ twStop(); return; }
+const bub = el.querySelector(".bubble");
+if(bub){
+const partial = frames[Math.min(fi, frames.length-1)];
+bub.innerHTML = hlRestore(md(hlSearchRaw(partial))) + (done?cardHTML:`<span class="twcur"></span>`);
+}
+log.scrollTop = log.scrollHeight;
+if(done) twStop();
+}, 45);
+}
 function renderChat(){
+twStop(); /* 新渲染进来（发消息/切tab/新回复）先停掉旧动画 */
 const h = getHist(chatHistKey());
 const log = $("#chatlog");
 if(!log) return;
@@ -1343,6 +1381,21 @@ return `<div class="msg ${m.role==="user"?"me":""}${mtype==="narr"?" narr":""}${
 renderCtxBar();
 log.scrollTop = log.scrollHeight;
 renderWsBar();
+/* P2 打字机：只对"最新一条 AI 消息"做逐字动画；重渲染旧消息不重复播 */
+try{
+if(lastAI>=0){
+const key = chatHistKey()+"|"+h.length+"|"+(h[lastAI].ts||h[lastAI].content.length);
+if(lastAI===h.length-1 && TW.key!==key && typeof RP_TYPEWRITER!=="undefined" && RP_TYPEWRITER.shouldAnimate()){
+TW.key = key;
+const m = h[lastAI];
+const oc0 = parseOptCard(m.content);
+const body0 = oc0 ? m.content.replace(oc0.full,"").trim() : m.content;
+twStart(lastAI, body0, oc0 ? optCardHTML(oc0, true, lastAI) : "");
+}else{
+TW.key = key;
+}
+}
+}catch(e){}
 }
 /* ============ 上下文用量常驻条 + 世界书触发可视化 (对标 Talkie/Janitor) ============ */
 function renderCtxBar(){
@@ -1553,6 +1606,8 @@ onSpeakerDone: ()=>{ saveHist(k, h); renderChat(); },
 onPush: ()=>{ saveHist(k, h); },
 onSystem: (preview, stats)=>{ LAST_SYSTEM = preview + "\n\n【预算】" + JSON.stringify(stats); LAST_STATS = stats; },
 };
+/* P1: 出戏值检测（穿越模式下每次玩家发言都算一次） */
+if(isTrav) travOocCheck(CHAT.travId, text);
 const r = isGroup
 ? await RP.sendGroup(CHAT.runId, CHAT.members, speakers, text, sendOpts)
 : isTrav
@@ -1560,7 +1615,8 @@ const r = isGroup
   cfg: sendOpts.cfg, history: h, temperature: sendOpts.temperature,
   topP: sendOpts.topP, maxTokens: sendOpts.maxTokens, budget: sendOpts.budget,
   signal: sendOpts.signal, onToken: sendOpts.onToken, onPush: sendOpts.onPush,
-  onUserMsg: sendOpts.onUserMsg, onSystem: sendOpts.onSystem})
+  onUserMsg: sendOpts.onUserMsg, onSystem: sendOpts.onSystem,
+  extraPrompt: travExtraPrompt(CHAT.travId, text)})
 : await RP.send(CHAT.runId, CHAT.name, text, sendOpts);
 saveHist(k, r.history);
 achvUnlock("first_chat");
@@ -1774,11 +1830,16 @@ const st = RP_MEM.get(runId, nm);
 titleEl.innerHTML = icon("book-open")+" 记忆小说"; subEl.textContent = nm + " · 由记忆整理成篇";
 const cnNum = ["一","二","三","四","五","六","七","八","九","十"];
 const cn = (i)=> i < 10 ? cnNum[i] : String(i+1);
+/* P2: 小说风格模板（白话直叙/古风/戏剧化），选择后写入 AI 润色 prompt */
+const nst = (typeof RP_APPEAR!=="undefined") ? RP_APPEAR.getNovelStyle() : "plain";
+const chHead = (i, time)=> nst==="gufeng" ? `第${cn(i)}回 · ${esc(time||"往事")}`
+  : nst==="drama" ? `场景${cn(i)} · ${esc(time||"往事")}`
+  : `第${cn(i)}章 · ${esc(time||"往事")}`;
 let body = "";
 const short = (st && st.short) || [];
 if(short.length){
 body = short.map((m,i)=>
-`<div class="nov-ch"><div class="nov-chh">第${cn(i)}章 · ${esc(m.time||"往事")}</div>`
+`<div class="nov-ch"><div class="nov-chh">${chHead(i, m.time)}</div>`
 + `<div class="nov-p">${esc(m.fact||"")}</div>`
 + (m.view?`<div class="nov-p nov-view">—— ${esc(m.view)}</div>`:"")
 + `</div>`).join("");
@@ -1798,8 +1859,35 @@ ${body}
 ${st && st.long ? `<div class="nov-ch"><div class="nov-chh">尾声</div><div class="nov-p">${esc(st.long)}</div></div>` : ""}
 </div>
 <div class="btnrow" style="margin-top:12px"><button class="btn ghost" onclick="exportNovel()">${icon("upload")} 复制全文</button></div>
+<div class="card" style="margin-top:12px"><div class="field"><label>小说风格（AI 润色用）</label>
+<select id="novelStyle" onchange="RP_APPEAR.setNovelStyle(this.value);memoryNovel()">${(typeof RP_APPEAR!=="undefined"?RP_APPEAR.novelStyleKeys():["plain"]).map(k=>`<option value="${k}"${k===nst?" selected":""}>${RP_APPEAR.MEMNOVEL_STYLES[k].name} · ${RP_APPEAR.MEMNOVEL_STYLES[k].desc}</option>`).join("")}</select></div>
+<div class="btnrow"><button class="btn" onclick="novelPolish()">${icon("edit")} AI 按此风格润色成篇</button></div>
+<div class="hint">润色会把当前页面文字发给已配置的大模型，按所选风格重写一遍。</div></div>
 <div style="height:40px"></div>`;
 window.scrollTo(0,0);
+};
+/* P2: AI 按风格模板润色记忆小说（风格写入 prompt） */
+window.novelPolish = async ()=>{
+const el = document.querySelector(".novel");
+if(!el || !el.innerText.trim()){ alert("没有可润色的内容"); return; }
+const cfg = getCfg();
+if(!cfg.base || !cfg.key){ alert("请先去「设置」配置大模型接口"); return; }
+if(!confirm("把全文发给大模型按所选风格润色一遍？")) return;
+const style = (typeof RP_APPEAR!=="undefined") ? RP_APPEAR.getNovelStyle() : "plain";
+const styleName = (typeof RP_APPEAR!=="undefined") ? RP_APPEAR.MEMNOVEL_STYLES[style].name : "";
+const material = el.innerText || "";
+el.innerHTML = `<div class="empty">AI 正在以「${esc(styleName)}」风格润色…</div>`;
+try{
+const prompt = RP_APPEAR.novelStylePrompt(style, material);
+const out = await RP_NET.complete({base:cfg.base, key:cfg.key, model:cfg.model},
+[{role:"user", content: prompt}], 0.8);
+if(out && out.trim()){
+const paras = out.trim().split(/\n{2,}|\n/).filter(s=>s.trim());
+el.innerHTML = paras.map(p=>`<div class="nov-p">${esc(p.trim())}</div>`).join("");
+}else{
+alert("润色失败，保留原文"); memoryNovel();
+}
+}catch(e){ alert("润色失败："+e.message); memoryNovel(); }
 };
 window.exportNovel = ()=>{
 const el = document.querySelector(".novel");
@@ -2070,7 +2158,10 @@ return `<div class="setcard"><h3>本地存储用量</h3>
 <div class="storbar"><div class="storbar-fg${warn?" warn":""}" style="width:${pct.toFixed(1)}%"></div></div>
 <div class="stornum${warn?" warn":""}">${fmtBytes(su.total)} / 5 MB（${pct.toFixed(0)}%）${warn?" · 空间告急，建议清理":""}</div>
 ${su.groups.map(g=>`<div class="storow"><span>${g.label}</span><span>${g.keys} 项 · ${fmtBytes(g.bytes)}</span></div>`).join("")}
+<div class="storow" id="idbline"><span>浏览器大文件存储（估算）</span><span>统计中…</span></div>
+<div class="storow" id="idbcopied"><span>已备份到大文件存储</span><span>—</span></div>
 <div class="btnrow"><button class="btn ghost" onclick="if(confirm('清空所有单聊/群聊/穿越聊天记录？'))clearChat()">清空聊天记录</button>
+<button class="btn ghost" onclick="storeCleanup()">释放大文件空间</button>
 <button class="btn danger" onclick="wipeAll()">清空全部数据</button></div>
 </div>`;
 };
@@ -2140,6 +2231,11 @@ view.innerHTML = renderStorageCard() + `
 </select></div>
 <div class="field"><label><input id="r_ooc" type="checkbox" style="width:auto"> OOC 自动纠正（跳出角色时重试一次）</label></div>
 <div class="field"><label><input id="r_ttsauto" type="checkbox" style="width:auto"> ${icon("volume",14)} 自动朗读 AI 回复（TTS 语音气泡播放）</label></div>
+<div class="field"><label><input id="r_typewriter" type="checkbox" style="width:auto"> 打字机效果（AI 回复逐字呈现，点气泡/发消息可打断）</label></div>
+<div class="field"><label>聊天壁纸</label>
+<select id="r_wallpaper"></select></div>
+<div class="field"><label>界面字体</label>
+<select id="r_font"></select></div>
 <div class="field"><label>记忆整理周期（每 N 条消息跑一次三层记忆分析）</label>
 <input id="r_memcycle" type="number" min="5" value=""></div>
 <div class="btnrow"><button class="btn" onclick="saveRpCfgUI()">保存 RP 设置</button><button class="btn ghost" onclick="importStPreset()">${icon("download")} 导入 ST 预设(采样参数)</button></div>
@@ -2164,6 +2260,36 @@ document.getElementById("r_optcount").value = rc.optCount||4;
 document.getElementById("r_optmood").value = rc.optMood||"none";
 document.getElementById("r_ooc").checked = !!rc.ooc;
 document.getElementById("r_ttsauto").checked = !!rc.ttsAuto;
+document.getElementById("r_typewriter").checked = rc.typewriter!==false;
+(function(){ /* P2: 壁纸/字体选项 */
+if(typeof RP_APPEAR==="undefined") return;
+const ap = RP_APPEAR.getAppear();
+const ws = document.getElementById("r_wallpaper"), fs = document.getElementById("r_font");
+if(ws) ws.innerHTML = RP_APPEAR.WALLPAPERS.map(w=>`<option value="${w.id}"${ap.wallpaper===w.id?" selected":""}>${w.name}</option>`).join("");
+if(fs) fs.innerHTML = RP_APPEAR.FONTS.map(f=>`<option value="${f.id}"${ap.font===f.id?" selected":""}>${f.name}</option>`).join("");
+/* P2: IndexedDB 用量行 + 已备份计数 */
+try{
+  const line = document.getElementById("idbline");
+  if(line && typeof RP_STORE!=="undefined"){
+    const r = RP_STORE.idbBytes();
+    if(r && r.then) r.then(b=>{ if(b!=null) line.children[1].textContent = fmtBytes(b); else line.children[1].textContent = "未启用"; }).catch(()=>{});
+    else line.children[1].textContent = "未启用";
+  }
+  const cl = document.getElementById("idbcopied");
+  if(cl && typeof RP_STORE!=="undefined" && RP_STORE.copiedCount){
+    cl.children[1].textContent = RP_STORE.copiedCount() + " 个大文件";
+  }
+}catch(e){}
+window.storeCleanup = async ()=>{
+  if(typeof RP_STORE==="undefined" || !RP_STORE.cleanupCopied){ alert("当前环境不支持"); return; }
+  if(!confirm("把已备份到大文件存储的聊天记录/角色卡从 localStorage 里删除，释放空间？聊天记录不受影响（仍可正常读取）。")) return;
+  try{
+    const r = await RP_STORE.cleanupCopied();
+    alert(`已释放 ${fmtBytes(r.freed)}，清理 ${r.count} 个文件`);
+  }catch(e){ alert("清理失败："+e.message); }
+  showSettings();
+};
+})();
 document.getElementById("r_memcycle").value = rc.memCycle||10;
 (function(){ const gp = RP_PERSONA.getGlobal();
 const el = document.getElementById("persona_sum");
@@ -2253,9 +2379,25 @@ optCards:$("#r_optcards").checked,
 optCount:Math.min(6,Math.max(2,parseInt($("#r_optcount").value)||4)),
 optMood:$("#r_optmood").value||"none",
 ooc:$("#r_ooc").checked, preset:$("#r_preset").value,
-ttsAuto:$("#r_ttsauto").checked,
+ttsAuto:$("#r_ttsauto").checked, typewriter:$("#r_typewriter").checked,
 memCycle:Math.max(5,parseInt($("#r_memcycle").value)||10)});
+/* P2: 壁纸/字体 */
+try{
+if(typeof RP_APPEAR!=="undefined"){
+RP_APPEAR.setAppear({wallpaper:$("#r_wallpaper").value, font:$("#r_font").value});
+applyAppearance();
+}
+}catch(e){}
 alert("RP 设置已保存");
+};
+/* P2: 应用壁纸 + 字体 */
+window.applyAppearance = ()=>{
+try{
+if(typeof RP_APPEAR==="undefined") return;
+const ap = RP_APPEAR.getAppear();
+document.body.dataset.wallpaper = ap.wallpaper;
+document.body.dataset.font = ap.font;
+}catch(e){}
 };
 /* SillyTavern 文本预设 -> 本机 RP 采样设置: 只取采样参数, prompt 组件不导入 */
 function stPresetToCfg(d, rc){
@@ -2669,6 +2811,9 @@ if(typeof RP_PIN!=="undefined" && RP_PIN.has()){
 await pinUnlockScreen(); /* P1-7: PIN 未验证通过前不进主界面 */
 }
 await boot();
+/* P2: 应用壁纸/字体；后台把大文件复制到 IndexedDB（复制模式：localStorage 副本保留，同步读取不受影响；失败自动回退 localStorage） */
+try{ applyAppearance(); }catch(e){}
+try{ if(typeof RP_STORE!=="undefined"){ RP_STORE.warmCache().catch(()=>{}); RP_STORE.migrate().catch(()=>{}); } }catch(e){}
 if(!localStorage.getItem("nd_onboarded")) showOnboard(1);
 })();
 
@@ -2677,7 +2822,7 @@ function travPlayerName(){
   if(CHAT.mode === "traverse"){
     const trav = RP_TRAVERSE.get(CHAT.travId);
     if(trav){
-      if(trav.mode === "soul") return trav.charName;
+      if(trav.mode === "soul" || trav.mode === "isekai" || trav.mode === "party") return trav.charName || "我";
       const idt = RP_TRAVERSE.getIdentity(trav.identityId);
       return (idt && idt.name) || "我";
     }
@@ -2699,8 +2844,8 @@ function showTraverse(){
   const modes = [
     {id:"soul", ic:"user", name:"魂穿", desc:"成为TA：扮演原著角色，走进TA的人生", ok:true},
     {id:"body", ic:"users", name:"肉身穿越", desc:"成为自己：现代人直穿，或捏一个古代身份", ok:true},
-    {id:"isekai", ic:"repeat", name:"异世界穿越", desc:"把角色送进另一部作品（林黛玉去水浒）", ok:false, badge:"P2"},
-    {id:"party", ic:"chat", name:"组团穿越", desc:"和多名角色组队一起穿", ok:false, badge:"P3"},
+    {id:"isekai", ic:"repeat", name:"异世界穿越", desc:"把角色送进另一部作品（林黛玉去水浒）", ok:true, badge:"P2"},
+    {id:"party", ic:"chat", name:"组团穿越", desc:"和多名角色组队一起穿", ok:true, badge:"P3"},
   ];
   const recents = RP_TRAVERSE.recent();
   view.innerHTML = `
@@ -2740,6 +2885,8 @@ function travRecentHTML(t){
 window.travMode = (m)=>{
   if(m==="soul") soulPickTarget();
   else if(m==="body") bodyPickWorld();
+  else if(m==="isekai") isekaiPickSrc();
+  else if(m==="party") partySetup();
 };
 window.travResume = (id)=>{
   const t = RP_TRAVERSE.get(id); if(!t){ alert("会话已删除"); showTraverse(); return; }
@@ -2837,58 +2984,126 @@ function bodyPickWorld(){
   ${ws.length ? ws.map(w=>`
     <div class="card" onclick="bodyIdentity(${JSON.stringify(w.kind)},${JSON.stringify(w.id)})">
       <div class="name">${esc(w.name)}</div><div class="meta">${esc(w.sub)}</div>
+      ${w.kind==="card"?`<button class="linkbtn" style="margin-top:4px" onclick="event.stopPropagation();travWorldComplete(${JSON.stringify(w.kind)},${JSON.stringify(w.id)})">${icon("scroll",12)} AI 补完这个世界</button>`:""}
     </div>`).join("") : `<div class="empty">还没有可用世界：先导入角色卡，或等蒸馏任务产出</div>`}
   <div style="height:40px"></div>`;
   window.scrollTo(0,0);
+}
+/* ---- P1: 完整身份捏造（十项字段，逐项重随） ---- */
+const IDT_INPUTS = {name:"idName",gender:"idGender",age:"idAge",looks:"idLooks",origin:"idOrigin",
+  traits:"idTraits",talent:"idTalent",situation:"idSituation"};
+function idtInp(fid, tag){ tag = tag||"input";
+  const style = "width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px";
+  return tag==="textarea"
+    ? `<textarea id="${fid}" style="${style};min-height:52px"></textarea>`
+    : `<input id="${fid}" style="${style}">`;
+}
+function idtRow(kind, id, key, label, inputHtml){
+  return `<div class="field"><label>${label} <button class="linkbtn" onclick="bodyReroll(${JSON.stringify(kind)},${JSON.stringify(id)},${JSON.stringify(key)})">重随</button></label>${inputHtml}</div>`;
 }
 window.bodyIdentity = (kind, id)=>{
   __backAction = ()=>bodyPickWorld();
   document.body.classList.remove("chatmode");
   const wname = RP_TRAVERSE.worldDisplayName(kind, id);
+  window._idtDraft = null;
   titleEl.innerHTML = icon("users")+" 肉身穿越"; subEl.textContent = wname+" · 捏造你的身份";
+  const F = RP_TRAVERSE2.IDENT_FIELDS;
+  const lbl = k=>{ const f = F.find(x=>x.key===k); return f?f.label:k; };
   view.innerHTML = `<button class="back" onclick="bodyPickWorld()">${icon("back")} 返回</button>
-  <div class="card"><div class="kv">一句话愿望，AI 帮你捏身份</div>
+  <div class="card"><div class="kv">一句话愿望，AI 帮你捏身份（十项完整字段）</div>
   <div class="row" style="margin-top:8px"><input id="idWish" style="flex:1;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px" placeholder="比如：我想当个落魄书生混进贾府">
   <button class="btn" style="white-space:nowrap" onclick="bodyAiGen(${JSON.stringify(kind)},${JSON.stringify(id)})">AI 生成</button></div></div>
-  <div class="card"><label class="kvline" style="display:block"><input type="checkbox" id="idModern"> 现代人直穿：不捏古代身份，以现在的自己进去</label></div>
-  <h2 class="sec">身份卡</h2>
+  <div class="card"><label class="kvline" style="display:block"><input type="checkbox" id="idModern"> 现代人直穿：不捏古代身份，以现在的自己进去（携带手机/打火机/纸巾）</label></div>
+  <h2 class="sec">身份卡 <span class="badge">P1</span></h2>
   <div class="card">
-  ${[["idName","姓名"],["idGender","性别"],["idAge","年龄"],["idOrigin","出身"],["idTraits","性格"],["idTalent","特长"]].map(f=>`
-    <div class="field"><label>${f[1]}</label><input id="${f[0]}" style="width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px"></div>`).join("")}
-  <div class="field"><label>当前处境（开场时身在何处、在做什么）</label>
-  <textarea id="idSituation" style="width:100%;min-height:60px;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px"></textarea></div>
+  ${idtRow(kind,id,"name",lbl("name"),`<select id="idNameCand" style="width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px;margin-bottom:6px" onchange="idNamePick()"></select>`+idtInp("idName"))}
+  ${idtRow(kind,id,"gender",lbl("gender"),idtInp("idGender"))}
+  ${idtRow(kind,id,"age",lbl("age"),idtInp("idAge"))}
+  ${idtRow(kind,id,"looks",lbl("looks"),idtInp("idLooks"))}
+  ${idtRow(kind,id,"origin",lbl("origin"),idtInp("idOrigin"))}
+  ${idtRow(kind,id,"traits",lbl("traits"),idtInp("idTraits"))}
+  ${idtRow(kind,id,"talent",lbl("talent"),idtInp("idTalent"))}
+  ${idtRow(kind,id,"items",lbl("items"),idtInp("idItems","textarea"))}
+  ${idtRow(kind,id,"situation",lbl("situation"),idtInp("idSituation","textarea"))}
+  ${idtRow(kind,id,"hooks",lbl("hooks"),idtInp("idHooks","textarea"))}
   </div>
   <div class="btnrow"><button class="btn" style="flex:1" onclick="bodyStart(${JSON.stringify(kind)},${JSON.stringify(id)})">开始穿越</button></div>
   <div style="height:40px"></div>`;
   window.scrollTo(0,0);
 };
+/* 备选名选择 */
+window.idNamePick = ()=>{ const s=$("#idNameCand"); if(s&&s.value) $("#idName").value = s.value; };
+function fillIdtForm(d){
+  d = d||{};
+  Object.keys(IDT_INPUTS).forEach(k=>{ const el=$("#"+IDT_INPUTS[k]); if(el) el.value = d[k]||""; });
+  const sel = $("#idNameCand");
+  if(sel){ const cands = (d.nameCandidates&&d.nameCandidates.length)?d.nameCandidates:[d.name||""];
+    sel.innerHTML = cands.filter(Boolean).map(c=>`<option ${c===d.name?"selected":""}>${esc(c)}</option>`).join(""); }
+  const items = $("#idItems");
+  if(items) items.value = (d.items||[]).map(i=>typeof i==="string"?i:(i.name||"")).filter(Boolean).join("\n");
+  const hooks = $("#idHooks");
+  if(hooks) hooks.value = (d.hooks||[]).join("\n");
+}
+function readIdtForm(){
+  const d = window._idtDraft||{};
+  Object.keys(IDT_INPUTS).forEach(k=>{ const el=$("#"+IDT_INPUTS[k]); if(el) d[k]=el.value.trim(); });
+  const oldItems = d.items||[];
+  d.items = ($("#idItems").value||"").split("\n").map(s=>s.trim()).filter(Boolean).map(nm=>{
+    const old = oldItems.find(o=>(o.name||o)===nm);
+    return old? old : {name:nm, durability:"", uses:1};
+  });
+  d.hooks = ($("#idHooks").value||"").split("\n").map(s=>s.trim()).filter(Boolean).slice(0,3);
+  d.modern = !!$("#idModern").checked;
+  return d;
+}
 window.bodyAiGen = async (kind, id)=>{
   const wish = ($("#idWish").value||"").trim();
   if(!wish){ alert("先写一句愿望，比如：我想当个落魄书生"); return; }
   const cfg = getCfg();
   if(!cfg.key||!cfg.base||!cfg.model){ alert("先去「设置」配好 API 地址/Key/模型"); return; }
+  const btn = window.event && window.event.target;
   try{
-    const idt = await RP_TRAVERSE.genIdentity(wish, RP_TRAVERSE.worldDisplayName(kind,id),
+    if(btn) btn.textContent = "生成中…";
+    const draft = await RP_TRAVERSE2.genIdentityFull(wish, RP_TRAVERSE.worldDisplayName(kind,id),
       cfg, (c,m,t)=>RP_NET.complete(c,m,t));
-    $("#idName").value = idt.name||""; $("#idGender").value = idt.gender||"";
-    $("#idAge").value = idt.age||""; $("#idOrigin").value = idt.origin||"";
-    $("#idTraits").value = idt.traits||""; $("#idTalent").value = idt.talent||"";
-    $("#idSituation").value = idt.situation||"";
+    draft._wish = wish;
+    window._idtDraft = draft;
+    fillIdtForm(draft);
   }catch(e){ alert("生成失败："+e.message); }
+  finally{ if(btn) btn.textContent = "AI 生成"; }
+};
+window.bodyReroll = async (kind, id, fieldKey)=>{
+  readIdtForm();
+  const d = window._idtDraft||{};
+  const wish = ($("#idWish").value||"").trim() || d._wish || "";
+  if(!wish){ alert("先写一句愿望"); return; }
+  const cfg = getCfg();
+  if(!cfg.key||!cfg.base||!cfg.model){ alert("先去「设置」配好 API 地址/Key/模型"); return; }
+  try{
+    const v = await RP_TRAVERSE2.rerollField(fieldKey, d, wish,
+      RP_TRAVERSE.worldDisplayName(kind,id), cfg, (c,m,t)=>RP_NET.complete(c,m,t));
+    d[fieldKey] = v;
+    window._idtDraft = d;
+    fillIdtForm(d);
+  }catch(e){ alert("重随失败："+e.message); }
 };
 window.bodyStart = (kind, id)=>{
-  const modern = $("#idModern").checked;
-  const name = ($("#idName").value||"").trim();
+  const d = readIdtForm();
+  const modern = d.modern;
+  const name = (d.name||"").trim();
   if(!modern && !name){ alert("给身份起个名字，或勾选现代人直穿"); return; }
   let finalName = name;
   if(modern && !finalName){
     try{ finalName = (RP_PERSONA.resolve("trav").name)||"我"; }catch(e){ finalName = "我"; }
   }
+  const items = modern
+    ? RP_TRAVERSE2.cloneItems(RP_TRAVERSE2.MODERN_ITEMS)
+    : RP_TRAVERSE2.cloneItems(d.items);
   const idt = RP_TRAVERSE.saveIdentity({
-    name: finalName||"无名氏", gender:$("#idGender").value.trim(), age:$("#idAge").value.trim(),
-    origin: modern ? "现代" : $("#idOrigin").value.trim(),
-    traits:$("#idTraits").value.trim(), talent:$("#idTalent").value.trim(),
-    situation:$("#idSituation").value.trim(), modern,
+    name: finalName||"无名氏", gender:d.gender, age:d.age, looks:d.looks,
+    origin: modern ? "现代" : d.origin,
+    traits:d.traits, talent:d.talent, items:items,
+    situation:d.situation, hooks:d.hooks, modern,
     worldName: RP_TRAVERSE.worldDisplayName(kind, id),
   });
   const sess = RP_TRAVERSE.newSession({
@@ -2903,6 +3118,17 @@ function travBegin(sess){
   CHAT = {mode:"traverse", travId: sess.id};
   LAST_STATS = null;
   achvUnlock("traverse_1");
+  /* P1: 肉身携带物同步到世界状态（仅新会话、状态尚无物品时，避免覆盖 AI 已更新的状态） */
+  try{
+    if(sess.mode === "body" && sess.identityId && typeof RP_TRAVERSE2 !== "undefined"){
+      const idt = RP_TRAVERSE.getIdentity(sess.identityId);
+      const st = RP_TRAVERSE.getState(sess.id);
+      if(idt && idt.items && idt.items.length && (!st.items || !st.items.length)){
+        st.items = idt.items.slice();
+        RP_TRAVERSE.saveState(sess.id, st);
+      }
+    }
+  }catch(e){}
   setNav("chat");
 }
 async function showTraverseChat(cfg){
@@ -2910,7 +3136,8 @@ async function showTraverseChat(cfg){
   document.body.classList.add("chatmode");
   const trav = RP_TRAVERSE.get(CHAT.travId);
   if(!trav){ setNav("traverse"); return; }
-  const modeName = RP_TRAVERSE.MODES[trav.mode]||"穿越";
+  const _comps0 = (typeof RP_TRAVERSE2!=="undefined")? RP_TRAVERSE2.getCompanions(trav.id):[];
+  const modeName = _comps0.length? "组团穿越" : trav.mode==="isekai"? "异世界" : (RP_TRAVERSE.MODES[trav.mode]||"穿越");
   const title = travPlayerName();
   view.innerHTML = `
   <div class="chathead" id="chathead">
@@ -2933,6 +3160,7 @@ async function showTraverseChat(cfg){
   <h3>穿越</h3>
   <button class="ditem" onclick="toggleDrawer(false);travWsEditor()">${icon("scroll")} 世界状态</button>
   <button class="ditem" onclick="toggleDrawer(false);travIdentityView()">${icon("user")} 我的身份</button>
+  <button class="ditem" onclick="toggleDrawer(false);travPartyView()">${icon("users")} 队伍</button>
   <button class="ditem" onclick="toggleDrawer(false);showSystem()">${icon("settings")} prompt 预览</button>
   <button class="ditem" onclick="toggleDrawer(false);exportChat()">${icon("download")} 复制聊天记录</button>
   <button class="ditem danger" onclick="toggleDrawer(false);travEnd()">${icon("x")} 结束穿越</button>
@@ -2957,6 +3185,7 @@ function renderWsBar(){
   const st = RP_TRAVERSE.getState(CHAT.travId);
   bar.innerHTML = `${icon("scroll",13)} ${esc(RP_TRAVERSE.stateLine(st))}`+
     (st.items.length?` · 物品${st.items.length}`:"")+
+    ((st.flags&&st.flags.ooc>0)?` · <span class="ooc">出戏值${st.flags.ooc}</span>`:"")+
     `<span style="float:right;opacity:.6">查看 ›</span>`;
 }
 window.travWsEditor = ()=>{
@@ -2998,13 +3227,28 @@ window.travIdentityView = ()=>{
     ? `<div class="card"><div class="name" style="font-size:16px">${esc(trav.charName)}</div>
        <div class="meta">${esc(trav.worldName)} · ${esc(trav.anchorTitle||"")}</div>
        <div class="kv" style="margin-top:8px">你是玩家本人，正在扮演 TA。能做的只有 TA 能做的，知道的只有 TA 知道的。</div></div>`
+    : trav.mode==="isekai"
+    ? `<div class="card"><div class="name" style="font-size:16px">${esc(trav.charName)}</div>
+       <div class="meta">${esc(trav.srcName||"")} → ${esc(trav.worldName)}</div>
+       <div class="kv" style="margin-top:8px">${esc(trav.fusion==="reborn"?"转生：AI 安排目标世界新身份，保留性格与记忆":"异乡人：完整保留原身份记忆，目标世界视你为异人")}</div></div>`
     : (()=>{
         const idt = RP_TRAVERSE.getIdentity(trav.identityId)||{};
-        const rows = [["姓名",idt.name],["性别",idt.gender],["年龄",idt.age],["出身",idt.origin],
-          ["性格",idt.traits],["特长",idt.talent],["当前处境",idt.situation]];
+        const rows = [["姓名",idt.name],["性别",idt.gender],["年龄",idt.age],["相貌",idt.looks],
+          ["出身",idt.origin],["性格",idt.traits],["特长",idt.talent],["当前处境",idt.situation]];
+        const items = (idt.items||[]).map((it,ix)=>{
+          const nm = typeof it==="string"?it:(it.name||"");
+          const det = typeof it==="string"?"":[(it.durability?"耐久"+it.durability:""),
+            (it.uses!=null?("可用"+it.uses+"次"):"")].filter(Boolean).join(" ");
+          return `<div class="kvline"><span class="kv">${esc(nm)}</span> <span class="dim">${esc(det)}</span>
+            ${typeof it==="string"?"":`<button class="linkbtn" onclick="travUseItem(${ix})">使用</button>`}</div>`;
+        }).join("") || `<div class="meta">空</div>`;
+        const hooks = (idt.hooks||[]).map(h=>`<div class="kvline">🔗 ${esc(h)}</div>`).join("");
         return `<div class="card">${rows.filter(r=>r[1]).map(r=>
           `<div class="kvline"><span class="kv">${r[0]}</span> ${esc(r[1])}</div>`).join("")}
-          ${idt.modern?`<div class="kvline"><span class="badge">现代人直穿</span></div>`:""}</div>`;
+          ${idt.modern?`<div class="kvline"><span class="badge">现代人直穿</span></div>`:""}
+          </div>
+          <h2 class="sec">携带物（P1）</h2><div class="card">${items}</div>
+          ${hooks?`<h2 class="sec">关系钩子（P1）</h2><div class="card">${hooks}</div>`:""}`;
       })();
   view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回</button>${body}
   <div style="height:40px"></div>`;
@@ -3014,4 +3258,329 @@ window.travEnd = ()=>{
   if(!confirm("结束这次穿越？聊天记录和世界状态会保留在「最近穿越」里。")) return;
   CHAT = {mode:"single", runId:null, name:null, members:[], forcedSpeaker:null};
   setNav("traverse");
+};
+
+/* ================= 穿越 P1/P2/P3 UI（2026-09-30） ================= */
+
+/* ---- P1: 携带物使用 ---- */
+window.travUseItem = (ix)=>{
+  const trav = RP_TRAVERSE.get(CHAT.travId); if(!trav || trav.mode!=="body") return;
+  const idt = RP_TRAVERSE.getIdentity(trav.identityId); if(!idt || !idt.items) return;
+  const res = RP_TRAVERSE2.useItem(idt.items, ix);
+  if(!res.used){ alert("没有这件物品"); return; }
+  idt.items = res.items;
+  RP_TRAVERSE.saveIdentity(idt);
+  /* P1: 同步世界状态里的物品 */
+  try{
+    const st = RP_TRAVERSE.getState(trav.id);
+    st.items = res.items.slice();
+    RP_TRAVERSE.saveState(trav.id, st);
+  }catch(e){}
+  travIdentityView();
+};
+
+/* ---- P1: 出戏值 ---- */
+function travOocCheck(travId, text){
+  if(!text || typeof RP_TRAVERSE2==="undefined") return;
+  try{
+    const hits = RP_TRAVERSE2.detectOoc(text);
+    if(!hits.length) return;
+    const st = RP_TRAVERSE.getState(travId);
+    RP_TRAVERSE2.addOoc(st, text);
+    RP_TRAVERSE.saveState(travId, st);
+  }catch(e){}
+}
+/* ---- P1/P2/P3: 拼穿越 prompt 增补段（ooc + 异世界 + 组团） ---- */
+function travExtraPrompt(travId, userText){
+  if(typeof RP_TRAVERSE2==="undefined") return "";
+  const trav = RP_TRAVERSE.get(travId); if(!trav) return "";
+  const parts = [];
+  try{
+    const st = RP_TRAVERSE.getState(travId);
+    const ooc = (st.flags && st.flags.ooc) || 0;
+    if(ooc > 0){
+      parts.push("「出戏值」当前 " + ooc + "/100：玩家言行中的现代元素让 NPC 感到困惑、起疑或好奇。"
+        + "出戏值越高，NPC 越可能把玩家当成异类对待；出戏值达到整百时，安排一个趣味特殊事件"
+        + "（如被当成妖怪围观、被奉为贵人），趣味为主、不要惩罚玩家。");
+    }
+    if(trav.mode === "isekai"){
+      parts.push(RP_TRAVERSE2.isekaiPrompt(trav, RP_TRAVERSE2.getWorld(trav.dstId) || {}));
+    }
+    const comps = RP_TRAVERSE2.getCompanions(travId);
+    if(comps.length){
+      const speakers = RP_TRAVERSE2.planParty(userText, comps, window._travLastSpeaker || null, {});
+      window._travLastSpeaker = speakers[speakers.length - 1] || window._travLastSpeaker || null;
+      parts.push(RP_TRAVERSE2.partyPrompt(trav)
+        + "\n本轮应发言队友：" + (speakers.join("、") || "无")
+        + "（按各自人设自由发言、行动或互相拌嘴；正文里用「名字：」区分说话人）");
+    }
+  }catch(e){}
+  return parts.join("\n\n");
+}
+
+/* ---- P1: 角色卡世界 AI 补完 ---- */
+window.travWorldComplete = (kind, id)=>{
+  __backAction = ()=>showTraverse();
+  document.body.classList.remove("chatmode");
+  const wname = RP_TRAVERSE.worldDisplayName(kind, id);
+  titleEl.innerHTML = icon("scroll")+" 世界补完"; subEl.textContent = wname;
+  const card = (kind === "card" && typeof RP_CARDIMPORT !== "undefined") ? RP_CARDIMPORT.findById(id) : null;
+  const seed = RP_TRAVERSE2.extractSeed(card);
+  let done = null;
+  try{ done = JSON.parse(localStorage.getItem("nd_wb2_"+kind+"_"+id) || "null"); }catch(e){}
+  view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
+  <div class="card"><div class="kv">角色卡原文设定</div>
+  <div class="hint">名称：${esc((card&&card.name)||"")} · 种子文本 ${seed.length} 字</div>
+  <div class="meta" style="white-space:pre-wrap;max-height:120px;overflow:hidden">${esc(seed.slice(0,300))}${seed.length>300?"…":""}</div></div>
+  ${done?`<div class="card"><div class="kv">已补完 <span class="badge">AI 补完</span></div>
+  <div class="hint">${esc((done.bg||"").slice(0,140))}…</div></div>`:""}
+  <div class="btnrow"><button class="btn" style="flex:1" onclick="travWorldCompleteGen(${JSON.stringify(kind)},${JSON.stringify(id)})">${done?"重新补完":"AI 补完世界"}</button></div>
+  <div class="hint">AI 只补：时代背景、势力/门派、关键地点、当前局势、3–5 个剧情锚点。补完内容会标注「AI 补完」来源，你确认后才生效。</div>
+  <div style="height:40px"></div>`;
+  window.scrollTo(0,0);
+};
+window.travWorldCompleteGen = async (kind, id)=>{
+  const cfg = getCfg();
+  if(!cfg.key||!cfg.base||!cfg.model){ alert("先去「设置」配好 API 地址/Key/模型"); return; }
+  try{
+    const card = (kind === "card" && typeof RP_CARDIMPORT !== "undefined") ? RP_CARDIMPORT.findById(id) : null;
+    const bible = await RP_TRAVERSE2.genWorldBible(card, cfg, (c,m,t)=>RP_NET.complete(c,m,t));
+    window._wbDraft = {kind, id, bg: bible.bg, anchors: bible.anchors};
+    travWorldCompleteView();
+  }catch(e){ alert("补完失败："+e.message); }
+};
+function travWorldCompleteView(){
+  const d = window._wbDraft; if(!d) return;
+  __backAction = ()=>travWorldComplete(d.kind, d.id);
+  titleEl.innerHTML = icon("scroll")+" 世界补完"; subEl.textContent = RP_TRAVERSE.worldDisplayName(d.kind, d.id);
+  view.innerHTML = `<button class="back" onclick="travWorldComplete(${JSON.stringify(d.kind)},${JSON.stringify(d.id)})">${icon("back")} 返回</button>
+  <div class="card"><div class="kv">补完结果（可编辑，确认后生效）</div>
+  <div class="field"><label>世界设定 <span class="badge">AI 补完</span></label>
+  <textarea id="wbBg" style="width:100%;min-height:180px;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px">${esc(d.bg)}</textarea></div>
+  <div class="field"><label>剧情锚点（每行一条） <span class="badge">AI 补完</span></label>
+  <textarea id="wbAnchors" style="width:100%;min-height:80px;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px">${esc(d.anchors.join("\n"))}</textarea></div>
+  <div class="btnrow" style="margin-top:8px"><button class="btn" style="flex:1" onclick="travWorldCompleteSave()">确认生效</button></div></div>
+  <div class="hint">来源标注：卡片原文保持原样；上方内容均为 AI 补完，注入 prompt 时自动标注。</div>
+  <div style="height:40px"></div>`;
+  window.scrollTo(0,0);
+}
+window.travWorldCompleteSave = ()=>{
+  const d = window._wbDraft; if(!d) return;
+  d.bg = $("#wbBg").value.trim();
+  d.anchors = $("#wbAnchors").value.split("\n").map(s=>s.trim()).filter(Boolean).slice(0,5);
+  d.updatedAt = Date.now();
+  localStorage.setItem("nd_wb2_"+d.kind+"_"+d.id, JSON.stringify(d));
+  travWorldComplete(d.kind, d.id);
+};
+
+/* ---- P2: 异世界穿越 ---- */
+window.isekaiPickSrc = ()=>{
+  __backAction = ()=>showTraverse();
+  document.body.classList.remove("chatmode");
+  titleEl.innerHTML = icon("repeat")+" 异世界穿越"; subEl.textContent = "第一步：选择穿越的角色";
+  const cs = allChars();
+  view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
+  <div class="hint">把这个角色送进另一部作品的世界。</div>
+  <div class="chargrid">${cs.map(c=>`
+    <div class="charcard" onclick="isekaiPickDst(${JSON.stringify(c.runId)},${JSON.stringify(c.name)})">
+      <div class="avatar ${charCoverCls(c.name)}">${esc(c.name[0])}</div>
+      <div class="ccname">${esc(c.name)}</div><div class="ccnovel">${esc(c.novel)}</div>
+    </div>`).join("")}</div><div style="height:40px"></div>`;
+  window.scrollTo(0,0);
+};
+window.isekaiPickDst = (srcRunId, srcName)=>{
+  __backAction = ()=>isekaiPickSrc();
+  document.body.classList.remove("chatmode");
+  titleEl.innerHTML = icon("repeat")+" 异世界穿越"; subEl.textContent = "第二步：选择目标世界";
+  const worlds = RP_TRAVERSE2.listWorlds();
+  view.innerHTML = `<button class="back" onclick="isekaiPickSrc()">${icon("back")} 返回</button>
+  <div class="hint">穿越者：${esc(srcName)}</div>
+  ${worlds.map(w=>`
+  <div class="card" onclick="isekaiFusion(${JSON.stringify(srcRunId)},${JSON.stringify(srcName)},${JSON.stringify(w.key)})">
+    <div class="name">《${esc(w.title)}》 ${w.status==="pending"?'<span class="badge">数据待接入</span>':'<span class="badge">已接入</span>'}</div>
+    <div class="meta">${esc(w.note||"")}</div>
+  </div>`).join("")}
+  <div class="hint">「数据待接入」的世界（如水浒）也可以进：AI 不会编造该世界的具体人物剧情，用开放式异世界推进。</div>
+  <div style="height:40px"></div>`;
+  window.scrollTo(0,0);
+};
+window.isekaiFusion = (srcRunId, srcName, dstKey)=>{
+  const w = RP_TRAVERSE2.getWorld(dstKey);
+  __backAction = ()=>isekaiPickDst(srcRunId, srcName);
+  document.body.classList.remove("chatmode");
+  titleEl.innerHTML = icon("repeat")+" 异世界穿越"; subEl.textContent = "第三步：选择融合方式";
+  view.innerHTML = `<button class="back" onclick="isekaiPickDst(${JSON.stringify(srcRunId)},${JSON.stringify(srcName)})">${icon("back")} 返回</button>
+  <div class="card"><div class="name">${esc(srcName)} → 《${esc(w.title)}》</div>
+  <div class="row" style="margin-top:8px">
+  <label class="kvline" style="display:block"><input type="radio" name="fusion" value="outsider" checked> 异乡人：完整保留原身份与记忆，目标世界视你为异人</label>
+  <label class="kvline" style="display:block;margin-top:6px"><input type="radio" name="fusion" value="reborn"> 转生：AI 安排目标世界新身份，保留性格与记忆</label></div></div>
+  <div class="btnrow"><button class="btn" style="flex:1" onclick="isekaiStart(${JSON.stringify(srcRunId)},${JSON.stringify(srcName)},${JSON.stringify(dstKey)})">开始穿越</button></div>
+  <div style="height:40px"></div>`;
+  window.scrollTo(0,0);
+};
+window.isekaiStart = (srcRunId, srcName, dstKey)=>{
+  const w = RP_TRAVERSE2.getWorld(dstKey); if(!w) return;
+  const fusion = (document.querySelector('input[name="fusion"]:checked')||{}).value || "outsider";
+  const sess = RP_TRAVERSE2.isekaiSession({
+    srcKind:"char", srcId:srcRunId, srcName:srcName,
+    dstKey:dstKey, dstKind:w.kind, dstId:w.key, fusion, charName:srcName,
+  });
+  /* 补齐 buildMessages 需要的世界字段：ready 世界尽量映射到真实 runId */
+  let runId = w.key;
+  if(w.status === "ready" && w.kind === "book"){
+    const idx = (window.__DATA__ && window.__DATA__.index) || [];
+    const hit = idx.find(r=>(r.novel||"").indexOf(w.title) >= 0);
+    if(hit) runId = hit.run_id;
+  }
+  sess.worldKind = "book"; sess.worldId = runId;
+  sess.worldName = RP_TRAVERSE.worldDisplayName("book", runId);
+  sess.anchorTitle = "初入异世界";
+  RP_TRAVERSE.save(sess);
+  travBegin(sess);
+};
+
+/* ---- P3: 组团穿越 ---- */
+window.partySetup = ()=>{
+  __backAction = ()=>showTraverse();
+  document.body.classList.remove("chatmode");
+  titleEl.innerHTML = icon("chat")+" 组团穿越"; subEl.textContent = "第一步：选择世界";
+  const ws = travWorlds();
+  view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
+  <div class="hint">2–4 人小队：你 + 最多 3 名队友。AI 按 talkativeness 调度发言，被你点名的队友一定发言。</div>
+  ${ws.map(w=>`
+    <div class="card" onclick="partyPickMain(${JSON.stringify(w.kind)},${JSON.stringify(w.id)})">
+      <div class="name">${esc(w.name)}</div><div class="meta">${esc(w.sub)}</div>
+    </div>`).join("")}<div style="height:40px"></div>`;
+  window.scrollTo(0,0);
+};
+window.partyPickMain = (kind, id)=>{
+  __backAction = ()=>partySetup();
+  document.body.classList.remove("chatmode");
+  titleEl.innerHTML = icon("chat")+" 组团穿越"; subEl.textContent = "第二步：你的身份";
+  const wname = RP_TRAVERSE.worldDisplayName(kind, id);
+  view.innerHTML = `<button class="back" onclick="partySetup()">${icon("back")} 返回</button>
+  <div class="card"><div class="kv">${esc(wname)}</div>
+  <div class="btnrow" style="margin-top:8px">
+  <button class="btn" style="flex:1" onclick="partyPickMainSoul(${JSON.stringify(kind)},${JSON.stringify(id)})">魂穿：选一个角色</button>
+  <button class="btn ghost" style="flex:1" onclick="partyPickMainBody(${JSON.stringify(kind)},${JSON.stringify(id)})">肉身：快速捏身份</button></div></div>
+  <div style="height:40px"></div>`;
+  window.scrollTo(0,0);
+};
+window.partyPickMainSoul = (kind, id)=>{
+  __backAction = ()=>partyPickMain(kind, id);
+  document.body.classList.remove("chatmode");
+  titleEl.innerHTML = icon("chat")+" 组团穿越"; subEl.textContent = "选择你要扮演的角色";
+  const cs = allChars();
+  window._partyCands = cs;
+  view.innerHTML = `<button class="back" onclick="partyPickMain(${JSON.stringify(kind)},${JSON.stringify(id)})">${icon("back")} 返回</button>
+  <div class="chargrid">${cs.map((c,ix)=>`
+    <div class="charcard" onclick="partyPickMainSoulGo(${JSON.stringify(kind)},${JSON.stringify(id)},${ix})">
+      <div class="avatar ${charCoverCls(c.name)}">${esc(c.name[0])}</div>
+      <div class="ccname">${esc(c.name)}</div><div class="ccnovel">${esc(c.novel)}</div>
+    </div>`).join("")}</div><div style="height:40px"></div>`;
+  window.scrollTo(0,0);
+};
+window.partyPickMainSoulGo = (kind, id, ix)=>{
+  const c = (window._partyCands||[])[ix]; if(!c) return;
+  partyPickComps(kind, id, {mode:"soul", runId:c.runId, name:c.name});
+};
+window.partyPickMainBody = (kind, id)=>{
+  __backAction = ()=>partyPickMain(kind, id);
+  document.body.classList.remove("chatmode");
+  titleEl.innerHTML = icon("chat")+" 组团穿越"; subEl.textContent = "肉身：快速捏身份";
+  view.innerHTML = `<button class="back" onclick="partyPickMain(${JSON.stringify(kind)},${JSON.stringify(id)})">${icon("back")} 返回</button>
+  <div class="card"><div class="field"><label>一句话设定你的身份/开场</label>
+  <input id="pbWish" style="width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px" placeholder="比如：现代大学生，带着手机穿进大观园"></div>
+  <label class="kvline"><input type="checkbox" id="pbModern" checked> 现代人直穿（携带手机/打火机/纸巾）</label>
+  <div class="btnrow" style="margin-top:8px"><button class="btn" style="flex:1" onclick="partyBodyNext(${JSON.stringify(kind)},${JSON.stringify(id)})">下一步：选队友</button></div></div>
+  <div style="height:40px"></div>`;
+  window.scrollTo(0,0);
+};
+window.partyBodyNext = (kind, id)=>{
+  partyPickComps(kind, id, {mode:"body",
+    wish:($("#pbWish").value||"").trim(), modern:$("#pbModern").checked});
+};
+window.partyPickComps = (kind, id, main)=>{
+  __backAction = ()=>partyPickMain(kind, id);
+  document.body.classList.remove("chatmode");
+  titleEl.innerHTML = icon("chat")+" 组团穿越"; subEl.textContent = "第三步：选择队友（最多3人）";
+  const cs = allChars().filter(c=>!(main.mode==="soul" && c.name===main.name));
+  window._partyCands = cs; window._partySel = []; window._partyMain = main;
+  view.innerHTML = `<button class="back" onclick="partyPickMain(${JSON.stringify(kind)},${JSON.stringify(id)})">${icon("back")} 返回</button>
+  <div class="hint">主身份：${esc(main.mode==="soul"?main.name:((main.wish||"")+"（肉身）")||"肉身")}</div>
+  <div class="chargrid">${cs.map((c,ix)=>`
+    <div class="charcard" id="pc_${ix}" onclick="partyToggleComp(${ix})">
+      <div class="avatar ${charCoverCls(c.name)}">${esc(c.name[0])}</div>
+      <div class="ccname">${esc(c.name)}</div><div class="ccnovel">${esc(c.novel)}</div>
+    </div>`).join("")}</div>
+  <div class="btnrow" style="position:sticky;bottom:70px"><button class="btn" style="flex:1" onclick="partyStart(${JSON.stringify(kind)},${JSON.stringify(id)})">出发！</button></div>
+  <div style="height:40px"></div>`;
+  window.scrollTo(0,0);
+};
+window.partyToggleComp = (ix)=>{
+  const s = window._partySel || [];
+  const el = $("#pc_"+ix);
+  const at = s.indexOf(ix);
+  if(at >= 0){ s.splice(at,1); if(el) el.classList.remove("sel"); }
+  else{ if(s.length >= 3){ alert("最多 3 名队友"); return; } s.push(ix); if(el) el.classList.add("sel"); }
+  window._partySel = s;
+};
+window.partyStart = (kind, id, main)=>{
+  const sel = window._partySel || [];
+  main = main || window._partyMain;
+  if(!main) return;
+  if(!sel.length){ alert("至少选 1 名队友"); return; }
+  const wname = RP_TRAVERSE.worldDisplayName(kind, id);
+  let sess;
+  if(main.mode === "soul"){
+    sess = RP_TRAVERSE.newSession({mode:"soul", worldKind:kind, worldId:id,
+      worldName:wname, charName:main.name, runId:main.runId,
+      anchorTitle:"组团穿越", oocRemind:true});
+  }else{
+    const idt = RP_TRAVERSE.saveIdentity({name:"我", modern:!!main.modern,
+      origin:"现代", situation:main.wish || "初入此界",
+      items:RP_TRAVERSE2.cloneItems(RP_TRAVERSE2.MODERN_ITEMS), worldName:wname});
+    sess = RP_TRAVERSE.newSession({mode:"body", worldKind:kind, worldId:id,
+      worldName:wname, identityId:idt.id, anchorTitle:main.wish || "初入此界", oocRemind:true});
+  }
+  sel.forEach(ix=>{
+    const c = (window._partyCands||[])[ix]; if(!c) return;
+    RP_TRAVERSE2.addCompanion(sess.id, {name:c.name, runId:c.runId, talk:50});
+  });
+  travBegin(sess);
+};
+window.travPartyView = ()=>{
+  const trav = RP_TRAVERSE.get(CHAT.travId); if(!trav) return;
+  __backAction = ()=>showChat();
+  document.body.classList.remove("chatmode");
+  titleEl.innerHTML = icon("chat")+" 队伍"; subEl.textContent = trav.worldName || "";
+  const comps = RP_TRAVERSE2.getCompanions(trav.id);
+  view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回</button>
+  <div class="hint">AI 按 talkativeness（0–100，默认 50）调度队友发言；被你点名的队友一定发言。聊天记录独立保存在这次穿越里。</div>
+  ${comps.map((c,ix)=>`
+  <div class="card"><div class="row"><div style="flex:1"><div class="name">${esc(c.name)}</div>
+  <div class="meta">talkativeness ${c.talk==null?50:c.talk}</div></div>
+  <button class="linkbtn" onclick="travPartyTalk(${ix},-10)">−</button>
+  <button class="linkbtn" onclick="travPartyTalk(${ix},10)">＋</button>
+  <button class="linkbtn danger" onclick="travPartyRemove(${ix})">移除</button></div></div>`).join("")
+  || `<div class="empty">暂无队友</div>`}
+  <div style="height:40px"></div>`;
+  window.scrollTo(0,0);
+};
+window.travPartyTalk = (ix, d)=>{
+  const trav = RP_TRAVERSE.get(CHAT.travId); if(!trav) return;
+  const comps = RP_TRAVERSE2.getCompanions(trav.id);
+  const c = comps[ix]; if(!c) return;
+  c.talk = Math.max(0, Math.min(100, (c.talk==null?50:c.talk) + d));
+  RP_TRAVERSE2.removeCompanion(trav.id, c.name);
+  RP_TRAVERSE2.addCompanion(trav.id, c);
+  travPartyView();
+};
+window.travPartyRemove = (ix)=>{
+  const trav = RP_TRAVERSE.get(CHAT.travId); if(!trav) return;
+  const comps = RP_TRAVERSE2.getCompanions(trav.id);
+  if(comps[ix] && confirm("移除队友 "+comps[ix].name+"？")){
+    RP_TRAVERSE2.removeCompanion(trav.id, comps[ix].name);
+  }
+  travPartyView();
 };

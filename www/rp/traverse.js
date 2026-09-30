@@ -83,7 +83,12 @@ situation: o.situation || "", modern: false, wish: wish, worldName: worldName,
 function worldDisplayName(kind, id){
 if(kind === "book"){
 var r = (window.__DATA__ && window.__DATA__.runs || {})[id];
-return r? ("《" + r.novel + "》"): "未知世界";
+if(r) return "《" + r.novel + "》";
+/* P2: 世界模板注册表回退（如水浒 pending 模板） */
+if(typeof RP_TRAVERSE2!== "undefined" && RP_TRAVERSE2.getWorld){
+try{ var w = RP_TRAVERSE2.getWorld(id); if(w) return "《" + w.title + "》"; }catch(e){}
+}
+return "未知世界";
 }
 if(typeof RP_CARDIMPORT!== "undefined"){
 var c = RP_CARDIMPORT.findById(id);
@@ -97,6 +102,17 @@ var name = worldDisplayName(kind, id);
 var bg = "", loreEntries = [];
 if(kind === "book"){
 var run = (window.__DATA__ && window.__DATA__.runs || {})[id] || {};
+/* P2: 注册表 pending 世界（如水浒）：不编造人物剧情，用开放式异世界推进 */
+if(!run.run_id && typeof RP_TRAVERSE2!== "undefined" && RP_TRAVERSE2.getWorld){
+try{
+var reg = RP_TRAVERSE2.getWorld(id);
+if(reg && reg.status === "pending"){
+bg = name + "的世界。（蒸馏数据尚未落地：不要编造该世界的具体人物与剧情，"
++ "用开放式异世界遭遇推进——陌生地域、神秘人物剪影、未知的势力暗流。）";
+return {key: kind + ":" + id, name: name, bg: bg, loreEntries: []};
+}
+}catch(e){}
+}
 bg = name + "的世界。时间、地点、人物关系、社会风俗严格遵循原著；" +
 "没有原著依据的事，不要编造得违背常识。";
 var wb = run.worldbook || [];
@@ -112,6 +128,16 @@ bg = "世界设定：" + (card.scenario || f.core_identity || "（卡片未写�
 loreEntries = (card.worldbook || []).filter(function(e){ return e.enabled!== false;});
 }
 }
+/* P1: 用户已确认的 AI 世界补完（nd_wb2_），与原文合并，补完部分自带来源标注 */
+try{
+var done = JSON.parse(localStorage.getItem("nd_wb2_" + kind + "_" + id) || "null");
+if(done){
+if(done.bg) bg += "\n「AI 补完世界设定」\n" + done.bg;
+(done.anchors || []).forEach(function(a){
+loreEntries.push({title: "AI 补完 · 剧情锚点", content: a, constant: true});
+});
+}
+}catch(e){}
 return {key: kind + ":" + id, name: name, bg: bg, loreEntries: loreEntries};
 }
 
@@ -318,6 +344,8 @@ preview: sysParts.join("\n\n") + "\n\n" + post,
 /* ================= 开场 ================= */
 function identityOneLiner(trav){
 if(trav.mode === "soul") return "扮演" + trav.charName;
+/* P2: 异世界会话直接用源角色名 */
+if(trav.mode === "isekai") return "扮演" + (trav.charName || "穿越者") + "（异世界穿越）";
 var idt = getIdentity(trav.identityId) || {};
 return (idt.modern? "现代人": "") + (idt.name || "无名氏") +
 (idt.origin? "（" + idt.origin + "）": "");

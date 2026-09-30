@@ -527,6 +527,11 @@ async function sendTraverse(travId, text, opts){
     // run.worldbook 已由 buildWorldBible 注入, 这里只补用户世界书, 避免重复
     worldbook: userLore(worldRunId),
   }, budget);
+  /* P2 穿越 P1/P3: 出戏值 / 组团 / 异世界的 prompt 增补（调用方在 opts.extraPrompt 里拼好） */
+  if(opts.extraPrompt){
+    b.messages.push({role: "system", content: String(opts.extraPrompt)});
+    b.preview += "\n\n" + String(opts.extraPrompt);
+  }
   if(opts.onSystem) opts.onSystem(b.preview, b.stats);
 
   var reply = "";

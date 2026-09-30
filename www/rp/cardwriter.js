@@ -40,11 +40,18 @@ function listSessions(){
   return out;
 }
 function getSession(id){
-  try { return JSON.parse(localStorage.getItem(SES_PRE + id)) || null; } catch(e){ return null; }
+  try {
+    var s = localStorage.getItem(SES_PRE + id);
+    if(s == null && typeof RP_STORE!=="undefined") s = RP_STORE.cacheGet(SES_PRE + id);
+    return JSON.parse(s) || null;
+  } catch(e){ return null; }
 }
 function saveSession(s){
   s.updatedAt = Date.now();
-  try { localStorage.setItem(SES_PRE + s.id, JSON.stringify(s)); } catch(e){}
+  var str = JSON.stringify(s), key = SES_PRE + s.id;
+  try { localStorage.setItem(key, str); } catch(e){}
+  /* P2: 写卡草稿大体积时 IDB 双写（复制模式） */
+  try{ if(typeof RP_STORE!=="undefined"){ RP_STORE.cacheSet(key, str); RP_STORE.syncBig(key, str); } }catch(e){}
 }
 function delSession(id){ try { localStorage.removeItem(SES_PRE + id); } catch(e){} }
 
@@ -58,10 +65,18 @@ function newSession(worldRunId){
 
 /* ---- 自定义角色库 ---- */
 function getCustomChars(){
-  try { return JSON.parse(localStorage.getItem(CHAR_KEY)) || []; } catch(e){ return []; }
+  try {
+    var s = localStorage.getItem(CHAR_KEY);
+    /* P2: localStorage 副本被清理后，回退 IDB 内存镜像 */
+    if(s == null && typeof RP_STORE!=="undefined") s = RP_STORE.cacheGet(CHAR_KEY);
+    return JSON.parse(s) || [];
+  } catch(e){ return []; }
 }
 function saveCustomChars(list){
-  try { localStorage.setItem(CHAR_KEY, JSON.stringify(list)); } catch(e){}
+  var s = JSON.stringify(list);
+  try { localStorage.setItem(CHAR_KEY, s); } catch(e){}
+  /* P2: 大体积角色卡 IDB 双写（复制模式） */
+  try{ if(typeof RP_STORE!=="undefined"){ RP_STORE.cacheSet(CHAR_KEY, s); RP_STORE.syncBig(CHAR_KEY, s); } }catch(e){}
 }
 function findCustom(name){
   var list = getCustomChars();

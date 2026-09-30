@@ -43,11 +43,12 @@ ctx.CHAR_PLOTS = {"林黛玉": "\n· 黛玉进贾府：初见宝玉\n· 葬花�
 vm.createContext(ctx);
 for(const f of ["data.js", "icons.js", "data/char_plots.js", "rp/prompt.js", "rp/persona.js",
 "rp/memory.js", "rp/tasks.js", "rp/cardwriter.js", "rp/ooc.js", "rp/chat.js",
-"rp/group.js", "rp/cardexport.js", "rp/cardimport.js", "rp/traverse.js", "app.js"]){
+"rp/group.js", "rp/cardexport.js", "rp/cardimport.js", "rp/traverse.js", "rp/traverse2.js", "app.js"]){
 vm.runInContext(fs.readFileSync(WWW+"/" + f, "utf8"), ctx, {filename: f});
 }
-// data.js 会覆盖 __DATA__; 加载完再注入测试数据
+// data.js 会覆盖 __DATA__; 加载完再注入测试数据, 并同步重置 INDEX
 vm.runInContext("window.__DATA__=" + JSON.stringify(DATA), ctx);
+vm.runInContext("INDEX = window.__DATA__.index;", ctx);
 const viewHTML = () => els["view"].innerHTML;
 
 let pass = 0, fail = 0;
@@ -73,7 +74,8 @@ vm.runInContext("setNav('traverse')", ctx);
 let h = viewHTML();
 t("首页有魂穿卡", h.indexOf("魂穿") >= 0);
 t("首页有肉身卡", h.indexOf("肉身穿越") >= 0);
-t("首页P2/P3锁定", h.indexOf("P2") >= 0 && h.indexOf("P3") >= 0);
+t("首页P2/P3入口", h.indexOf("P2") >= 0 && h.indexOf("P3") >= 0);
+t("首页异世界/组团可点", h.indexOf("travMode('isekai')") >= 0 && h.indexOf("travMode('party')") >= 0);
 t("首页onclick闭合", onclickWellFormed(h));
 t("首页无破碎class", noBrokenClass(h));
 t("首页模式卡片4个", (h.match(/travmode(\s|")/g) || []).length === 4);
@@ -97,6 +99,19 @@ t("身份页有现代人直穿", h.indexOf("现代人直穿") >= 0);
 t("身份字段 " + id, h.indexOf('id="' + id + '"') >= 0);
 });
 t("身份页onclick闭合", onclickWellFormed(h));
+
+// ---- P1: 世界补完页（真实卡片路径；extractSeed(card) 签名回归） ----
+vm.runInContext(`RP_CARDIMPORT.add({id:"c1", name:"浪人", scenario:"夜之城，一座不夜城", fields:{}, raw:{description:"冷酷的前特工"}, worldbook:[]})`, ctx);
+vm.runInContext(`travWorldComplete('card','c1')`, ctx);
+h = viewHTML();
+t("世界补完页种子", h.indexOf("夜之城") >= 0 && h.indexOf("浪人") >= 0);
+t("世界补完页无undefined", h.indexOf("undefined") < 0);
+t("世界补完页onclick闭合", onclickWellFormed(h));
+vm.runInContext(`localStorage.setItem("nd_wb2_card_c1", JSON.stringify({bg:"补完背景", anchors:["锚点一","锚点二"]}))`, ctx);
+const _wb = vm.runInContext(`RP_TRAVERSE.buildWorldBible('card','c1')`, ctx);
+t("世界补完合并AI标注", _wb.bg.indexOf("AI 补完世界设定") >= 0 && _wb.bg.indexOf("补完背景") >= 0);
+t("世界补完锚点入lore", _wb.loreEntries.some(e=>e.content === "锚点一"));
+vm.runInContext(`RP_CARDIMPORT.del("c1"); localStorage.removeItem("nd_wb2_card_c1")`, ctx);
 
 // ---- 世界状态编辑器 ----
 vm.runInContext(`
@@ -144,6 +159,47 @@ t("bodyStart建会话", rec2 && rec2.mode === "body");
 const idt = vm.runInContext("RP_TRAVERSE.getIdentity(RP_TRAVERSE.recent()[0].identityId)", ctx);
 t("bodyStart身份名", idt && idt.name === "沈默");
 t("bodyStart身份特质", idt && idt.traits === "内敛" && idt.talent === "过目不忘");
+
+// ---- P1: 身份页十项字段 + 逐项重随 ----
+vm.runInContext("bodyIdentity('book','r1')", ctx);
+h = viewHTML();
+t("身份页十项重随", (h.match(/bodyReroll\(/g) || []).length >= 10);
+t("身份页备选名", h.indexOf("idNameCand") >= 0);
+t("身份页携带物", h.indexOf("idItems") >= 0);
+t("身份页钩子", h.indexOf("idHooks") >= 0);
+t("身份页相貌", h.indexOf("idLooks") >= 0);
+t("身份页onclick闭合", onclickWellFormed(h));
+
+// ---- P2: 异世界三步 ----
+vm.runInContext("isekaiPickSrc()", ctx); h = viewHTML();
+t("异世界选人", h.indexOf("林黛玉") >= 0);
+t("异世界选人onclick闭合", onclickWellFormed(h));
+vm.runInContext("isekaiPickDst('r1','林黛玉')", ctx); h = viewHTML();
+t("异世界目标世界", h.indexOf("水浒传") >= 0 && h.indexOf("数据待接入") >= 0);
+t("异世界红楼已接入", h.indexOf("红楼梦") >= 0 && h.indexOf("已接入") >= 0);
+t("水浒不预置人物", h.indexOf("宋江") < 0 && h.indexOf("武松") < 0);
+vm.runInContext("isekaiFusion('r1','林黛玉','shuihu')", ctx); h = viewHTML();
+t("异世界融合方式", h.indexOf("异乡人") >= 0 && h.indexOf("转生") >= 0);
+t("异世界onclick闭合", onclickWellFormed(h));
+
+// ---- P3: 组团三步 ----
+vm.runInContext("partySetup()", ctx); h = viewHTML();
+t("组团选世界", h.indexOf("talkativeness") >= 0);
+t("组团onclick闭合", onclickWellFormed(h));
+vm.runInContext("partyPickMain('book','r1')", ctx); h = viewHTML();
+t("组团选身份", h.indexOf("魂穿") >= 0 && h.indexOf("肉身") >= 0);
+vm.runInContext("partyPickMainBody('book','r1')", ctx); h = viewHTML();
+t("组团肉身页", h.indexOf("pbWish") >= 0);
+vm.runInContext("partyBodyNext('book','r1')", ctx); h = viewHTML();
+t("组团选队友", h.indexOf("partyToggleComp(") >= 0 && h.indexOf("林黛玉") >= 0);
+vm.runInContext("partyToggleComp(0); partyStart('book','r1')", ctx);
+const _trav3 = vm.runInContext("RP_TRAVERSE.recent()[0]", ctx);
+const _party = vm.runInContext("RP_TRAVERSE2.getCompanions('" + _trav3.id + "')", ctx);
+t("组团建队+队友默认talk50", vm.runInContext("CHAT.mode", ctx) === "traverse" && _party.length === 1 && _party[0].name === "林黛玉" && _party[0].talk === 50);
+vm.runInContext("travPartyTalk(0,10)", ctx);
+t("组团talkativeness+10", vm.runInContext("RP_TRAVERSE2.getCompanions('" + _trav3.id + "')[0].talk", ctx) === 60);
+vm.runInContext("travPartyView()", ctx); h = viewHTML();
+t("队伍页显示talkativeness", h.indexOf("talkativeness") >= 0 && h.indexOf("60") >= 0);
 
 // ---- 世界状态栏渲染 ----
 vm.runInContext("renderWsBar()", ctx);
