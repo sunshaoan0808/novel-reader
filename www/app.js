@@ -1685,7 +1685,7 @@ bar.innerHTML = `<div class="ctxrow"><div class="ctxbar-bg"><div class="ctxbar-f
 + (hits.length ? `<div class="ctxlore">${icon("book-open",14)} 触发：${hitDet.length
 ? hitDet.map(d=>`${esc(d.title)}<span style="opacity:.6;font-size:11px"> ${d.probability}%·P${d.priority}</span>`).join("、")
 : hits.map(x=>esc(x)).join("、")}</div>` : "")
-+ /* Tier2 #6: C.AI "Older messages will fade from Memory, but anything you save to Story Memory is kept safe." */
+/* Tier2 #6: C.AI "Older messages will fade from Memory, but anything you save to Story Memory is kept safe." */
 + (pct > 90 ? `<div class="ctxwarn">旧消息会逐渐从记忆中褪色，但你置顶 / 存入事件簿的记忆会一直保留。</div>` : "");
 }
 /* ============ 世界模拟 HUD：聊天页顶栏下常驻时间/天气/地点 ============ */
