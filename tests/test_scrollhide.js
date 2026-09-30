@@ -1,0 +1,152 @@
+const fs = require("fs"), vm = require("vm");
+const WWW = fs.existsSync("assets/www") ? "assets/www" : "www";
+// 回归: 滚动体验三件套
+// 1) 上滑看历史时, 流式/打字机/重渲染不得强制拽回底部(持续抖动根因)
+// 2) 下滑时底栏(输入条)跟随顶栏一起隐藏, 上滑/回顶恢复
+// 3) 显隐切换加迟滞, 阈值附近不反复横跳
+function mkEl(){
+return {innerHTML: "", textContent: "", value: "", checked: false,
+classList: {add(){}, remove(){}, toggle(){}, contains(){ return false;}},
+style: {}, dataset: {},
+querySelector(){ return null;}, querySelectorAll(){ return [];},
+addEventListener(){}, removeEventListener(){}, appendChild(){}, remove(){},
+insertAdjacentHTML(pos, html){ /* 测试里按需覆写 */ },
+setAttribute(){}, getAttribute(){ return null;}, removeAttribute(){},
+closest(){ return null;}, scrollTo(){}, focus(){}, click(){},
+getBoundingClientRect(){ return {left:0,top:0,right:0,bottom:0,width:0,height:0};}};
+}
+const els = {};
+const ls = (function(){ const m = {}; return {
+getItem: k => (k in m? m[k]: null),
+setItem: (k, v) => { m[k] = String(v);},
+removeItem: k => { delete m[k];},
+key: i => Object.keys(m)[i] || null,
+get length(){ return Object.keys(m).length;}};})();
+let capturedInterval = null;
+const document = {
+body: mkEl(),
+activeElement: null,
+getElementById: id => els[id] || (els[id] = mkEl()),
+querySelector: sel => {
+if(sel === ".chatbar") return els["__chatbar"] || (els["__chatbar"] = mkEl());
+const mm = String(sel).match(/^#([\w-]+)$/);
+if(!mm) return null;
+return els[mm[1]] || (els[mm[1]] = mkEl());
+},
+querySelectorAll: () => [],
+createElement: () => mkEl(),
+};
+const ctx = {localStorage: ls, document, console,
+alert(){}, confirm(){ return true;}, prompt(){ return null;},
+setTimeout: () => 0, clearTimeout(){},
+setInterval: (fn)=>{ capturedInterval = fn; return 1; }, clearInterval(){},
+fetch: () => Promise.reject(new Error("no net")),
+scrollTo(){}, devicePixelRatio: 2};
+ctx.window = ctx; ctx.globalThis = ctx;
+vm.createContext(ctx);
+for(const f of ["data.js", "icons.js", "rp/prompt.js", "rp/persona.js",
+"rp/memory.js", "rp/tasks.js", "rp/cardwriter.js", "rp/ooc.js", "rp/chat.js",
+"rp/group.js", "rp/cardexport.js", "rp/cardimport.js", "rp/traverse.js", "rp/traverse2.js", "app.js"]){
+vm.runInContext(fs.readFileSync(WWW+"/" + f, "utf8"), ctx, {filename: f});
+}
+let pass = 0, fail = 0;
+const t = (n, c) => { c? pass++: (fail++, console.log("FAIL:", n)); };
+const run = (code)=> vm.runInContext(code, ctx);
+
+// ---------- chatNearBottom ----------
+els["chatlog"] = mkEl();
+Object.assign(els["chatlog"], {scrollHeight: 3000, scrollTop: 2400, clientHeight: 600});
+t("nearBottom: 底部附近为true", run("chatNearBottom()") === true);
+els["chatlog"].scrollTop = 100;
+t("nearBottom: 上滑看历史为false", run("chatNearBottom()") === false);
+delete els["chatlog"];
+const _origGet = document.getElementById;
+document.getElementById = ()=>null;
+t("nearBottom: 无chatlog默认true", run("chatNearBottom()") === true);
+document.getElementById = _origGet;
+
+// ---------- attachHeadHide: 顶栏+底栏联动, 迟滞 ----------
+(function(){
+const toggles = [];
+const head = mkEl(); head.offsetHeight = 65;
+head.classList = {add(){}, remove(){}, toggle(c, on){ toggles.push(["head", c, !!on]); }, contains(){ return false; }};
+const bar = mkEl(); bar.offsetHeight = 69;
+bar.classList = {add(){}, remove(){}, toggle(c, on){ toggles.push(["bar", c, !!on]); }, contains(){ return false; }};
+const log = mkEl();
+Object.assign(log, {scrollHeight: 3000, scrollTop: 0, clientHeight: 600});
+els["chathead"] = head; els["chatlog"] = log; els["__chatbar"] = bar;
+document.activeElement = null;
+run("attachHeadHide()");
+const scrollTo = (st)=>{ log.scrollTop = st; log.onscroll(); };
+
+scrollTo(500); // 下滑过140 -> 隐藏
+t("hide: 顶栏marginTop收起", head.style.marginTop === "-65px");
+t("hide: 底栏marginBottom收起", bar.style.marginBottom === "-69px");
+t("hide: 底栏transform移出", bar.style.transform === "translateY(110%)");
+t("hide: 底栏hidebar类", toggles.some(x=>x[0]==="bar"&&x[1]==="hidebar"&&x[2]));
+
+scrollTo(480); // 小幅上滑, 在迟滞带内 -> 保持隐藏
+t("hysteresis: 小幅上滑不反复显示", head.style.marginTop === "-65px" && bar.style.marginBottom === "-69px");
+
+scrollTo(400); // 自隐藏点上行超64 -> 显示
+t("hysteresis: 上行超64恢复顶栏", head.style.marginTop === "");
+t("hysteresis: 上行超64恢复底栏", bar.style.marginBottom === "" && bar.style.transform === "");
+
+scrollTo(500); // 再隐藏
+t("rehide: 再次下滑隐藏", head.style.marginTop === "-65px");
+scrollTo(100); // 回到110以内 -> 显示
+t("rehide: 回顶110以内恢复", head.style.marginTop === "" && bar.style.marginBottom === "");
+
+// 输入聚焦时不藏底栏
+document.activeElement = {tagName: "INPUT"};
+scrollTo(600);
+t("typing: 输入时顶栏仍可藏", head.style.marginTop === "-65px");
+t("typing: 输入时底栏不藏", bar.style.marginBottom === "" && bar.style.transform === "");
+document.activeElement = null;
+})();
+
+// ---------- streamToken: 上滑时不拽回底部 ----------
+(function(){
+const log = mkEl();
+Object.assign(log, {scrollHeight: 3000, scrollTop: 100, clientHeight: 600,
+insertAdjacentHTML(pos, html){ els["live"] = mkEl(); }});
+els["chatlog"] = log;
+run("streamToken('你')");
+t("streamToken: 上滑看历史不拽回", log.scrollTop === 100);
+t("streamToken: token照常追加", els["live"].textContent === "你");
+log.scrollTop = 2900; // 回到底部附近
+run("streamToken('好')");
+t("streamToken: 在底部继续跟随", log.scrollTop === 3000);
+})();
+
+// ---------- twStart: 45ms间隔上滑时不拽回底部 ----------
+(function(){
+const log = mkEl();
+Object.assign(log, {scrollHeight: 3000, scrollTop: 100, clientHeight: 600});
+els["chatlog"] = log;
+const smsg = mkEl(); smsg.querySelector = ()=>null;
+els["smsg-7"] = smsg;
+capturedInterval = null;
+run("twStart(7, 'hello', '')");
+t("twStart: 定时器装上", typeof capturedInterval === "function");
+capturedInterval(); // 手动跑一帧
+t("twStart: 上滑看历史不拽回", log.scrollTop === 100);
+log.scrollTop = 2950;
+capturedInterval();
+t("twStart: 在底部继续跟随", log.scrollTop === 3000);
+run("twStop()");
+})();
+
+// ---------- renderChat: forceBottom ----------
+(function(){
+const log = mkEl();
+Object.assign(log, {scrollHeight: 3000, scrollTop: 100, clientHeight: 600});
+els["chatlog"] = log;
+run("renderChat()");
+t("renderChat: 上滑看历史不强制回底", log.scrollTop === 100);
+run("renderChat(true)");
+t("renderChat(true): 发消息强制回底", log.scrollTop === log.scrollHeight);
+})();
+
+console.log(`test_scrollhide: ${pass} pass, ${fail} fail`);
+process.exit(fail ? 1 : 0);

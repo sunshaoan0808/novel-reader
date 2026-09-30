@@ -136,7 +136,7 @@ t("chips reflect char active", html2.includes("🎭以角色为主") && /povchip
 const src = fs.readFileSync(WWW+"/app.js", "utf8");
 t("sendOpts has pov", /pov:\s*CHAT\.pov\s*\|\|\s*"player"/.test(src));
 t("sendOpts has person", /person:\s*CHAT\.person\s*\|\|\s*"second"/.test(src));
-t("sendOpts has onUserMsg", /onUserMsg:\s*\(\)=>\{\s*renderChat\(\);\s*\}/.test(src));
+t("sendOpts has onUserMsg", /onUserMsg:\s*\(\)=>\{\s*renderChat\(true\);\s*\}/.test(src));
 const cs = fs.readFileSync(WWW+"/rp/chat.js", "utf8");
 t("chat.js fires onUserMsg after push", /if\(opts\.onPush\) opts\.onPush\(\);\n  if\(opts\.onUserMsg\) opts\.onUserMsg\(\);/.test(cs));
 t("chat.js ctx gets pov/person", (cs.match(/pov: opts\.pov, person: opts\.person,/g)||[]).length === 3);

@@ -1039,24 +1039,51 @@ window.toggleDrawer = (on)=>{
 document.getElementById("drawer").classList.toggle("on", !!on);
 document.getElementById("scrim").classList.toggle("on", !!on);
 };
+/* 聊天是否在底部附近: 流式/打字机/重渲染只在用户本来就看底部时才跟随,
+   用户上滑看历史时不强制拽回底部, 避免持续抖动 */
+function chatNearBottom(px){
+const l = document.getElementById("chatlog");
+if(!l) return true;
+return (l.scrollHeight - l.scrollTop - l.clientHeight) < (px || 140);
+}
 function attachHeadHide(){
 const log = document.getElementById("chatlog");
 if(!log) return;
-let lastST = 0, hidden = false;
-log.onscroll = ()=>{
-const st = log.scrollTop;
 const head = document.getElementById("chathead");
+const bar = document.querySelector(".chatbar");
+let lastST = log.scrollTop || 0, hidden = false, hideST = 0, headH = 0, barH = 0, ticking = false;
+const raf = (typeof requestAnimationFrame !== "undefined") ? requestAnimationFrame : (fn)=>fn();
+/* 顶栏/底栏联动显隐: 下滑阅读时一起收起让出空间, 上滑/回顶时恢复;
+   输入框聚焦(键盘弹起)时不藏底栏 */
+function setHidden(hide){
+if(hide === hidden) return;
+hidden = hide;
+const ae = (typeof document !== "undefined") ? document.activeElement : null;
+const typing = !!ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName || "");
 if(head){
-const shouldHide = st > lastST && st > 140;
-if(shouldHide !== hidden){
-hidden = shouldHide;
-head.classList.toggle("hide", hidden);
-// 收起顶栏的布局占位, 让正文直接顶到顶部, 不留黑条 (只 translate 不改变布局)
-head.style.marginTop = hidden ? (-head.offsetHeight + "px") : "";
+if(hide) headH = head.offsetHeight || headH;
+head.classList.toggle("hide", hide);
+head.style.marginTop = (hide && headH) ? (-headH + "px") : "";
+}
+if(bar && !(hide && typing)){
+if(hide) barH = bar.offsetHeight || barH;
+bar.classList.toggle("hidebar", hide);
+/* 底栏是纵向最后一个元素: transform 负责视觉移出, 负 margin 负责收起占位让聊天区伸长 */
+bar.style.transform = hide ? "translateY(110%)" : "";
+bar.style.marginBottom = (hide && barH) ? (-barH + "px") : "";
 }
 }
+window.__setHeadHidden = setHidden; /* 测试钩子 */
+function onScroll(){
+ticking = false;
+const st = log.scrollTop;
+const down = st > lastST + 2, up = st < lastST - 2;
+/* 迟滞阈值: 下滑过 140 藏; 上滑回到 110 以内、或自隐藏点上行超 64 才显示, 避免阈值附近反复横跳 */
+if(!hidden && down && st > 140){ hideST = st; setHidden(true); }
+else if(hidden && up && (st < 110 || hideST - st > 64)){ setHidden(false); }
 lastST = st;
-};
+}
+log.onscroll = ()=>{ if(!ticking){ ticking = true; raf(onScroll); } };
 }
 window.exportChat = ()=>{
 const h = getHist(chatHistKey());
@@ -1586,15 +1613,17 @@ if(bub){
 const partial = frames[Math.min(fi, frames.length-1)];
 bub.innerHTML = hlRestore(md(hlSearchRaw(partial))) + (done?cardHTML:`<span class="twcur"></span>`);
 }
-log.scrollTop = log.scrollHeight;
+if(chatNearBottom()) log.scrollTop = log.scrollHeight;
 if(done) twStop();
 }, 45);
 }
-function renderChat(){
+function renderChat(forceBottom){
 twStop(); /* 新渲染进来（发消息/切tab/新回复）先停掉旧动画 */
 const h = getHist(chatHistKey());
 const log = $("#chatlog");
 if(!log) return;
+/* 用户上滑看历史时不强制回底(防抖动); 发出新消息等场景由调用方传 true */
+const stick = !!forceBottom || chatNearBottom();
 renderChatSearch();
 if(SEARCH.active && SEARCH.q.trim()){ // 新消息进来时重算命中
 searchHits();
@@ -1648,7 +1677,7 @@ return `<div class="msg ${m.role==="user"?"me":""}${mtype==="narr"?" narr":""}${
 + `</div>`;
 }).join("") || `<div class="empty">还没有对话，打个招呼吧<br><span style="font-size:12px">试试：你是谁？</span></div>`;
 renderCtxBar();
-log.scrollTop = log.scrollHeight;
+if(stick) log.scrollTop = log.scrollHeight;
 renderWsBar();
 renderSimBar();
 /* P2 打字机：只对"最新一条 AI 消息"做逐字动画；重渲染旧消息不重复播 */
@@ -1955,7 +1984,7 @@ log.insertAdjacentHTML("beforeend",
 live = document.getElementById("live");
 }
 live.textContent += tok;
-log.scrollTop = log.scrollHeight;
+if(chatNearBottom()) log.scrollTop = log.scrollHeight;
 }
 window.sendChat = ()=>{
 const inp = $("#chat_in");
@@ -2008,7 +2037,7 @@ plotOutline: activePlotOutline(), scenario: scenarioInstr(), oocOn: rcfg.ooc,
 userMtype: CHAT.narrMode ? "narr" : (CHAT.asSpeaker ? "npc" : "player"),
 userSpeaker: CHAT.asSpeaker || null,
 pov: CHAT.pov || "player", person: CHAT.person || "second",
-onUserMsg: ()=>{ renderChat(); },
+onUserMsg: ()=>{ renderChat(true); },
 budget: {maxContext: rcfg.maxContext, response: rcfg.respTokens, preset: rcfg.preset},
 signal: streamSignal(),
 onToken: streamToken,

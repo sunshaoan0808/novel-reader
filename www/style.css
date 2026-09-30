@@ -240,7 +240,7 @@ body.chatmode #chatlog{ min-height:0; }
 #chatlog{ padding:16px 14px calc(16px + env(safe-area-inset-bottom)); }
 .chatbar{
   position:sticky; bottom:0; padding:10px 12px calc(10px + env(safe-area-inset-bottom));
-  align-items:center;
+  align-items:center; transition:margin-bottom .25s ease, transform .25s ease;
 }
 
 /* 消息工具条（点按浮现） */
