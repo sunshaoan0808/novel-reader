@@ -245,8 +245,17 @@ function newMsg(role, content){
 }
 
 /* P0-1: prompt.js 三池预算用的记忆上下文 (cardId 取不到则 renderBudgeted 内回退 runId_name) */
-function memCtxFor(runId, name, card){
-  return {runId: runId, name: name, cardId: (card && (card.id || card.cardId)) || null};
+function memCtxFor(runId, name, card, novel, temporal){
+  return {runId: runId, name: name, cardId: (card && (card.id || card.cardId)) || null,
+    novel: novel || null, temporal: temporal || null};
+}
+/* 时序感知检索（Chronos 思路）：故事进度 S 之前的事件进 similar 池，防"提前知道剧本" */
+async function temporalFor(storyKey, card, novel, h){
+  try{
+    if(typeof RP_TEMPORAL === "undefined") return null;
+    var recent = (h || []).slice(-4).map(function(m){ return (m && m.content) || ""; });
+    return await RP_TEMPORAL.retrieveTemporal(storyKey, card, novel, recent, 5);
+  }catch(e){ return null; }
 }
 /* P0-3: 人物弧光 prompt 段 (无弧光卡返回空字符串, 注入层自行跳过) */
 function arcTextFor(card, runId){
@@ -322,10 +331,11 @@ async function send(runId, name, text, opts){
       dirText = await RP_DIRECTOR.onUserMessage(wsId, {cfg: cfg, history: h,
         hint: wsHint, cardBrief: cardBriefOf(card)});
   }catch(e){}
+  var temporal = await temporalFor(wsId, card, run.novel, h);
   var b = RP_PROMPT.buildMessages(card, {
     novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: run.relations,
     memory: memPrompt, memTasks: memTasks,
-    memBudgeted: memCtxFor(runId, name, card),
+    memBudgeted: memCtxFor(runId, name, card, run.novel, temporal),
     arc: arcTextFor(runId, name, card),
     history: mapHistory(h),
     persona: RP_PERSONA.renderText(RP_PERSONA.resolve(runId)),
@@ -423,11 +433,13 @@ async function regenerate(runId, name, opts){
   for(var u = upto - 1; u >= 0; u--){
     if(h[u].role === "user"){ lastUserText = h[u].content || ""; break; }
   }
+  var wsIdRe = (typeof chatKey !== "undefined") ? chatKey(runId, name) : (runId + "|" + name);
+  var temporalRe = await temporalFor(wsIdRe, card, run.novel, h.slice(0, upto));
   var b = RP_PROMPT.buildMessages(card, {
     novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: run.relations,
     memory: RP_MEM.renderBudgeted ? "" : RP_MEM.renderPrompt(mem),
     memTasks: RP_TASKS.renderPrompt(runId, name, lastUserText),
-    memBudgeted: memCtxFor(runId, name, card),
+    memBudgeted: memCtxFor(runId, name, card, run.novel, temporalRe),
     arc: arcTextFor(runId, name, card),
     history: mapHistory(h.slice(0, upto)),
     persona: RP_PERSONA.renderText(RP_PERSONA.resolve(runId)),
@@ -521,11 +533,13 @@ async function genOneSpeaker(runId, run, members, speaker, text, h, opts, budget
     function(c, ms, t){ return RP_NET.complete(c, ms, t); }, spHint);
   await RP_TASKS.maybeRun(runId, speaker, h, cfg,
     function(c, ms, t){ return RP_NET.complete(c, ms, t); }, spHint);
+  var wsIdSpk = (typeof groupKey !== "undefined") ? groupKey(runId, members) : (runId + "|" + speaker);
+  var temporalSpk = await temporalFor(wsIdSpk, activeCard, run.novel, h);
   var b = RP_PROMPT.buildMessages(activeCard, {
     novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: run.relations,
     memory: RP_MEM.renderBudgeted ? "" : RP_MEM.renderPrompt(RP_MEM.get(runId, speaker)),
     memTasks: RP_TASKS.renderPrompt(runId, speaker, text),
-    memBudgeted: memCtxFor(runId, speaker, activeCard),
+    memBudgeted: memCtxFor(runId, speaker, activeCard, run.novel, temporalSpk),
     arc: arcTextFor(runId, speaker, activeCard),
     history: mapHistory(h),
     persona: RP_PERSONA.renderText(RP_PERSONA.resolve(runId)),

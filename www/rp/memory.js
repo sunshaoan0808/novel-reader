@@ -156,9 +156,21 @@ else pools.recent.dropped++;
 }
 if(recLines.length) secs.push("【近期记忆】(新→旧)\n" + recLines.join("\n"));
 
-/* ---- similar 池: 长远印象 (向量召回以后再说, 先占位整段) ---- */
+/* ---- similar 池: 时序感知检索（Chronos 思路）优先，退化为长远印象占位 ---- */
 var simLeft = bSim;
-if(long){
+var tInfo = (opts.temporal && opts.temporal.text) ? opts.temporal : null;
+if(tInfo){
+pools.similar.source = "时序切片";
+var tt = tInfo.text, tn = estTokens(tt);
+if(tn <= simLeft){ secs.push(tt); pools.similar.tokens = tn; pools.similar.items = tInfo.items || 0; }
+else if(simLeft >= 20){
+var tc = truncText(tt, simLeft);
+secs.push(tc); pools.similar.tokens = estTokens(tc); pools.similar.items = tInfo.items || 0;
+}
+else pools.similar.dropped = 1;
+}
+else if(long){
+pools.similar.source = "占位";
 var lt = "【长远印象】" + long;
 var ln = estTokens(lt);
 if(ln <= simLeft){ secs.push(lt); pools.similar.tokens = ln; pools.similar.items = 1; }

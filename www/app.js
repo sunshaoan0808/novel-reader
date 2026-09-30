@@ -712,7 +712,7 @@ const getCfg = ()=>{ try{return JSON.parse(localStorage.getItem(CFG_KEY))||{}}ca
 const saveCfg = (c)=> localStorage.setItem(CFG_KEY, JSON.stringify(c));
 const getRpCfg = ()=> Object.assign({maxContext:8192, respTokens:512, summaryModel:"",
   temperature:0.9, topP:1, ooc:true, preset:"classic", optCards:false, optCount:4, optMood:"none", ttsAuto:false, typewriter:true,
-  worldsim:true, wsPerMsg:3, wsStepMin:30, wsWxAuto:true, wsWxEvery:5,
+  worldsim:true, wsPerMsg:3, wsStepMin:30, wsWxAuto:true, wsWxEvery:5, temporal:true,
   memCycle:10, memPoolRatio:"50/30/20",
   director:true, directorTier:"sentinel", directorStyle:"slowburn", directorEvery:5, directorStale:8, directorModel:""}, JSON.parse(localStorage.getItem(RPCFG_KEY)||"{}"));
 const saveRpCfg = (c)=> localStorage.setItem(RPCFG_KEY, JSON.stringify(c));
@@ -1476,6 +1476,20 @@ window.simEditor = ()=>{
     `<div class="kvline">${pl.id===st.cur?"★ ":""}${esc(pl.name)}${pl.mood?" · "+esc(pl.mood):""}`+
     (pl.id!==st.cur?` <button class="btn ghost sm" onclick="wsMoveTo('${esc(pl.name).replace(/'/g,"\\'")}')">前往（+${st.travelMin||30}分钟）</button>`:"")+
     `</div>`).join("") || `<div class="meta">暂无地点</div>`;
+  /* 时序感知：故事进度 S（回目） */
+  let storyCh = 25, storyManual = false;
+  try{
+    if(typeof RP_TEMPORAL !== "undefined"){
+      let tc = null;
+      try{
+        const rcards = ((window.__DATA__||{}).rp_cards||{})[CHAT.runId]||[];
+        tc = rcards.find(c=>c.name===(CHAT.name||"")) || null;
+      }catch(e){}
+      const gs = RP_TEMPORAL.getS(key, tc);
+      storyCh = gs.chapter; storyManual = gs.manual;
+    }
+  }catch(e){}
+  const chOpts = Array.from({length:120},(_,i)=>`<option value="${i+1}" ${i+1===storyCh?"selected":""}>第${i+1}回</option>`).join("");
   view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回</button>
   <div class="card"><h3>${icon("clock",15)} 时间</h3>
     <div class="kv" style="font-size:17px;margin-bottom:8px">${esc(RP_WORLDSIM.fmtTime(st))}</div>
@@ -1494,7 +1508,17 @@ window.simEditor = ()=>{
     <div class="field" style="margin-top:8px"><label>新增地点</label>
     <div class="modelrow"><input id="ws_newplace" placeholder="地点名，如：潇湘馆">
     <button class="btn ghost" onclick="wsAddPlace()">添加</button></div></div>
-    <div class="hint">前往地点消耗 ${st.travelMin||30} 分钟（联动时间）。AI 也可在回复中用 ⟦地点=xxx⟧ 自行移动。</div></div>`;
+    <div class="hint">前往地点消耗 ${st.travelMin||30} 分钟（联动时间）。AI 也可在回复中用 ⟦地点=xxx⟧ 自行移动。</div></div>
+  <div class="card"><h3>📖 故事进度</h3>
+    <div class="kv" style="font-size:15px;margin-bottom:8px">当前：第${storyCh}回${storyManual?"（手动设定）":"（按角色阶段默认·近似）"}</div>
+    <div class="modelrow"><select id="ws_chsel">${chOpts}</select>
+    <button class="btn" onclick="wsSetChapter()">设为此回</button></div>
+    <div class="hint">时序感知只取此回之前的事件注入【往事】；之后的事角色一概不知，防"提前知道剧本"式穿帮。</div></div>`;
+};
+window.wsSetChapter = ()=>{
+  const v = parseInt(document.getElementById("ws_chsel").value, 10);
+  if(typeof RP_TEMPORAL!=="undefined") RP_TEMPORAL.setS(simChatKey(), v);
+  simEditor();
 };
 window.wsAdjustTime = (min)=>{
   RP_WORLDSIM.adjustTime(simChatKey(), min, simHint()); simEditor();
@@ -2279,7 +2303,7 @@ const segRows = Object.keys(s.segTokens || {}).map(k=>
 `<div class="storow"><span>${DIAG_SEG_LABELS[k] || k}</span><span>${s.segTokens[k]} tok</span></div>`).join("");
 const poolRows = Object.keys(lp.memPools || {}).map(k=>{
 const p = lp.memPools[k];
-return `<div class="storow"><span>${DIAG_POOL_LABELS[k] || k}</span><span>${p.tokens} tok · ${p.items} 条${p.dropped ? ` · 丢弃 ${p.dropped}` : ""}</span></div>`;
+return `<div class="storow"><span>${DIAG_POOL_LABELS[k] || k}</span><span>${p.tokens} tok · ${p.items} 条${p.dropped ? ` · 丢弃 ${p.dropped}` : ""}${p.source ? ` · ${p.source}` : ""}</span></div>`;
 }).join("");
 const dropped = (s.droppedSegs || []).map(k=>DIAG_SEG_LABELS[k] || k).join("、");
 __backAction = ()=>showChat();
@@ -2441,6 +2465,7 @@ view.innerHTML = renderStorageCard() + `
 <div class="field"><label><input id="r_ws_wxauto" type="checkbox" style="width:auto"> 天气自动流转（按季节随机变化）</label></div>
 <div class="field"><label>每 N 轮掷一次天气变化</label>
 <input id="r_ws_wxevery" type="number" min="1" max="50" step="1" value=""></div>
+<div class="field"><label><input id="r_temporal_on" type="checkbox" style="width:auto"> 启用时序感知（角色只知故事进度之前的事件，防"提前知道剧本"式穿帮）</label></div>
 <div class="hint">时间/天气/地点会注入 prompt，AI 叙述会自动呼应；AI 也可用 ⟦+30分钟⟧ / ⟦天气=雨⟧ / ⟦地点=宁国府⟧ 标记调整。地点切换消耗移动时间。</div>
 <div class="btnrow"><button class="btn" onclick="saveRpCfgUI()">保存 RP 设置</button></div>
 </div>
@@ -2484,6 +2509,7 @@ document.getElementById("r_ws_permsg").value = rc.wsPerMsg||3;
 document.getElementById("r_ws_stepmin").value = rc.wsStepMin||30;
 document.getElementById("r_ws_wxauto").checked = rc.wsWxAuto!==false;
 document.getElementById("r_ws_wxevery").value = rc.wsWxEvery||5;
+document.getElementById("r_temporal_on").checked = rc.temporal!==false;
 document.getElementById("r_dir_on").checked = rc.director!==false;
 document.getElementById("r_dir_tier").value = rc.directorTier||"sentinel";
 document.getElementById("r_dir_style").value = rc.directorStyle||"slowburn";
@@ -2618,6 +2644,7 @@ wsPerMsg:Math.max(1,parseInt($("#r_ws_permsg")?$("#r_ws_permsg").value:"3")||3),
 wsStepMin:Math.max(0,parseInt($("#r_ws_stepmin")?$("#r_ws_stepmin").value:"30")||0),
 wsWxAuto:$("#r_ws_wxauto")?$("#r_ws_wxauto").checked:true,
 wsWxEvery:Math.max(1,parseInt($("#r_ws_wxevery")?$("#r_ws_wxevery").value:"5")||5),
+temporal:$("#r_temporal_on")?$("#r_temporal_on").checked:true,
 /* 导演系统 */
 director:$("#r_dir_on")?$("#r_dir_on").checked:true,
 directorTier:$("#r_dir_tier")?$("#r_dir_tier").value:"sentinel",
