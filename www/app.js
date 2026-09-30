@@ -55,6 +55,7 @@ return html;
 /* ---------- 顶层导航 ---------- */
 function setNav(n){
 NAV = n;
+try{ msgSheet(false); }catch(e){} /* L2: 切页时关消息菜单，背景压暗回 chat */
 document.body.classList.remove("chatmode");
 mainnav.querySelectorAll("button").forEach(b=>
 b.classList.toggle("active", b.dataset.nav===n));
@@ -842,8 +843,19 @@ return out;
 /* ===== 沉浸式聊天背景（CreatorSkin 式场景层） ===== */
 /* 背景层 HTML：bglayer 放场景图（无图时透明，露出 .chatbg 的氛围渐变兜底） */
 function chatBgHTML(){
-return `<div class="chatbg" id="chatbg" aria-hidden="true"><div class="bglayer" id="chatbglayer"></div><div class="bgshade"></div></div>`;
+return `<div class="chatbg" id="chatbg" aria-hidden="true"><div class="bglayer" id="chatbglayer"></div><div class="bgshade"></div><div class="bgdim"></div></div>`;
 }
+/* L2: 背景压暗状态机（猫箱 DimBackground 的轻量版）：
+   chat=正常阅读 / sheet=消息操作菜单打开（加深压暗，聚焦菜单） */
+const DimState = {
+cur: "chat",
+set(s){
+if(this.cur === s) return;
+this.cur = s;
+document.body.dataset.dimstate = s;
+}
+};
+window.DimState = DimState;
 /* 用户上传壁纸：按聊天存（单聊/群聊/穿越各一套），IDB 落盘 + 内存镜像保证同步读取不闪。
    dataURL 在上传时已压缩到最长边 1080px JPEG，不会撑爆存储 */
 const wallStoreKey = ()=> "nd_wallpaper_" + chatHistKey();
@@ -1008,7 +1020,7 @@ ${chatBgHTML()}
 <div class="chathead" id="chathead">
 <button class="backbtn" onclick="exitChat()">‹</button>
 <div class="avatar">${esc((CHAT.name||"?")[0])}</div>
-<div class="chead-main"><div class="cname">${esc(CHAT.name)}</div>
+<div class="chead-main"><div class="cname">${esc(CHAT.name)}<span class="aimark">AI</span></div>
 <div class="cstat">${run.novel?`<span>${esc(run.novel)}</span>`:""}<button onclick="toggleDrawer(false);openAlbum(CHAT.runId,CHAT.name)"><span class="mement">${icon("brain",15)} ${memN}条记忆</span>›</button></div></div>
 <button class="menubtn" onclick="toggleChatSearch()" title="搜索聊天记录">${icon("search")}</button>
 <button class="menubtn" onclick="toggleDrawer(true)" title="菜单">${icon("menu")}</button>
@@ -1077,7 +1089,7 @@ ${chatBgHTML()}
 <div class="chathead" id="chathead">
 <button class="backbtn" onclick="exitChat()">‹</button>
 <div class="stack">${stack}</div>
-<div class="cname">群聊 · ${ms.length} 人<small>${esc(ms.join("、"))}</small></div>
+<div class="cname">群聊 · ${ms.length} 人<span class="aimark">AI</span><small>${esc(ms.join("、"))}</small></div>
 <button class="menubtn" onclick="toggleChatSearch()" title="搜索聊天记录">${icon("search")}</button>
 <button class="menubtn" onclick="toggleDrawer(true)" title="菜单">${icon("menu")}</button>
 </div>
@@ -1202,6 +1214,17 @@ const l = document.getElementById("chatlog");
 if(!l) return true;
 return (l.scrollHeight - l.scrollTop - l.clientHeight) < (px || 140);
 }
+/* M3: 回到底部悬浮按钮（Talkie chat_page_with_bg_v2: 44x44dp, 右12/下20） */
+function ensureToBottom(){
+const wrap = document.querySelector(".chatwrap"); if(!wrap) return;
+let b = document.getElementById("tobottom");
+if(!b){
+b = document.createElement("button");
+b.id = "tobottom"; b.setAttribute("aria-label","回到底部"); b.textContent = "↓";
+b.onclick = ()=>{ const l = document.getElementById("chatlog"); if(l) l.scrollTop = l.scrollHeight; };
+wrap.appendChild(b);
+}
+}
 function attachHeadHide(){
 const log = document.getElementById("chatlog");
 if(!log) return;
@@ -1258,8 +1281,12 @@ const movingUp = (dist - lastDist) > 1;   /* 离底距离拉大 = 手指往上�
 if(!hidden && movingUp && dist > 140){ setHidden(true); }
 else if(hidden && dist < 24){ setHidden(false); }
 lastDist = dist;
+/* M3: 回到底部悬浮按钮（Talkie 式）：离底拉开才出现 */
+const tb = document.getElementById("tobottom");
+if(tb) tb.classList.toggle("show", dist > 200);
 }
 log.onscroll = ()=>{ if(!ticking){ ticking = true; raf(onScroll); } };
+ensureToBottom(); /* M3: 注入回到底部按钮（单聊/群聊/穿越共用） */
 if(typeof document !== "undefined" && document.body && document.body.classList)
 document.body.classList.remove("immersive"); /* 新开聊天页先清掉旧状态 */
 }
@@ -1471,6 +1498,7 @@ setTimeout(()=>{ if(b.parentNode) b.remove(); }, 8000);
 }catch(e){}
 };
 window.msgSheet = (on, idx)=>{
+DimState.set(on ? "sheet" : "chat"); /* L2: 菜单打开时压暗背景 */
 let sh = document.getElementById("msgsheet");
 let sc = document.getElementById("msgscrim");
 if(!on){
@@ -1491,6 +1519,7 @@ document.body.appendChild(sh);
 }
 const isAI = m.role === "assistant";
 const canPin = CHAT.mode === "single";
+const rewritable = isAI && m.content.indexOf("⚠️")!==0 && m.content.indexOf("【OOC")!==0 && m.content.indexOf("（已停止")!==0;
 const prev = String(m.content).replace(/<[^>]*>/g, "").slice(0, 40);
 const item = (fn, ic, label, danger)=>
 `<button class="msitem${danger?" danger":""}" onclick="${fn}">${icon(ic,16)} ${label}</button>`;
@@ -1499,6 +1528,7 @@ sh.innerHTML = `<div class="mshandle"></div><div class="msprev">${esc(prev)}${m.
 + (canPin ? item(close+`pinChatMsg(${idx})`, "pin", "Pin 为长期记忆") : "")
 + (isAI ? item(close+`rateMsg(${idx},1)`, "thumb-up", m.rating===1?"已赞同":"赞同")
 + item(close+`rateMsg(${idx},-1)`, "thumb-down", m.rating===-1?"已反对":"反对") : "")
++ (rewritable ? item(close+`rewriteMsg(${idx})`, "repeat", "改写") : "")
 + item(close+`editMsg(${idx})`, "edit", "编辑")
 + item(close+`copyMsg(${idx})`, "copy", "复制")
 + (isAI ? item(close+`ttsMsg(${idx})`, "volume", "TTS 朗读") : "")
@@ -1532,6 +1562,12 @@ CHAT.narrMode = (um.mtype === "narr");
 CHAT.asSpeaker = um.speaker || null;
 try{ await sendChatText(nv); }
 finally{ CHAT.narrMode = keepNarr; CHAT.asSpeaker = keepSpk; }
+};
+/* M4: 长文本折叠开关 */
+window.foldToggle = (btn)=>{
+const b = btn.closest(".bubble"); if(!b) return;
+const collapsed = b.classList.toggle("collapsed");
+btn.textContent = collapsed ? "展开全文" : "收起";
 };
 window.toggleTools = (ev, idx)=>{
 if(_pressFired){ _pressFired = false; return; }
@@ -1792,7 +1828,7 @@ const partial = frames[Math.min(fi, frames.length-1)];
 bub.innerHTML = hlRestore(md(hlSearchRaw(partial))) + (done?cardHTML:`<span class="twcur"></span>`);
 }
 if(chatNearBottom()) log.scrollTop = log.scrollHeight;
-if(done) twStop();
+if(done){ twStop(); renderChat(); /* M4: 播完重渲染，长消息挂上折叠结构 */ }
 }, 45);
 }
 function renderChat(forceBottom){
@@ -1818,7 +1854,7 @@ const mtype = m.mtype || (m.role==="user" ? "player" : "char");
 const who = m.role==="user"
 ? (mtype==="narr" ? icon("scroll")+" 旁白" : (mtype==="npc" ? (m.speaker||"我") : travPlayerName()))
 : (CHAT.mode==="group"?(m.speaker||"?"):(CHAT.mode==="traverse"?"世界":CHAT.name));
-const ts = m.ts?`<div class="ts">${new Date(m.ts).toLocaleString("zh-CN",{hour:"2-digit",minute:"2-digit",month:"numeric",day:"numeric"})}</div>`:"";
+const showWho = CHAT.mode==="group"; /* S6: 姓名行只在群聊保留（说话人辨识），单聊/穿越靠顶栏 */
 let extra = "";
 const rateBtns = m.role==="assistant"
 ? `<button class="${m.rating===1?"on":""}" onclick="event.stopPropagation();rateMsg(${idx},1)">${icon("thumb-up",15)}</button>`
@@ -1849,8 +1885,14 @@ if(oc){ body = m.content.replace(oc.full, "").trim(); cardHTML = optCardHTML(oc,
 }
 const isHit = SEARCH.active && SEARCH.hits.indexOf(idx)>=0;
 const isCur = isHit && SEARCH.hits[SEARCH.cur]===idx;
+const rendered = hlRestore(md(hlSearchRaw(body))) + cardHTML;
+/* M4: 长文本折叠（Talkie FoldTextView，阈值 600 字） */
+const needFold = body.length > 600;
+const bubbleInner = needFold
+? `<div class="foldbody">${rendered}</div><button class="foldtoggle" onclick="event.stopPropagation();foldToggle(this)">展开全文</button>`
+: rendered;
 return `<div class="msg ${m.role==="user"?"me":""}${mtype==="narr"?" narr":""}${mtype==="npc"?" npc":""}${isCur?" curhit":""}" id="smsg-${idx}" onclick="toggleTools(event,${idx})" oncontextmenu="event.preventDefault();msgMenu(${idx});return false;" ontouchstart="msgPressStart(event,${idx})" ontouchend="msgPressEnd()" ontouchmove="msgPressEnd()">`
-+ `<div class="msgcol"><div class="who">${esc(who)}</div><div class="bubble">${hlRestore(md(hlSearchRaw(body)))}${cardHTML}</div>${extra}${ts}</div>`
++ `<div class="msgcol">${showWho?`<div class="who">${esc(who)}</div>`:""}<div class="bubble${needFold?" foldable collapsed":""}">${bubbleInner}</div>${extra}</div>`
 + `</div>`;
 }).join("") || `<div class="empty">还没有对话，打个招呼吧<br><span style="font-size:12px">试试：你是谁？</span></div>`;
 renderCtxBar();
@@ -2111,6 +2153,33 @@ renderChat();
 };
 let aborter = null;
 function streamSignal(){ aborter = new AbortController(); return aborter.signal; }
+/* M6: 改写（猫箱 rewrite）：AI 润色本条回复、原意不变，原回复进候选可 swipe 切回 */
+window.rewriteMsg = async (idx)=>{
+const k = chatHistKey(); const h = getHist(k);
+const m = h[idx];
+if(!m || m.role!=="assistant" || m.content.indexOf("⚠️")===0) return;
+const cfg = getCfg();
+if(!cfg.key){ alert("还没配大模型接口"); return; }
+const el = document.getElementById("smsg-"+idx);
+const bub = el ? el.querySelector(".bubble") : null;
+if(bub) bub.innerHTML = `<span style="color:var(--ink-faint);font-size:13px">改写中…</span>`;
+try{
+const prompt = "你是角色扮演对话的文字润色助手。把下面这条 AI 回复改写得更生动自然、更有文采，"
++ "但严格保持原意：不增删剧情要点，不改变说话人口吻，不添加原文没有的对话或旁白。"
++ "只输出改写后的正文，不要解释，不要加引号：\n\n" + m.content;
+const out = await RP_NET.complete({base:cfg.base, key:cfg.key, model:cfg.model},
+[{role:"user", content:prompt}], 0.8);
+if(out && out.trim()){
+const orig = m.content;
+m.content = out.trim();
+m.candidates = m.candidates || [orig];
+if(m.candidates.indexOf(m.content)<0) m.candidates.push(m.content);
+m.ci = m.candidates.length-1;
+saveHist(k, h);
+}
+}catch(e){}
+renderChat();
+};
 /* 输入栏（含旁白按钮；群聊多发言身份选择） */
 function chatbarInner(disabled){
 if(disabled) return `<input id="chat_in" disabled placeholder="生成中…"><button class="stopbtn" onclick="stopGen()" title="停止">${icon("stop",16)}</button>`;
@@ -2169,7 +2238,7 @@ let live = document.getElementById("live");
 if(!live){
 if(document.getElementById("typing")) document.getElementById("typing").remove();
 log.insertAdjacentHTML("beforeend",
-`<div class="msg"><div class="msgcol"><div class="who">${esc(streamWho())}</div><div class="bubble" id="live"></div></div></div>`);
+`<div class="msg"><div class="msgcol">${CHAT.mode==="group"?`<div class="who">${esc(streamWho())}</div>`:""}<div class="bubble" id="live"></div></div></div>`);
 live = document.getElementById("live");
 }
 live.textContent += tok;
@@ -4788,7 +4857,7 @@ async function showTraverseChat(cfg){
   <div class="chathead" id="chathead">
   <button class="backbtn" onclick="exitChat()">‹</button>
   <div class="avatar">${esc((title||"穿")[0])}</div>
-  <div class="chead-main"><div class="cname">${esc(title)} <span class="badge">${modeName}</span></div>
+  <div class="chead-main"><div class="cname">${esc(title)} <span class="badge">${modeName}</span><span class="aimark">AI</span></div>
   <div class="cstat"><span>${esc(trav.worldName)}</span></div></div>
   <button class="menubtn" onclick="toggleChatSearch()" title="搜索聊天记录">${icon("search")}</button>
 <button class="menubtn" onclick="toggleDrawer(true)" title="菜单">${icon("menu")}</button>

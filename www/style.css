@@ -132,14 +132,17 @@ body{
 .msg .who{font-size:11px; color:var(--ink-faint); margin-bottom:3px; letter-spacing:.05em;}
 .msg .ts{font-size:10px; color:var(--ink-faint); margin-top:3px;}
 .bubble{
-  background:var(--card2); border:1px solid var(--line); border-radius:4px 14px 14px 14px;
-  padding:10px 13px; font-size:15px; line-height:1.75; word-break:break-word;
+  background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.07); border-radius:12px;
+  box-shadow:none; padding:10px 16px; font-size:16px; line-height:24px; word-break:break-word;
 }
 .bubble p{margin:.4em 0;} .bubble p:first-child{margin-top:0;} .bubble p:last-child{margin-bottom:0;}
 .bubble ul{margin:.4em 0; padding-left:1.2em;}
 .bubble code{background:#100e0b; padding:1px 6px; border-radius:5px; font-size:13px; color:var(--gold-soft);}
-.msg.me .bubble{background:linear-gradient(180deg,#4a3d24,#3a2f1c); border-color:#5a4a28;
-  border-radius:14px 4px 14px 14px; color:#f4ead2;}
+/* L3: markdown 标题/引用收敛进气泡排版，不撑破 16px 正文节奏 */
+.bubble h1,.bubble h2,.bubble h3{font-size:17px; line-height:26px; margin:.5em 0 .3em; color:var(--gold-soft); font-weight:700;}
+.bubble h1:first-child,.bubble h2:first-child,.bubble h3:first-child{margin-top:0;}
+.bubble blockquote{margin:.4em 0; padding:2px 0 2px 10px; border-left:2px solid rgba(212,162,78,.4); color:rgba(236,228,211,.78); font-style:italic;}
+.msg.me .bubble{background:rgba(212,162,78,.13); border-color:rgba(212,162,78,.20); color:#f4ead2;}
 .typing{align-self:flex-start; font-size:12px; color:var(--ink-faint); padding:6px 4px;
   animation:pulse 1.2s infinite;}
 @keyframes pulse{0%,100%{opacity:.5;} 50%{opacity:1;}}
@@ -272,6 +275,13 @@ body.chatmode #chatlog{ min-height:0; }
     rgba(6,5,4,.80) 0%, rgba(6,5,4,.22) 20%, rgba(6,5,4,0) 38%,
     rgba(6,5,4,0) 60%, rgba(6,5,4,.34) 82%, rgba(6,5,4,.84) 100%);
 }
+/* L2: 状态机驱动的压暗层（菜单打开时加深） */
+.chatbg .bgdim{
+  position:absolute; inset:0; background:#000; opacity:0;
+  transition:opacity .25s ease; pointer-events:none;
+}
+body[data-dimstate="sheet"] .chatbg .bgdim{ opacity:.5; }
+body[data-dimstate="sheet"] .chatbg .bglayer{ filter:brightness(.65) saturate(.85); }
 @media (prefers-reduced-motion:reduce){ .chatbg .bglayer{ animation:none; } }
 /* 顶栏半透明悬浮，露出背景 */
 body.chatmode .chathead{
@@ -300,7 +310,7 @@ body.chatmode .bubble{
   backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
 }
 body.chatmode .msg.me .bubble{
-  background:linear-gradient(180deg, rgba(74,61,36,.84), rgba(56,45,27,.84));
+  background:rgba(212,162,78,.16); border-color:rgba(212,162,78,.24);
   backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
 }
 /* 底栏悬浮胶囊；隐藏时 JS 写行内 fixed+位移覆盖，不冲突 */
@@ -633,7 +643,7 @@ background:none; border:1px solid var(--line); border-radius:8px; cursor:pointer
 
 /* ===== v22: 消息分型 ===== */
 .msg.narr{max-width:100%; align-self:center;}
-.msg.narr .bubble{background:transparent; border:1px dashed #6b5c3a; color:#c9b98a; font-style:italic; box-shadow:none;}
+.msg.narr .bubble{font-style:italic; color:var(--ink-dim);} /* M7: 旁白复用同一气泡，差异只在字色+斜体（猫箱做法） */
 .msg.narr .who{color:#a08c5b; text-align:center;}
 .msg.narr .avatar{display:none;}
 .msg.npc .who{color:#d4a24e;}
@@ -761,6 +771,36 @@ button:focus-visible{outline:2px solid var(--gold-deep); outline-offset:2px; bor
 #live::after{content:"▍"; color:var(--gold); font-size:.85em; animation:blink 1s steps(2) infinite;}
 @keyframes blink{50%{opacity:0;}}
 @media (prefers-reduced-motion:reduce){#live::after{animation:none;}}
+/* S9: 流式中底部渐隐（Talkie TypeWriterMsgTextView fadingEdge 100dp 的 CSS 版） */
+#live{
+  -webkit-mask-image:linear-gradient(to bottom,#000 55%,transparent 100%);
+  mask-image:linear-gradient(to bottom,#000 55%,transparent 100%);
+}
+/* M4: 长文本折叠（Talkie FoldTextView 的 CSS 版） */
+.bubble.foldable.collapsed .foldbody{
+  max-height:210px; overflow:hidden;
+  -webkit-mask-image:linear-gradient(to bottom,#000 55%,transparent 100%);
+  mask-image:linear-gradient(to bottom,#000 55%,transparent 100%);
+}
+.foldtoggle{
+  display:block; margin:8px auto 0; border:1px solid rgba(212,162,78,.3);
+  background:none; color:var(--gold-soft); font-size:12px; border-radius:999px;
+  padding:4px 14px; cursor:pointer;
+}
+/* M3: 回到底部悬浮按钮（Talkie 式：偏离底部时浮现） */
+#tobottom{
+  position:absolute; right:12px; bottom:84px; width:44px; height:44px; border-radius:50%;
+  border:1px solid rgba(212,162,78,.35); background:rgba(20,17,13,.88); color:var(--gold-soft);
+  font-size:18px; line-height:1; z-index:15; cursor:pointer; opacity:0; pointer-events:none;
+  transform:translateY(8px); transition:opacity .2s ease, transform .2s ease;
+  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+  display:flex; align-items:center; justify-content:center; padding:0;
+}
+#tobottom.show{opacity:1; pointer-events:auto; transform:none;}
+/* M8: AI 水印（顶栏名字旁，不浮在消息区避免遮挡） */
+.aimark{display:inline-block; font-size:10px; letter-spacing:.1em; color:rgba(236,228,211,.45);
+  border:1px solid rgba(236,228,211,.18); border-radius:999px; padding:1px 7px; margin-left:8px;
+  vertical-align:2px; background:rgba(10,8,6,.3);}
 
 /* --- 时间戳弱化层级 --- */
 .msg .ts{letter-spacing:.04em;}

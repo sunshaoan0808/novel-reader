@@ -16,9 +16,10 @@ function ok(name, cond){
   else { fail++; console.log("FAIL:", name); }
 }
 
-// 1) 渲染模板里消息列带 msgcol 类
-ok("renderChat wraps who/bubble/tools in .msgcol",
-  js.includes('<div class="msgcol"><div class="who">'));
+// 1) 渲染模板里消息列带 msgcol 类, 包裹气泡与工具条
+//    (S6 后姓名行只在群聊渲染, 不再是模板字面量的一部分)
+ok("renderChat wraps bubble/tools in .msgcol",
+  js.includes('<div class="msgcol">') && js.includes('${extra}</div>'));
 
 // 2) .msgtools 允许换行
 const toolsRule = (css.match(/\.msgtools\s*\{[^}]*\}/) || [""])[0];
@@ -33,10 +34,12 @@ ok(".msgtools default display:none kept", /display\s*:\s*none/.test(toolsRule));
 ok(".msg.show-tools .msgtools display:flex kept",
   /\.msg\.show-tools\s+\.msgtools\s*\{[^}]*display\s*:\s*flex/.test(css));
 
-// 5) 工具条(${extra})仍在 msgcol 内部: 顺序 who -> bubble -> ${extra} -> ts -> 闭合
-const tpl = js.slice(js.indexOf('<div class="msgcol">'), js.indexOf('<div class="msgcol">') + 600);
-const iB = tpl.indexOf('class="bubble"'), iE = tpl.indexOf('${extra}'), iT = tpl.indexOf('${ts}');
-ok("msgtools(${extra}) stays inside .msgcol", iB > 0 && iE > iB && iT > iE);
+// 5) 工具条(${extra})仍在 msgcol 内部: 顺序 bubble -> ${extra} -> 闭合
+//    (S5 已移除时间戳, S6 姓名行改为条件渲染)
+const tplStart = js.indexOf('<div class="msgcol">${showWho');
+const tpl = js.slice(tplStart, tplStart + 700);
+const iB = tpl.indexOf('class="bubble'), iE = tpl.indexOf('${extra}');
+ok("msgtools(${extra}) stays inside .msgcol", iB > 0 && iE > iB && tpl.indexOf('${ts}') < 0);
 
 console.log(`test_msgtools_wrap: ${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);
