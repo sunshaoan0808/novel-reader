@@ -41,6 +41,14 @@ t("startWriter creates session", sess.length === 1);
 const sid = sess[0].id;
 t("writerChat renders step", ctx.document.getElementById("view").innerHTML.includes("美学思考"));
 
+// UI 专项: 写卡页 placeholder 不与 label 重复、带字数计数器
+vm.runInContext(`showWriter();`, ctx);
+const whtml = ctx.document.getElementById("view").innerHTML;
+t("vibe placeholder 去掉重复前缀", whtml.includes('placeholder="比如: 嘴硬心软的落魄书生'));
+t("vibe_desc 有计数器", whtml.includes('id="vibe_desc_cnt"') && whtml.includes("taCount("));
+t("qg_premise 有计数器", whtml.includes('id="qg_premise_cnt"'));
+t("taCount 函数存在", typeof ctx.taCount === "function");
+
 // finalizeStep 需要 confirm=true, RP_NET.complete 桩
 (async()=>{
   // 先塞两轮对话

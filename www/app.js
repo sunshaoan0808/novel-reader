@@ -447,7 +447,7 @@ __backAction = ()=>loreGoBack();
 document.body.classList.remove("chatmode");
 loreBack.to = backTo || "more";
 const run = ((window.__DATA__||{}).runs||{})[runId]||{};
-titleEl.textContent = "世界书管理"; subEl.textContent = (run.novel||"") + " · 自建条目进 prompt";
+titleEl.textContent = "世界书管理"; subEl.textContent = (run.novel ? run.novel + " · " : "") + "自建条目进 prompt";
 renderLoreList(runId);
 };
 /* 世界书条目归一化展示 (Janitor schema; 老条目缺字段给默认值) */
@@ -795,8 +795,10 @@ const chatKey = (runId, name)=> `nd_chat_${runId}_${name}`;
 const getHist = (k)=>{ try{
   let h = [];
   /* P2: 优先读 IDB 内存镜像（localStorage 副本被清理后仍能命中），再回退 localStorage */
+  /* UI-00 修复: 缓存未命中必须回退 localStorage，否则冷启动后小键历史读成空，
+     showChat 的打招呼分支会把真实历史覆盖掉（数据丢失）。 */
   if(typeof RP_STORE!=="undefined"){ const c = RP_STORE.cacheGet(k); if(c!=null) h = JSON.parse(c)||[]; }
-  else h = JSON.parse(localStorage.getItem(k))||[];
+  if(!h.length){ try{ h = JSON.parse(localStorage.getItem(k))||[]; }catch(e2){} }
   /* P0-4: 老消息补 mid (摘要水位 msg_id 制), 只新增字段 */
   let dirty = false;
   for(const m of h){
@@ -1894,7 +1896,7 @@ function streamSignal(){ aborter = new AbortController(); return aborter.signal;
 /* 输入栏（含旁白按钮；群聊多发言身份选择） */
 function chatbarInner(disabled){
 if(disabled) return `<input id="chat_in" disabled placeholder="生成中…"><button class="stopbtn" onclick="stopGen()" title="停止">${icon("stop",16)}</button>`;
-const ph = CHAT.mode==="group" ? "在群里说点什么…（@名字可点名）"
+const ph = CHAT.mode==="group" ? "在群里说点什么…"
 : CHAT.mode==="traverse" ? `以${esc(travPlayerName())}的身份行动…`
 : `和 ${esc(CHAT.name||"TA")} 说点什么…`;
 const spk = CHAT.mode==="group"
@@ -1933,7 +1935,7 @@ CHAT.narrMode = !CHAT.narrMode;
 const b = document.getElementById("narrbtn");
 if(b) b.classList.toggle("on", !!CHAT.narrMode);
 const inp = document.getElementById("chat_in");
-if(inp && !inp.disabled) inp.placeholder = CHAT.narrMode ? "📜 旁白：写场景/动作/心理描写…" : (CHAT.mode==="group" ? "在群里说点什么…（@名字可点名）" : `和 ${CHAT.name||"TA"} 说点什么…`);
+if(inp && !inp.disabled) inp.placeholder = CHAT.narrMode ? "📜 旁白：写场景/动作/心理描写…" : (CHAT.mode==="group" ? "在群里说点什么…" : `和 ${CHAT.name||"TA"} 说点什么…`);
 };
 window.setAsSpeaker = (v)=>{ CHAT.asSpeaker = v || null; };
 function setStreaming(on){
@@ -2302,7 +2304,7 @@ return `<div class="alb-fact">· ${esc((e.t_anchor?e.t_anchor+" ":"")+(e.topic||
 view.innerHTML = `<button class="back" onclick="albumBack()">${icon("back")} 返回</button>
 ${muBar}
 ${memStatusHtml}
-<div class="alb-stats">${icon("brain",14)} ${short.length} 条记忆 · ${icon("pin",13)} ${pinned.length} 置顶 · ${icon("thumb-up",13)} ${up} ${icon("thumb-down",13)} ${dn}</div>`
+<div class="alb-stats">${icon("brain",14)} ${short.length} 条记忆 · ${icon("pin",13)} ${pinned.length} 条置顶 · ${icon("thumb-up",13)} ${up} ${icon("thumb-down",13)} ${dn}</div>`
 + (st && st.mood && st.mood.state
 ? `<div class="card alb-mood"><div class="alb-time">当前心境</div><div class="alb-fact">${esc(st.mood.state)}${st.mood.filter?" —— "+esc(st.mood.filter):""}</div></div>` : "")
 + ((st && st.migrated3)
@@ -2533,7 +2535,7 @@ body = `<div class="empty"><span class="big">${icon("scroll",44)}</span>还没�
 body = `<div class="card"><div class="name" style="font-size:15px">${esc(novel.title || "")}</div>
 <div class="kv">${novel.chapters.length} 章 · ${novel.chapters.filter(c=>c.status===RP_NOVEL.ST_DONE).length} 章正文已完成</div></div>` +
 novel.chapters.map((ch, i)=>`<div class="card">
-<div class="row"><div><div class="name" style="font-size:14px">第${i + 1}章 · ${esc(ch.title)}</div>
+<div class="row"><div><div class="name" style="font-size:14px">${/^第.{1,4}章/.test(ch.title||"") ? esc(ch.title) : `第${i + 1}章 · ${esc(ch.title)}`}</div>
 <div class="kv">${esc(ch.overview || "")}</div></div>${novelStatusBadge(ch)}</div>
 <div class="btnrow" style="margin-top:8px">
 <button class="btn ghost" onclick="novelRewriteUI(${i})">✏️ ${ch.status===RP_NOVEL.ST_DONE?"再次改写":"生成正文"}</button>
@@ -2700,6 +2702,10 @@ if(!ta) return;
 const r = RP_MEM.saveChatSummary(DETAIL.runId, DETAIL.name, ta.value);
 chatsumCount();
 alert(r.truncated ? "已保存（超 1000 字部分已截断）" : "本聊摘要已保存，每次对话会最先注入");
+};
+window.taCount = (taId, cntId, max)=>{
+const ta = document.getElementById(taId), c = document.getElementById(cntId);
+if(ta && c) c.textContent = ta.value.length + "/" + max;
 };
 window.ironlawCount = ()=>{
 const ta = document.getElementById("ironlaw_box"), c = document.getElementById("ironlaw_cnt");
@@ -2973,7 +2979,7 @@ body = groups.map(g=>{
 const txt = RP_PROMPT.renderFields(card, RP_PROMPT.LAYERS[g[0]]);
 return txt ? `<h2 class="sec">${g[1]}</h2><div class="card">`
 + txt.split("\n").map(l=>`<div class="kvline">${esc(l)}</div>`).join("") + `</div>` : "";
-}).join("") || `<div class="empty">暂无资料</div>`;
+}).join("") || `<div class="empty">还没有资料，多聊几句就会有了</div>`;
 } else if(DETAIL.tab === "memory"){
 const st = RP_MEM.get(runId, nm);
 const n = (st && st.short && st.short.length) || 0;
@@ -3095,10 +3101,10 @@ __backAction = ()=>showChat();
 titleEl.innerHTML = icon("chart") + " Prompt 诊断"; subEl.textContent = CHAT.name || "";
 view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回聊天</button>
 <div class="card"><div class="name" style="font-size:14px">预设：${esc(s.preset || "")}</div>
-<div class="meta">上下文 ${s.maxCtx} · 可用预算 ${s.avail} tokens</div>
+<div class="meta">上下文 ${s.maxCtx ?? "—"} · 可用预算 ${s.avail ?? "—"} tokens</div>
 <div class="storbar"><div class="storbar-fg" style="width:${sysPct.toFixed(1)}%"></div></div>
 <div class="storow"><span>系统段（含人设/记忆/世界书）</span><span>${s.sysTokens} tok</span></div>
-<div class="storow"><span>聊天历史（保留 ${s.histKept} 条）</span><span>${s.histTokens} tok${s.histDropped ? ` · 丢弃最早 ${s.histDropped} 条` : ""}</span></div></div>
+<div class="storow"><span>聊天历史（保留 ${s.histKept ?? "—"} 条）</span><span>${s.histTokens ?? "—"} tok${s.histDropped ? ` · 丢弃最早 ${s.histDropped} 条` : ""}</span></div></div>
 <div class="card"><div class="name" style="font-size:14px">各段 token</div>${segRows || '<div class="empty">无</div>'}</div>
 <div class="card"><div class="name" style="font-size:14px">记忆三池</div>${poolRows || '<div class="empty">本轮未注入记忆</div>'}
 <div class="storow"><span>世界模拟注入</span><span>${lp.hasWorldsim ? "有" : "无"}</span></div>
@@ -3869,7 +3875,7 @@ const q = x=>String(x).replace(/'/g,"\\'");
 view.innerHTML = `
 <div class="card"><div class="secttl">✨ AI 生成角色</div>
 <div class="kv">一句话描述你想要的角色, AI 一次生成整张卡: 名字、性格、开场白、示例对话、背景。不满意可换一批, 也可转手动微调。</div>
-<div class="field"><label>Describe your character...（一句话描述）</label><textarea id="vibe_desc" rows="2" placeholder="Describe your character... 比如: 嘴硬心软的落魄书生, 表面清高实则渴望被需要"></textarea></div>
+<div class="field"><label>Describe your character...（一句话描述）</label><textarea id="vibe_desc" rows="2" maxlength="200" placeholder="比如: 嘴硬心软的落魄书生, 表面清高实则渴望被需要" oninput="taCount('vibe_desc','vibe_desc_cnt',200)"></textarea><div class="kv" id="vibe_desc_cnt" style="text-align:right">0/200</div></div>
 <div class="btnrow"><button class="btn" id="vibe_btn" onclick="vibeGen()">✨ 生成角色卡</button>
 <button class="btn ghost" onclick="vibeToManual()">手动创建</button></div>
 <div id="vibe_status" class="hint"></div>
@@ -3877,7 +3883,7 @@ view.innerHTML = `
 <div class="card"><div class="secttl">${icon("dice")} 一键生成角色卡</div>
 <div class="kv">只填名字和一句话设定, 一次调用生成完整卡。可重试、可中断, 失败不影响现有流程。</div>
 <div class="field"><label>名字</label><input id="qg_name" placeholder="如: 沈清辞"></div>
-<div class="field"><label>一句话设定</label><textarea id="qg_premise" rows="2" placeholder="如: 落魄书生, 表面清高实则渴望被需要, 说话刻薄但心软"></textarea></div>
+<div class="field"><label>一句话设定</label><textarea id="qg_premise" rows="2" maxlength="200" placeholder="如: 落魄书生, 表面清高, 说话刻薄但心软" oninput="taCount('qg_premise','qg_premise_cnt',200)"></textarea><div class="kv" id="qg_premise_cnt" style="text-align:right">0/200</div></div>
 <div class="btnrow"><button class="btn" id="qg_btn" onclick="quickGenCard()">${icon("play")} 生成</button>
 <button id="qg_cancel" style="display:none" onclick="quickGenAbort()">中断</button></div>
 <div id="qg_status" class="hint"></div></div>

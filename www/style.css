@@ -58,7 +58,7 @@ body{
 /* 卡片 */
 .card{
   background:linear-gradient(180deg,var(--card2),var(--card));
-  border:1px solid var(--line); border-radius:var(--r); padding:14px 15px; margin-bottom:12px;
+  border:1px solid var(--line); border-radius:var(--r); padding:18px; margin-bottom:14px;
   box-shadow:var(--shadow); cursor:pointer; transition:transform .12s ease, border-color .12s;
 }
 .card:active{transform:scale(.985); border-color:var(--gold-deep);}
@@ -86,21 +86,22 @@ body{
 /* 按钮 */
 .btn{
   border:1px solid var(--gold-deep); background:linear-gradient(180deg,#e0b45e,#c9973f);
-  color:#1c1407; border-radius:999px; padding:10px 22px; font-size:14px; font-weight:700;
+  color:#1c1407; border-radius:999px; padding:13px 22px; font-size:14px; font-weight:700;
   letter-spacing:.06em; cursor:pointer; box-shadow:0 3px 14px rgba(212,162,78,.28);
+  white-space:nowrap;
 }
 .btn:active{transform:scale(.96);}
 .btn.ghost{background:transparent; color:var(--ink-dim); border:1px solid var(--line); box-shadow:none; font-weight:400;}
 .btn.danger{background:transparent; color:var(--red); border:1px solid #5a2f28; box-shadow:none;}
 .btnrow{display:flex; gap:10px; margin:14px 0; flex-wrap:wrap;}
-.btnrow .btn{flex:1;}
+.btnrow .btn{flex:1; padding:10px 8px; font-size:13px;}
 
 /* 表单 */
 .field{margin:14px 0;}
-.field label{display:block; font-size:12px; color:var(--ink-faint); letter-spacing:.1em; margin-bottom:7px;}
+.field label{display:block; font-size:12px; color:var(--ink-faint); letter-spacing:.08em; margin-bottom:7px;}
 .field input, .field select, .field textarea{
   width:100%; background:#100e0b; border:1px solid var(--line); color:var(--ink);
-  border-radius:var(--r-s); padding:12px 14px; font-size:15px; outline:none;
+  border-radius:var(--r-s); padding:12px 14px; font-size:16px; outline:none;
   transition:border-color .15s, box-shadow .15s;
 }
 .field input:focus, .field select:focus, .field textarea:focus{
@@ -194,13 +195,14 @@ body.chatmode #app{ background:var(--bg); }
 /* .hide 由 JS 切换: 置 margin-top:-自身高度, 把占位一起收掉, 正文直接顶到顶部 (之前只 translate, 会留一条黑条) */
 .chathead .backbtn{
   border:0; background:none; color:var(--gold); font-size:22px; padding:4px 8px; cursor:pointer;
+  min-width:44px; min-height:44px;
 }
 .chathead .avatar{ width:36px; height:36px; font-size:16px; }
 .chathead .cname{ flex:1; font-family:var(--serif); font-size:16px; color:var(--ink); }
 .chathead .cname small{ display:block; font-family:inherit; font-size:11px; color:var(--ink-faint); }
 .chathead .menubtn{
   border:1px solid var(--line); background:rgba(212,162,78,.08); color:var(--gold-soft);
-  border-radius:50%; width:36px; height:36px; font-size:18px; cursor:pointer;
+  border-radius:50%; width:44px; height:44px; font-size:18px; cursor:pointer; flex:none;
 }
 
 /* 右抽屉 */
@@ -292,7 +294,7 @@ body.chatmode #chatlog{ min-height:0; }
 }
 body.pinlocked #tabs{ display:none !important; }
 .pinrow{ display:flex; gap:8px; }
-.pinrow input{ width:80px; text-align:center; letter-spacing:4px; }
+.pinrow input{ width:104px; text-align:center; letter-spacing:4px; }
 
 /* ===== P1-5: 存档故事树 ===== */
 .snode{ margin-bottom:10px; }
@@ -484,7 +486,8 @@ padding:6px 0; border-bottom:1px solid var(--line-soft);}
 /* ===== v21: 情景预设 chips ===== */
 .scenbar{display:flex; gap:8px; padding:6px 10px 2px; overflow-x:auto;}
 .scenchip{flex:0 0 auto; background:rgba(212,162,78,.07); border:1px solid var(--line);
-color:var(--ink-dim); border-radius:999px; padding:5px 12px; font-size:12.5px; cursor:pointer;}
+color:var(--ink-dim); border-radius:999px; padding:5px 12px; font-size:12.5px; cursor:pointer;
+min-height:40px; display:inline-flex; align-items:center;}
 .scenchip.on{background:rgba(212,162,78,.22); border-color:var(--gold-deep); color:var(--gold);}
 .scenchip.off{padding:5px 9px;}
 
@@ -493,7 +496,8 @@ color:var(--ink-dim); border-radius:999px; padding:5px 12px; font-size:12.5px; c
 .povlabel{font-size:12px; color:var(--ink-dim); margin:6px 0 6px;}
 .povrow{display:flex; gap:8px; flex-wrap:wrap;}
 .povchip{background:rgba(212,162,78,.07); border:1px solid var(--line);
-color:var(--ink-dim); border-radius:999px; padding:6px 14px; font-size:13px; cursor:pointer;}
+color:var(--ink-dim); border-radius:999px; padding:6px 14px; font-size:13px; cursor:pointer;
+min-height:40px; display:inline-flex; align-items:center;}
 .povchip.on{background:rgba(212,162,78,.22); border-color:var(--gold-deep); color:var(--gold);}
 
 /* ===== v21: 记忆事件簿 ===== */
@@ -624,7 +628,7 @@ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow
   display:flex; gap:8px; align-items:center;}
 .chathead .cstat .mement{color:var(--gold-soft);}
 .chathead .cstat button{background:none; border:0; color:var(--gold-soft); font-size:11px;
-  padding:0; cursor:pointer; display:flex; gap:8px; align-items:center;}
+  padding:6px 4px; margin:-6px -4px; cursor:pointer; display:flex; gap:8px; align-items:center; min-height:32px;}
 
 /* --- 空状态美化 --- */
 .empty .big{font-size:44px; display:block; margin-bottom:8px; filter:saturate(.9);}
