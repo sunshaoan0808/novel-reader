@@ -149,6 +149,24 @@ t("bodyStart身份特质", idt && idt.traits === "内敛" && idt.talent === "过
 vm.runInContext("renderWsBar()", ctx);
 t("wsbar渲染", /潇湘馆|查看/.test(els["wsbar"].innerHTML));
 
+// ---- 回归: 顶栏隐藏必须收起布局占位, 不能只 translate 留黑条 ----
+(function(){
+const toggles = [];
+const head = mkEl();
+head.offsetHeight = 65;
+head.classList = {add(){}, remove(){},
+toggle(c, on){ toggles.push([c, !!on]); }, contains(){ return false; }};
+const log = mkEl(); log.scrollTop = 0; log.scrollHeight = 3000;
+els["chathead"] = head; els["chatlog"] = log;
+vm.runInContext("attachHeadHide()", ctx);
+log.scrollTop = 500; log.onscroll();           // 下滑过 140 -> 隐藏
+t("headhide: 加上hide类", toggles.some(x=>x[0]==="hide"&&x[1]));
+t("headhide: 收起占位marginTop=-65px", head.style.marginTop === "-65px");
+log.scrollTop = 100; log.onscroll();           // 回滚 -> 显示
+t("headhide: 去掉hide类", toggles.some(x=>x[0]==="hide"&&!x[1]));
+t("headhide: 恢复marginTop", head.style.marginTop === "");
+})();
+
 console.log(`traverse ui: ${pass} pass, ${fail} fail`);
 process.exit(fail? 1: 0);
 })();

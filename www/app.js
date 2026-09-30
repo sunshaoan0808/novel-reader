@@ -836,11 +836,19 @@ document.getElementById("scrim").classList.toggle("on", !!on);
 function attachHeadHide(){
 const log = document.getElementById("chatlog");
 if(!log) return;
-let lastST = 0;
+let lastST = 0, hidden = false;
 log.onscroll = ()=>{
 const st = log.scrollTop;
 const head = document.getElementById("chathead");
-if(head){ head.classList.toggle("hide", st > lastST && st > 140); }
+if(head){
+const shouldHide = st > lastST && st > 140;
+if(shouldHide !== hidden){
+hidden = shouldHide;
+head.classList.toggle("hide", hidden);
+// 收起顶栏的布局占位, 让正文直接顶到顶部, 不留黑条 (只 translate 不改变布局)
+head.style.marginTop = hidden ? (-head.offsetHeight + "px") : "";
+}
+}
 lastST = st;
 };
 }

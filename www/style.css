@@ -184,14 +184,14 @@ body.chatmode #app{ height:100dvh; }
 body.chatmode #app{ background:var(--bg); }
 
 .chathead{
-  position:sticky; top:0; z-index:30;
+  z-index:30;
   display:flex; align-items:center; gap:10px;
   padding:10px 12px;
   background:rgba(18,16,13,.92); backdrop-filter:blur(14px);
   border-bottom:1px solid var(--line-soft);
-  transition:transform .25s ease;
+  transition:margin-top .25s ease;
 }
-.chathead.hide{ transform:translateY(-100%); }
+/* .hide 由 JS 切换: 置 margin-top:-自身高度, 把占位一起收掉, 正文直接顶到顶部 (之前只 translate, 会留一条黑条) */
 .chathead .backbtn{
   border:0; background:none; color:var(--gold); font-size:22px; padding:4px 8px; cursor:pointer;
 }
