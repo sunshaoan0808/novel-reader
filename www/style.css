@@ -2,7 +2,7 @@
 :root{
   --bg:#12100d; --bg2:#171411; --card:#1d1915; --card2:#23201b;
   --line:#2d2720; --line-soft:#242019;
-  --ink:#ece4d3; --ink-dim:#b3a88f; --ink-faint:#7d7462;
+  --ink:#ece4d3; --ink-dim:#b3a88f; --ink-faint:#9a917e; /* faint 提亮：WCAG 4.5:1 底线 */
   --gold:#d4a24e; --gold-deep:#a97c2e; --gold-soft:#f2ddab;
   --red:#d07864; --green:#8fb573;
   --r:16px; --r-s:12px;
@@ -128,7 +128,7 @@ body{
 @media (prefers-reduced-motion:reduce){.msg:last-child{animation:none;}}
 .msg.me{align-self:flex-end; flex-direction:row-reverse;}
 .msg .who{font-size:11px; color:var(--ink-faint); margin-bottom:3px; letter-spacing:.05em;}
-.msg .ts{font-size:10px; color:#57503f; margin-top:3px;}
+.msg .ts{font-size:10px; color:var(--ink-faint); margin-top:3px;}
 .bubble{
   background:var(--card2); border:1px solid var(--line); border-radius:4px 14px 14px 14px;
   padding:10px 13px; font-size:15px; line-height:1.75; word-break:break-word;
@@ -704,6 +704,9 @@ button:focus-visible{outline:2px solid var(--gold-deep); outline-offset:2px; bor
 /* --- 表单复选框金色统一 --- */
 input[type=checkbox]{accent-color:var(--gold);}
 .field label input[type=checkbox]{width:18px; height:18px; vertical-align:-3px;}
+/* --- placeholder 对比度：与 --ink-faint 同级，保证 4.5:1 --- */
+input::placeholder, textarea::placeholder{color:#9a917e; opacity:1;}
+input::-webkit-input-placeholder, textarea::-webkit-input-placeholder{color:#9a917e; opacity:1;}
 
 /* --- 卡片按压时阴影收敛, 更有"按下"感 --- */
 .card{transition:transform .12s ease, border-color .12s, box-shadow .12s;}
