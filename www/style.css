@@ -214,9 +214,10 @@ body.chatmode #app{ background:var(--bg); }
   padding:10px 12px;
   background:rgba(18,16,13,.92); backdrop-filter:blur(14px);
   border-bottom:1px solid var(--line-soft);
-  /* 沉浸式显隐是即时的（无过渡）：2026-10-01 曾用 .28s 过渡+rAF 逐帧补偿，
-     但过渡是"即时回流+渐变"混合体，rAF 在弱环境下不可靠，实测反复 re-hide
-     闪烁。改即时后 setHidden 单任务内同步补偿 scrollTop，确定性无闪烁 */
+  /* 沉浸式显隐：布局变化(marginTop)由 JS 即时切换+同步补偿 scrollTop；
+     只给 transform 加 .3s 过渡做滑入滑出，纯视觉、不碰布局，所以补偿精确、
+     弱环境下也不闪烁（2026-10-01 曾用 rAF 逐帧补偿布局过渡，实测闪烁，已废弃） */
+  transition:transform .3s ease;
 }
 /* .hide 由 JS 切换: 置 margin-top:-自身高度, 把占位一起收掉, 正文直接顶到顶部 (之前只 translate, 会留一条黑条) */
 .chathead .backbtn{
@@ -305,9 +306,9 @@ body.chatmode #chatlog{ min-height:0; }
 body[data-dimstate="sheet"] .chatbg .bgdim{ opacity:.5; }
 body[data-dimstate="sheet"] .chatbg .bglayer{ filter:brightness(.65) saturate(.85); }
 @media (prefers-reduced-motion:reduce){ .chatbg .bglayer{ animation:none; } }
-/* 顶栏半透明悬浮，露出背景 */
+/* 顶栏半透明悬浮，露出背景；背景色跟随聊天壁纸主色（--barbg-head 由 JS 取色写入） */
 body.chatmode .chathead{
-  background:rgba(13,11,9,.58);
+  background:var(--barbg-head, rgba(13,11,9,.58));
   border-bottom:1px solid rgba(212,162,78,.14);
 }
 /* 兜底：即使 marginTop 收空间失效（如量高为 0），顶栏本身也必须移出视口，
@@ -334,15 +335,36 @@ body.chatmode .msg.me .bubble{
   background:rgba(212,162,78,.16); border-color:rgba(212,162,78,.24);
   backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
 }
-/* 底栏悬浮胶囊；隐藏时 JS 写行内 fixed+位移覆盖，不冲突 */
+/* 底栏悬浮胶囊；隐藏时 JS 写行内 fixed+位移覆盖，不冲突。
+   背景色跟随聊天壁纸主色（--barbg-bar 由 JS 取色写入）；
+   transform .3s 过渡做滑入滑出，布局变化仍由 JS 即时处理+同步补偿 */
 body.chatmode .chatbar{
   margin:8px 12px calc(10px + env(safe-area-inset-bottom));
   border-radius:22px;
-  background:rgba(16,14,11,.72);
+  background:var(--barbg-bar, rgba(16,14,11,.72));
   backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
   border:1px solid rgba(212,162,78,.16);
   padding:8px 8px 8px 16px;
+  transition:transform .3s ease;
 }
+/* 浅色壁纸时三栏文字转深色，保证可读（body.bars-light 由 JS 按背景亮度切换） */
+body.chatmode.bars-light .chathead .cname{ color:#2a2013; }
+body.chatmode.bars-light .chathead .cname small{ color:#6f6046; }
+body.chatmode.bars-light .chathead .backbtn{ color:#8a6a24; }
+body.chatmode.bars-light .chathead .menubtn{ color:#8a6a24; border-color:rgba(138,106,36,.45); background:rgba(255,255,255,.28); }
+body.chatmode.bars-light .simbar{ color:#5c4f38; }
+body.chatmode.bars-light .simbar .simchip{ color:#2a2013; }
+body.chatmode.bars-light .simbar .simchip .ic{ color:#8a6a24; }
+body.chatmode.bars-light .simbar .simgo{ color:#8a7a5c; }
+body.chatmode.bars-light .chatbar input{ background:rgba(255,255,255,.75); color:#2a2013; border-color:rgba(138,106,36,.4); }
+body.chatmode.bars-light .chatbar input::placeholder{ color:#8a7a5c; }
+/* 浅色壁纸时正文区直接压在背景上的浅色字也要转深，否则被洗掉 */
+body.chatmode.bars-light .msg.me .bubble{ color:#33270f; background:rgba(212,162,78,.30); border-color:rgba(138,106,36,.35); }
+body.chatmode.bars-light #ctxbar{ color:#5c4f38; background:rgba(255,255,255,.35); }
+body.chatmode.bars-light .hint{ color:#6b5c42; }
+body.chatmode.bars-light .scenchip{ color:#4a3d24; background:rgba(255,255,255,.35); border-color:rgba(138,106,36,.35); }
+body.chatmode.bars-light .scenchip.on{ color:#8a6a24; background:rgba(212,162,78,.30); }
+body.chatmode.bars-light .typing{ color:#6b5c42; }
 
 /* 消息工具条（点按浮现） */
 .msgcol{ min-width:0; }
@@ -974,7 +996,8 @@ body[data-font="kai"] .bubble{font-family:"Kaiti SC","STKaiti","KaiTi","TW-Kai",
 .ooc{color:#e0a33e;font-weight:600}
 /* ---- 世界模拟三件套（2026-09-30）：时间/天气/地理 HUD ---- */
 .simbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);
-  background:#14110d;border-bottom:1px solid var(--line);padding:6px 12px;cursor:pointer;line-height:1.6;
+  background:var(--barbg-solid, #14110d);border-bottom:1px solid var(--line);padding:6px 12px;cursor:pointer;line-height:1.6;
+  transition:transform .3s ease; /* 跟随顶栏一起滑入滑出，纯视觉过渡 */
   position:relative;z-index:1; /* 浮于 .chatbg(z0) 之上：与 chatwrap 同层，否则被背景盖住只剩空白带 */}
 /* 兜底：即使 JS 量高为 0，沉浸式下世界条本身也必须移出视口 */
 body.chatmode.immersive #simbar{ transform:translateY(-105%); }

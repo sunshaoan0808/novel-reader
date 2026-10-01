@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """视觉回归测试 runner：无头 Chromium + CDP，360x800 真机视口。
 
-用例（TDD 还债：每个用例都能在 v31/v32/v33 的 bug 代码上失败）：
+用例（TDD 还债：每个用例都能在对应 bug 代码上失败）：
   1. ctxbar-no-stray   顶栏上下文条无游离 0/NaN（v32 一元正号 bug）
   2. scroll-no-jitter   上滑看历史时流式输出/打字机不拽回底部（v33 抖动 bug）
   3. scroll-hidebars    上滑看历史进沉浸式(顶栏/底栏/场景条联动隐藏,正文补位无黑条)；只有滑到底才退出
-  4. layout-no-overlap  关键页面 360x800 无文字重叠/横向溢出（抽样）
+  4. immersive-bg       沉浸式背景层/毛玻璃/呼吸动效
+  5. bars-follow-bg     三栏背景跟随聊天壁纸主色；浅色壁纸时三栏文字转深（v39）
+  6. bars-transition    三栏显隐 transform .3s 过渡已接线（v39）
+  7. layout-no-overlap  关键页面 360x800 无文字重叠/横向溢出（抽样）
 
 用法： bash tests/visual/run.sh
        WWW_URL=file:///tmp/buggy-www/index.html bash tests/visual/run.sh  # 对指定页面跑
@@ -289,11 +292,66 @@ async def case_immersive(c):
     return ok, r
 
 
+
+PINK_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR4nGP4tOMYVsQwtCQA/0ycATrnON8AAAAASUVORK5CYII="
+
+async def case_bars_follow_bg(c):
+    """三栏跟随背景色: 纯粉色壁纸 -> 顶栏/世界条/底栏背景取粉色, 浅色模式文字转深。"""
+    await c.ev(SEED_JS)
+    await c.ev('(async()=>{ CHAT={mode:"single",runId:"r1",name:"林黛玉"}; '
+              'await saveWallpaper("PINKPH"); await showChat(); return "ok"; })()'
+              .replace("PINKPH", PINK_URL), await_promise=True)
+    js = """(async()=>{
+      var head=document.getElementById("chathead"),
+          bar=document.querySelector(".chatbar"),
+          sim=document.getElementById("simbar");
+      var t0=Date.now(), ready=false;
+      while(Date.now()-t0<6000){
+        var bg=getComputedStyle(head).backgroundColor||"";
+        if(bg.indexOf("242, 184, 198")>=0){ ready=true; break; }
+        await new Promise(function(r){setTimeout(r,150);});
+      }
+      var cn=document.querySelector("#chathead .cname");
+      return {
+        ready:ready,
+        headBg:getComputedStyle(head).backgroundColor,
+        simBg:sim?getComputedStyle(sim).backgroundColor:"",
+        barBg:getComputedStyle(bar).backgroundColor,
+        light:document.body.classList.contains("bars-light"),
+        cnameColor:cn?getComputedStyle(cn).color:""
+      };
+    })()"""
+    r = await c.ev(js, await_promise=True)
+    ok = (r["ready"] and "242, 184, 198" in r["simBg"]
+          and "242, 184, 198" in r["barBg"] and r["light"]
+          and r["cnameColor"] == "rgb(42, 32, 19)")
+    return ok, r
+
+
+async def case_bars_transition(c):
+    """三栏显隐过渡: chathead/#simbar/.chatbar 的 transition 必须含 transform(.3s)。"""
+    await c.ev(SEED_JS)
+    await c.ev(SHOW_CHAT, await_promise=True)
+    await asyncio.sleep(0.8)
+    r = await c.ev("""(function(){
+      function tr(sel){
+        var el=document.querySelector(sel);
+        return el ? (getComputedStyle(el).transition||"") : "missing";
+      }
+      return {head:tr("#chathead"), sim:tr("#simbar"), bar:tr(".chatbar")};
+    })()""")
+    ok = all(("transform" in (r[k] or "") and ".3s" in (r[k] or ""))
+             for k in ("head", "bar")) and (r["sim"] == "missing" or "transform" in r["sim"])
+    return ok, r
+
+
 CASES = [
     ("ctxbar-no-stray", case_ctxbar),
     ("scroll-no-jitter", case_jitter),
     ("scroll-hidebars", case_hidebars),
     ("immersive-bg", case_immersive),
+    ("bars-follow-bg", case_bars_follow_bg),
+    ("bars-transition", case_bars_transition),
     ("layout-no-overlap", case_layout),
 ]
 

@@ -994,9 +994,37 @@ if(!layer) return;
 const url = pickChatBgURL();
 const filter = wallFilterCSS(getWallOpts());
 const probe = new Image();
-probe.onload = ()=>{ layer.style.backgroundImage = `url("${url}")`; layer.style.filter = filter; };
-probe.onerror = ()=>{ layer.style.backgroundImage = ""; layer.style.filter = ""; };
+probe.onload = ()=>{ layer.style.backgroundImage = `url("${url}")`; layer.style.filter = filter; sampleBarColors(probe); };
+probe.onerror = ()=>{ layer.style.backgroundImage = ""; layer.style.filter = ""; clearBarColors(); };
 probe.src = url;
+}
+/* 三栏跟随背景色：从聊天背景图采样平均色，写成 CSS 变量给顶栏/世界条/底栏用。
+   用户上传纯色壁纸换"背景色"时，三栏同步变色，不再是写死的深色。
+   跨域图片会污染 canvas → getImageData 抛错 → try/catch 回退默认深色。 */
+function sampleBarColors(img){
+try{
+const c = document.createElement("canvas"); c.width = c.height = 24;
+const x = c.getContext("2d", {willReadFrequently:true});
+x.drawImage(img, 0, 0, 24, 24);
+const d = x.getImageData(0, 0, 24, 24).data;
+let r = 0, g = 0, b = 0, m = 0;
+for(let i = 0; i < d.length; i += 16){ r += d[i]; g += d[i+1]; b += d[i+2]; m++; }
+r = Math.round(r/m); g = Math.round(g/m); b = Math.round(b/m);
+const st = document.body.style;
+st.setProperty("--barbg-head", "rgba(" + r + "," + g + "," + b + ",.58)");
+st.setProperty("--barbg-bar", "rgba(" + r + "," + g + "," + b + ",.78)");
+st.setProperty("--barbg-solid", "rgba(" + r + "," + g + "," + b + ",.94)");
+/* 浅色背景时三栏文字转深色（body.bars-light），否则浅色字看不清 */
+const lum = (0.299*r + 0.587*g + 0.114*b) / 255;
+document.body.classList.toggle("bars-light", lum > 0.6);
+}catch(e){ clearBarColors(); }
+}
+function clearBarColors(){
+try{
+const st = document.body.style;
+st.removeProperty("--barbg-head"); st.removeProperty("--barbg-bar"); st.removeProperty("--barbg-solid");
+document.body.classList.remove("bars-light");
+}catch(e){}
 }
 window.setChatBg = (url)=>{
 const layer = document.getElementById("chatbglayer");
@@ -1333,12 +1361,13 @@ const raf = (typeof requestAnimationFrame !== "undefined") ? requestAnimationFra
 function setHidden(hide){
 if(hide === hidden) return;
 hidden = hide;
-/* 先记基线：改样式之前的离底距离。显隐是即时的（无 CSS 过渡，见下），
-   样式应用后强制一次同步 layout，直接把 scrollTop 设到"离底距离不变"
-   的位置，单任务内完成。2026-10-01 教训：曾用 rAF 逐帧补偿 .28s 过渡，
-   但 rAF 在弱环境（headless --disable-gpu、 scroll 事件延迟 300ms+）下
-   不可靠，且过渡是"即时回流+渐变"混合体，永远追不齐，实测反复 re-hide
-   闪烁。即时显隐+同步补偿是唯一确定性正确的方案。 */
+/* 先记基线：改样式之前的离底距离。布局变化是即时的（marginTop/position
+   瞬间切换），样式应用后强制一次同步 layout，直接把 scrollTop 设到"离底距离
+   不变"的位置，单任务内完成。视觉上有 .3s 的 transform 过渡（顶栏/世界条/
+   底栏滑入滑出），但过渡只动 transform、不碰布局，所以补偿数学依然精确。
+   2026-10-01 教训：曾用 rAF 逐帧补偿"布局过渡"，但过渡是"即时回流+渐变"
+   混合体，rAF 在弱环境下不可靠，实测反复 re-hide 闪烁。结论：布局必须即时+
+   同步补偿；只允许 transform/opacity 做纯视觉过渡。 */
 const targetDist = distNow();
 const ae = (typeof document !== "undefined") ? document.activeElement : null;
 const typing = !!ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName || "");
@@ -1356,14 +1385,28 @@ sim.style.transform = hide ? "translateY(-105%)" : "";
 }
 if(bar && !(hide && typing)){
 bar.classList.toggle("hidebar", hide);
-/* 底栏隐藏用 fixed 脱离文档流: 正文自动补位(无需负 margin),
+if(hide){
+/* 隐藏: fixed 脱离文档流(正文自动补位, 无需负 margin),
    bottom:0 + translateY(110%) 保证整体移出视口, 与布局/安全区无关;
-   v33 的 sticky+负 margin 会被浏览器重新锚定抵消位移, 实际没藏住 */
-bar.style.position = hide ? "fixed" : "";
-bar.style.left = hide ? "0" : "";
-bar.style.right = hide ? "0" : "";
-bar.style.bottom = hide ? "0" : "";
-bar.style.transform = hide ? "translateY(110%)" : "";
+   v33 的 sticky+负 margin 会被浏览器重新锚定抵消位移, 实际没藏住。
+   transform 有 CSS 过渡(.3s), 平滑滑出。 */
+bar.style.position = "fixed";
+bar.style.left = "0";
+bar.style.right = "0";
+bar.style.bottom = "0";
+bar.style.transform = "translateY(110%)";
+}else{
+/* 显示: 先即时恢复文档流(布局复位, 下面的同步补偿照旧执行),
+   再从 translateY(110%) 做 .3s 滑入, 不再"啪"地弹出来。
+   先关 transition 再强制 reflow 定住起始态, 否则起始态会被过渡吞掉、
+   动画直接跳到终点。布局变化本身仍是即时的, 补偿数学保持精确。 */
+bar.style.transition = "none";
+bar.style.position = ""; bar.style.left = ""; bar.style.right = ""; bar.style.bottom = "";
+bar.style.transform = "translateY(110%)";
+void bar.offsetHeight;
+bar.style.transition = "";
+bar.style.transform = "";
+}
 }
 /* 沉浸式总开关挂到 body：场景条收起、顶部压暗罩减弱、顶部死区收窄（CSS 侧） */
 if(typeof document !== "undefined" && document.body && document.body.classList)
@@ -1397,7 +1440,8 @@ ticking = false;
    导致进聊天页顶栏/底栏就是藏起来的。只有离底距离真的变了，
    才说明是用户手指在滚动。
    注意：显隐自身的布局过渡也会扰动离底距离（v33 曾误以为浏览器钳制能保持
-   离底距离不变，实测过渡中 183→26），这部分由 setHidden 的逐帧补偿解决，
+   离底距离不变，实测过渡中 183→26），这部分由 setHidden 的同步补偿解决
+   （布局即时切换+单任务内按离底距离重设 scrollTop），
    状态机这里只看用户手势。 */
 const dist = distNow();
 const movingUp = (dist - lastDist) > 1;   /* 离底距离拉大 = 手指往上滑（看历史） */

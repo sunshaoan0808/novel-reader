@@ -102,8 +102,14 @@ t("hysteresis: 历史区内上滑不退出", head.style.marginTop === "-65px");
 scrollTo(2395); // 滑到底: dist=5<6 -> 退出沉浸式
 t("show: 滑到底恢复顶栏", head.style.marginTop === "");
 t("show: 滑到底恢复底栏", bar.style.position === "" && bar.style.transform === "");
+t("show: 底栏滑入走CSS过渡(行内transition已清理)", bar.style.transition === "");
 t("show: 滑到底恢复世界条", sim.style.marginTop === "" && sim.style.transform === "");
 t("show: 滑到底摘immersive", bodyToggles.filter(x=>x[0]==="immersive").pop()[1] === false);
+/* 三栏跟随背景色: 取色函数存在, 清理函数在 mock 环境不抛错 */
+t("barcolor: sampleBarColors 存在", run("typeof sampleBarColors") === "function");
+t("barcolor: clearBarColors 存在", run("typeof clearBarColors") === "function");
+run("clearBarColors()");
+t("barcolor: clearBarColors 不抛错", true);
 
 // 输入聚焦时不藏底栏（顶栏照藏）
 document.activeElement = {tagName: "INPUT"};

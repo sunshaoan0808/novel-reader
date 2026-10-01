@@ -91,6 +91,27 @@
    }
   },
   {
+   "name": "bars-follow-bg",
+   "ok": true,
+   "detail": {
+    "ready": true,
+    "headBg": "rgba(242, 184, 198, 0.58)",
+    "simBg": "rgba(242, 184, 198, 0.94)",
+    "barBg": "rgba(242, 184, 198, 0.78)",
+    "light": true,
+    "cnameColor": "rgb(42, 32, 19)"
+   }
+  },
+  {
+   "name": "bars-transition",
+   "ok": true,
+   "detail": {
+    "head": "transform 0.3s",
+    "sim": "transform 0.3s",
+    "bar": "transform 0.3s"
+   }
+  },
+  {
    "name": "layout-no-overlap",
    "ok": true,
    "detail": {
