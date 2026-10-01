@@ -803,6 +803,13 @@ const getRpCfg = ()=> Object.assign({maxContext:8192, respTokens:512, summaryMod
   ppaMode:"key", ppaModel:"",
   director:true, directorTier:"sentinel", directorStyle:"slowburn", directorEvery:5, directorStale:8, directorModel:""}, JSON.parse(localStorage.getItem(RPCFG_KEY)||"{}"));
 const saveRpCfg = (c)=> localStorage.setItem(RPCFG_KEY, JSON.stringify(c));
+/* v37: 解析当前绑定的 ST 预设对象(未绑定返回 null); 传给 prompt 构建做预设组装 */
+function resolveStPreset(){
+try{
+if(typeof RP_PRESET === "undefined") return null;
+return RP_PRESET.get(getRpCfg().stPreset) || null;
+}catch(e){ return null; }
+}
 const chatKey = (runId, name)=> `nd_chat_${runId}_${name}`;
 const getHist = (k)=>{ try{
   let h = [];
@@ -2199,7 +2206,7 @@ cfg: cfg, history: h, temperature: rcfg.temperature,
 optCards: !!rcfg.optCards, optCount: rcfg.optCount, optMood: rcfg.optMood,
 plotOutline: activePlotOutline(), scenario: scenarioInstr(),
 pov: CHAT.pov || "player", person: CHAT.person || "second",
-budget: {maxContext: rcfg.maxContext, response: rcfg.respTokens, preset: rcfg.preset},
+budget: {maxContext: rcfg.maxContext, response: rcfg.respTokens, preset: rcfg.preset, stPreset: resolveStPreset()},
 onToken: streamToken,
 signal: streamSignal(),
 onSystem: (preview, stats)=>{ LAST_SYSTEM = preview + "\n\n【预算】" + JSON.stringify(stats); LAST_STATS = stats; recordLastPrompt(stats); },
@@ -2356,7 +2363,7 @@ userMtype: CHAT.narrMode ? "narr" : (CHAT.asSpeaker ? "npc" : "player"),
 userSpeaker: CHAT.asSpeaker || null,
 pov: CHAT.pov || "player", person: CHAT.person || "second",
 onUserMsg: ()=>{ renderChat(true); },
-budget: {maxContext: rcfg.maxContext, response: rcfg.respTokens, preset: rcfg.preset},
+budget: {maxContext: rcfg.maxContext, response: rcfg.respTokens, preset: rcfg.preset, stPreset: resolveStPreset()},
 signal: streamSignal(),
 onToken: streamToken,
 onSpeaker: (sp)=>{ STREAM_SPEAKER = sp; },
@@ -3766,6 +3773,12 @@ view.innerHTML = renderStorageCard() + `
 <div class="field"><label>Prompt 预设（人设分段组装顺序）</label>
 <select id="r_preset">${Object.keys(RP_PROMPT.PRESETS).map(k=>
 `<option value="${k}" ${getRpCfg().preset===k?"selected":""}>${RP_PROMPT.PRESETS[k].name} - ${RP_PROMPT.PRESETS[k].desc}</option>`).join("")}</select></div>
+<div class="field"><label>${icon("books",15)} 酒馆预设（ST 预设导入，控制整套 prompt 的组装顺序与指令）</label>
+<select id="r_stpreset"></select>
+<div class="hint">导入 SillyTavern 导出的预设 JSON（如 MoM 类预设）。启用后，聊天 prompt 按预设的条目顺序组装；留空则用上面的经典组装。</div>
+<div class="btnrow"><button class="btn ghost" onclick="document.getElementById('stpreset_file').click()">导入预设 JSON</button>
+<button class="btn ghost" onclick="delStPromptPreset()">删除所选预设</button>
+<input type="file" id="stpreset_file" accept=".json,application/json" style="display:none" onchange="importStPromptPreset(this)"></div></div>
 <div class="field"><label>上下文窗口（tokens，按模型填，如 8192/32768）</label>
 <input id="r_ctx" type="number" min="2048" max="200000" step="1024" value=""></div>
 <div class="field"><label>预留回复长度（tokens）</label>
@@ -3880,6 +3893,7 @@ document.getElementById("r_resp").value = rc.respTokens;
 document.getElementById("r_summ").value = rc.summaryModel||"";
 document.getElementById("r_temp").value = rc.temperature;
 document.getElementById("r_topp").value = rc.topP;
+try{ renderStPresetSel(); }catch(e){}
 document.getElementById("r_optcards").checked = !!rc.optCards;
 document.getElementById("r_optcount").value = rc.optCount||4;
 document.getElementById("r_optmood").value = rc.optMood||"none";
@@ -4063,15 +4077,22 @@ box.innerHTML = `<span class="conn-bad">${icon("x",14)} ${esc(e.message)}</span>
 }
 };
 window.saveRpCfgUI = ()=>{
+const _stId = document.getElementById("r_stpreset") ? document.getElementById("r_stpreset").value || null : null;
+/* v37: 绑定的 ST 预设自带采样参数则应用到温度/TopP */
+let _stParams = null;
+try{ const _p = (typeof RP_PRESET!=="undefined") ? RP_PRESET.get(_stId) : null; _stParams = _p ? _p.params : null; }catch(e){}
+const _tempInput = Math.max(0,Math.min(1.5,parseFloat($("#r_temp").value)||0.9));
+const _topPInput = Math.max(0,Math.min(1,parseFloat($("#r_topp").value)||1));
 saveRpCfg({maxContext:Math.max(2048,parseInt($("#r_ctx").value)||8192),
 respTokens:Math.max(128,parseInt($("#r_resp").value)||512),
 summaryModel:$("#r_summ").value.trim(),
-temperature:Math.max(0,Math.min(1.5,parseFloat($("#r_temp").value)||0.9)),
-topP:Math.max(0,Math.min(1,parseFloat($("#r_topp").value)||1)),
+temperature:(_stParams&&_stParams.temperature!=null)?Math.max(0,Math.min(1.5,_stParams.temperature)):_tempInput,
+topP:(_stParams&&_stParams.top_p!=null)?Math.max(0,Math.min(1,_stParams.top_p)):_topPInput,
 optCards:$("#r_optcards").checked,
 optCount:Math.min(6,Math.max(2,parseInt($("#r_optcount").value)||4)),
 optMood:$("#r_optmood").value||"none",
 ooc:$("#r_ooc").checked, preset:$("#r_preset").value,
+stPreset:_stId,
 ttsAuto:$("#r_ttsauto").checked, typewriter:$("#r_typewriter").checked,
 memCycle:Math.max(5,parseInt($("#r_memcycle").value)||10),
 memPoolRatio:(($("#r_mempool")&&$("#r_mempool").value)||"50/30/20").trim()||"50/30/20",
@@ -4101,6 +4122,11 @@ RP_APPEAR.setAppear({wallpaper:$("#r_wallpaper").value, font:$("#r_font").value}
 applyAppearance();
 }
 }catch(e){}
+try{ /* v37: 预设采样参数回填到输入框, 所见即所得 */
+const _rc2 = getRpCfg();
+if(document.getElementById("r_temp")) document.getElementById("r_temp").value = _rc2.temperature;
+if(document.getElementById("r_topp")) document.getElementById("r_topp").value = _rc2.topP;
+}catch(e){}
 alert("RP 设置已保存");
 };
 /* P2: 应用壁纸 + 字体 */
@@ -4112,7 +4138,50 @@ document.body.dataset.wallpaper = ap.wallpaper;
 document.body.dataset.font = ap.font;
 }catch(e){}
 };
-/* SillyTavern 文本预设 -> 本机 RP 采样设置: 只取采样参数, prompt 组件不导入 */
+/* v37: ST 预设(prompt 组件)导入/管理/绑定。旧 importStPreset 只导采样参数，保留。 */
+function renderStPresetSel(){
+const sel = document.getElementById("r_stpreset");
+if(!sel || typeof RP_PRESET === "undefined") return;
+const cur = getRpCfg().stPreset || "";
+let html = `<option value="">不使用（经典组装）</option>`;
+RP_PRESET.list().forEach(p=>{
+html += `<option value="${p.id}" ${p.id===cur?"selected":""}>${esc(p.name)}（${p.prompts.length} 条）</option>`;
+});
+sel.innerHTML = html;
+}
+window.importStPromptPreset = (input)=>{
+const f = input.files && input.files[0];
+input.value = "";
+if(!f || typeof RP_PRESET === "undefined") return;
+const rd = new FileReader();
+rd.onload = ()=>{
+const r = RP_PRESET.parseFile(rd.result);
+if(!r.ok){
+alert(r.err==="noprompts" ? "这不是 ST 预设文件（缺少 prompts 数组）。" :
+      r.err==="empty" ? "预设里没有可用的条目。" : "JSON 解析失败。");
+return;
+}
+RP_PRESET.save(r.preset);
+const rc = getRpCfg(); rc.stPreset = r.preset.id; saveRpCfg(rc);
+renderStPresetSel();
+const n = r.preset.prompts.filter(p=>!p.marker).length;
+alert("已导入预设「" + r.preset.name + "」：" + n + " 条指令，" +
+  r.preset.prompts.filter(p=>p.marker).length + " 个定位标记。" +
+  (r.preset.params.temperature != null ? "采样温度 " + r.preset.params.temperature + " 将在保存设置时应用。" : ""));
+};
+rd.readAsText(f);
+};
+window.delStPromptPreset = ()=>{
+const sel = document.getElementById("r_stpreset");
+const id = sel ? sel.value : "";
+if(!id){ alert("当前没有选择已导入的预设。"); return; }
+const p = RP_PRESET.get(id);
+if(!confirm("删除预设「" + (p ? p.name : id) + "」？")) return;
+RP_PRESET.remove(id);
+const rc = getRpCfg();
+if(rc.stPreset === id){ rc.stPreset = null; saveRpCfg(rc); }
+renderStPresetSel();
+};
 function stPresetToCfg(d, rc){
 if(!d || typeof d.temperature === "undefined") return null;
 rc = rc || {};

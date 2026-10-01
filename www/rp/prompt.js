@@ -275,6 +275,10 @@ function buildMessages(card, ctx, budget){
   var priming = budget.priming || 200;
   var avail = Math.max(1024, maxCtx - reserve - priming);
   var name = card.name;
+  /* v37: ST 预设模式。budget.stPreset 为解析后的预设对象时, 走预设顺序组装,
+   * marker 替换为 App 侧对应分段, 否则走经典单 system 组装。 */
+  var stP = (budget && budget.stPreset && Array.isArray(budget.stPreset.prompts) &&
+    typeof RP_PRESET !== "undefined") ? budget.stPreset : null;
 
   var recentText = (ctx.history || []).slice(-4).map(function(m){ return m.content; }).join("\n");
 
@@ -332,29 +336,83 @@ function buildMessages(card, ctx, budget){
   var left = avail - used;
   var hist = [], hUsed = 0, hDropped = 0;
   var src = ctx.history || [];
-  for(var j = src.length - 1; j >= 0; j--){
-    var m = src[j];
-    var mt = estTokens(m.content) + 6;
-    if(hUsed + mt > left){ hDropped = j + 1; break; }
-    hist.unshift({role: m.role, content: m.content});
-    hUsed += mt;
+  var messages, sysText, post;
+  var stDropped = [], stName = null;
+  if(stP){
+    /* ---- ST 预设组装 ---- */
+    stName = stP.name;
+    var parts = {
+      persona: ctx.persona ? "【玩家人设】\n" + ctx.persona : "",
+      charDesc: ["你是" + name + "，《" + (ctx.novel || "") + "》中的人物。",
+        "【核心人设】\n" + renderFields(card, LAYERS.identity.concat(LAYERS.core)) + lorePlacedText(loreRes, "core"),
+        memSeg ? "【长期记忆】\n" + memSeg : "",
+        ctx.arc ? "【人物弧光】\n" + ctx.arc : "",
+        rel ? "【人物关系】\n" + rel : ""].filter(Boolean).join("\n\n"),
+      charPers: [NARRATOR_INSTR, "【说话方式】\n" + renderFields(card, LAYERS.speech)].filter(Boolean).join("\n\n"),
+      scenario: "【背景】\n" + renderFields(card, LAYERS.background) +
+        (card.scenario ? "\n世界设定：" + String(card.scenario).trim() : "") + lorePlacedText(loreRes, "background"),
+      examples: buildExamples(card, name, 600) + lorePlacedText(loreRes, "examples"),
+      loreBefore: "",
+      lore: loreRes.text || "",
+      history: [],
+      charName: name, userName: ctx.personaName
+    };
+    /* 预设自身超预算: 从前向后丢非 marker 的 system 条目(保结尾 jailbreak/prefill) */
+    var pList = stP.prompts.slice();
+    var pUsed = (typeof RP_PRESET.sysTokens === "function") ? RP_PRESET.sysTokens({prompts: pList}, parts) : 0;
+    var guard = 0;
+    while(pUsed > avail && guard++ < 200){
+      var di = -1;
+      for(var qi = 0; qi < pList.length; qi++)
+        if(!pList[qi].marker && pList[qi].role === "system"){ di = qi; break; }
+      if(di < 0) break;
+      stDropped.push(pList[di].name);
+      pList.splice(di, 1);
+      pUsed = RP_PRESET.sysTokens({prompts: pList}, parts);
+    }
+    used = pUsed;
+    left = avail - used;
+    for(var j = src.length - 1; j >= 0; j--){
+      var m = src[j];
+      var mt = estTokens(m.content) + 6;
+      if(hUsed + mt > left){ hDropped = j + 1; break; }
+      hist.unshift({role: m.role, content: m.content});
+      hUsed += mt;
+    }
+    parts.history = hist;
+    messages = RP_PRESET.assemble({prompts: pList}, parts);
+    if(ctx.concise){ /* 简洁指令并入首条 system */
+      for(var ci = 0; ci < messages.length; ci++)
+        if(messages[ci].role === "system"){ messages[ci].content += "\n\n" + CONCISE_INSTR; break; }
+    }
+    sysText = messages.map(function(mm){ return "[" + mm.role + "]\n" + mm.content; }).join("\n\n");
+    post = "";
+  }else{
+  for(var j2 = src.length - 1; j2 >= 0; j2--){
+    var m2 = src[j2];
+    var mt2 = estTokens(m2.content) + 6;
+    if(hUsed + mt2 > left){ hDropped = j2 + 1; break; }
+    hist.unshift({role: m2.role, content: m2.content});
+    hUsed += mt2;
   }
 
-  var sysText = sysParts.join("\n\n");
+  sysText = sysParts.join("\n\n");
   /* ST 宏全局替换(酒馆卡 description/personality 常带 {{char}}/{{user}}, 不替换模型看到字面宏) */
   sysText = subMacros(sysText, name, ctx.personaName);
   if(ctx.concise) sysText += "\n\n" + CONCISE_INSTR; /* #15 简洁回复指令 */
-  var messages = [{role: "system", content: sysText}];
+  messages = [{role: "system", content: sysText}];
   for(var k = 0; k < hist.length; k++) messages.push(hist[k]);
-  var post = postInstructions(name, ctx.pov, ctx.person);
+  post = postInstructions(name, ctx.pov, ctx.person);
   messages.push({role: "system", content: post});
+  }
 
   return {
     messages: messages,
     stats: {maxCtx: maxCtx, avail: avail, sysTokens: used, histTokens: hUsed,
             histKept: hist.length, histDropped: hDropped, droppedSegs: dropped,
             segTokens: segTokens, memPools: memRes ? memRes.pools : null,
-            loreHits: loreHitTitles, loreHitDetails: loreHitDetails, preset: preset.name, concise: !!ctx.concise},
+            loreHits: loreHitTitles, loreHitDetails: loreHitDetails, preset: preset.name, concise: !!ctx.concise,
+            stPreset: stName, stDropped: stDropped},
     preview: sysText + "\n\n" + post,
   };
 }
