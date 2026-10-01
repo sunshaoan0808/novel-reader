@@ -233,7 +233,7 @@ function findCard(runId, name){
   if(runId === "imported" && typeof RP_CARDIMPORT !== "undefined"){
     var ic = RP_CARDIMPORT.find(name);
     if(ic) return {name: ic.name, fields: ic.fields || {},
-      greeting: ic.greeting || "",
+      greeting: (typeof RP_CARDIMPORT.greetingOf === "function" ? RP_CARDIMPORT.greetingOf(ic) : null) || ic.greeting || "",
       altGreetings: ic.altGreetings || [], exampleDialogue: ic.exampleDialogue || ""};
   }
   var cards = (window.__DATA__ && window.__DATA__.rp_cards || {})[runId] || [];

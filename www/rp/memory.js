@@ -849,6 +849,22 @@ if(st.short.length === n0) return false;
 save(runId, name, st);
 return true;
 }
+/* v36: 编辑一条自动记忆（事实/看法/时间）。P0 要求事件簿条目可编辑，之前只有删除。 */
+function editItem(runId, name, id, opt){
+var st = get(runId, name);
+if(!st || !st.short) return {ok: false, err: "none"};
+var cur = null;
+st.short.forEach(function(m){ if(m && m.id == id) cur = m; });
+if(!cur) return {ok: false, err: "none"};
+var fact = String((opt && opt.fact) || "").trim().slice(0, 500);
+if(!fact) return {ok: false, err: "empty"};
+cur.fact = fact;
+if(opt && opt.view !== undefined) cur.view = String(opt.view).trim().slice(0, 200);
+if(opt && opt.time !== undefined) cur.time = String(opt.time).trim().slice(0, 40);
+cur.updatedAt = Date.now();
+save(runId, name, st);
+return {ok: true};
+}
 
 /* 第 4 项 Facts 手动区: 增/改/删 (自动区由 maybeAnalyze 写入)。总量 FACTS_MAX_CHARS 字, 超限返回 over。 */
 function _apexW(){ return (typeof RP_APEX !== "undefined") && RP_APEX.on(); }
@@ -946,7 +962,7 @@ return {get: get, save: save, clear: clear, renderPrompt: renderPrompt,
 renderBudgeted: renderBudgeted, memPoolRatio: memPoolRatio,
 ironKey: ironKey, getIronLaw: getIronLaw, saveIronLaw: saveIronLaw,
 IRONLAW_MAX: IRONLAW_MAX, estTokens: estTokens,
-maybeAnalyze: maybeAnalyze, togglePin: togglePin, delItem: delItem,
+maybeAnalyze: maybeAnalyze, togglePin: togglePin, delItem: delItem, editItem: editItem,
 memStats: memStats, SHORT_MAX: SHORT_MAX, PIN_MAX: PIN_MAX,
 leanmemOn: leanmemOn, leanRatio: leanRatio, migrate3: migrate3, seedStores: seedStores,
 buildAnalysisPrompt3: buildAnalysisPrompt3, parseState3: parseState3, eventSimilar: eventSimilar,

@@ -141,8 +141,8 @@ function normalizeTavern(d){
 function list(){
   try {
     var s = localStorage.getItem(STORE);
-    /* P2: localStorage 副本被清理后，回退 IDB 内存镜像 */
-    if(s == null && typeof RP_STORE!=="undefined") s = RP_STORE.cacheGet(STORE);
+    /* P2: localStorage 副本被清理后，回退 IDB 内存镜像；v36: getSync 在文件层同步补读，冷启动也安全 */
+    if(s == null && typeof RP_STORE!=="undefined") s = (RP_STORE.getSync || RP_STORE.cacheGet).call(RP_STORE, STORE);
     return JSON.parse(s) || [];
   } catch(e){ return []; }
 }
@@ -154,13 +154,38 @@ function save(list){
 }
 function find(name){
   var l = list();
-  for(var i = 0; i < l.length; i++) if(l[i].name === name) return l[i];
+  for(var i = 0; i < l.length; i++) if(l[i].name === name){ ensureGreeting(l[i]); return l[i]; }
   return null;
 }
 function findById(id){
   var l = list();
-  for(var i = 0; i < l.length; i++) if(l[i].id === id) return l[i];
+  for(var i = 0; i < l.length; i++) if(l[i].id === id){ ensureGreeting(l[i]); return l[i]; }
   return null;
+}
+/* 旧卡兼容(v36): 56797f7 之前导入的卡没有独立 greeting 字段, first_mes 只进了
+   typical_lines 纯数组(或只留在 raw 里)。读时回填, 不写回存储, 避免存储抖动。
+   回退链: greeting -> raw.first_mes -> typical_lines 首个超长条目 */
+function greetingOf(card){
+  if(!card) return "";
+  var g = String(card.greeting == null ? "" : card.greeting).trim();
+  if(g) return g;
+  var raw = (card.raw && typeof card.raw === "object") ? card.raw : {};
+  var fm = String(raw.first_mes == null ? "" : raw.first_mes).trim();
+  if(fm) return fm;
+  var tl = card.fields && card.fields.typical_lines;
+  if(Array.isArray(tl) && tl.length){
+    var t0 = String(tl[0] == null ? "" : tl[0]).trim();
+    /* 新卡 typical_lines 是 mes_example 短句; 超长首条基本可判定为旧卡的 first_mes */
+    if(t0.length > 200) return t0;
+  }
+  return "";
+}
+function ensureGreeting(card){
+  if(card && !String(card.greeting == null ? "" : card.greeting).trim()){
+    var g = greetingOf(card);
+    if(g) card.greeting = g;
+  }
+  return card;
 }
 function add(card){
   var l = list();
@@ -192,7 +217,7 @@ async function fromFile(file){
 
 return {
   extractChara: extractChara, parseCardJson: parseCardJson,
-  normalizeTavern: normalizeTavern, exampleLines: exampleLines,
+  normalizeTavern: normalizeTavern, exampleLines: exampleLines, greetingOf: greetingOf,
   list: list, find: find, findById: findById, add: add, del: del, update: update,
   fromFile: fromFile,
 };

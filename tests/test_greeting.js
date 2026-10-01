@@ -105,6 +105,21 @@ const run = (ctx, code) => vm.runInContext(code, ctx);
   const op2 = await vm.runInContext("(async()=>{var tr=RP_TRAVERSE.get('" + trav.id + "');return RP_TRAVERSE.genOpening(tr,{},async()=>'');})()", ctx);
   t("穿越离线开场含卡片设定", op2.indexOf("活泼少女") >= 0);
 
+  /* 9) v36 旧卡兼容: 56797f7 之前导入的卡无独立 greeting, 读时从 raw.first_mes 回填 */
+  const oldFm = "旧卡开场白。" + "x".repeat(300);
+  run(ctx, "RP_CARDIMPORT.add({id:'impOld1',name:'旧卡人',fields:{typical_lines:[" + JSON.stringify(oldFm) + "]},raw:{first_mes:" + JSON.stringify(oldFm) + "},altGreetings:[],scenario:''});");
+  const oldG = run(ctx, "RP_CARDIMPORT.find('旧卡人').greeting");
+  t("旧卡 find() 回填 greeting=raw.first_mes", oldG === oldFm);
+  t("旧卡 greetingOf 直调一致", run(ctx, "RP_CARDIMPORT.greetingOf({fields:{},raw:{first_mes:" + JSON.stringify(oldFm) + "}})") === oldFm);
+  const oldTlOnly = "纯旧卡开场。" + "y".repeat(300);
+  t("无 raw 时从 typical_lines 超长首条回填", run(ctx, "RP_CARDIMPORT.greetingOf({fields:{typical_lines:[" + JSON.stringify(oldTlOnly) + "]}})") === oldTlOnly);
+  t("新卡短 typical_lines 不误判为开场白", run(ctx, "RP_CARDIMPORT.greetingOf({fields:{typical_lines:['你好呀！']}})") === "");
+  const oldCard = run(ctx, "RP_CARDIMPORT.find('旧卡人')");
+  const oldEx = run(ctx, "RP_PROMPT.buildExamples(RP_CARDIMPORT.find('旧卡人'),'旧卡人',600)");
+  t("旧卡开场白不污染 few-shot", oldEx.indexOf("旧卡开场白") === -1);
+  const fcGreet = run(ctx, "RP.findCard('imported','旧卡人').greeting");
+  t("chat.findCard 旧卡开场白可用", fcGreet === oldFm);
+
   console.log(`greeting: ${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })().catch(e => { console.error("ERR", e); process.exit(1); });

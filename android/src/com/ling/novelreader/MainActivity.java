@@ -75,16 +75,50 @@ public class MainActivity extends Activity {
             s = s.replaceAll("\\.+", ".");
             if(s.isEmpty() || s.equals(".") || s.equals("..")) s = "unnamed";
             if(s.length() > 100) s = s.substring(0, 100);
-            /* 防碰撞：中文键净化后可能相同（如 nd_chat_r1_林黛玉 vs nd_chat_r1_王熙凤都变下划线），
-             * 缀上原名 hashCode，保证不同键落不同文件。JS 侧永远传原键，无需反解。 */
+            /* v36: 文件名后缀改用 SHA-256(64bit) 防碰撞。hashCode 只有 32bit，
+             * 中文键净化后易相同（如 nd_chat_r1_林黛玉 vs nd_chat_r1_王熙凤都变下划线），
+             * 2GB 量级下不能赌碰撞。老文件由 ndResolveFile 迁移。 */
+            s = s + "_" + ndNameHash(name);
+            return s;
+        }
+        /* 老版本文件名（hashCode 后缀），仅用于读取迁移 */
+        private String ndSafeNameLegacy(String name){
+            String s = name == null ? "" : name.replaceAll("[^A-Za-z0-9_.-]", "_");
+            s = s.replaceAll("\\.+", ".");
+            if(s.isEmpty() || s.equals(".") || s.equals("..")) s = "unnamed";
+            if(s.length() > 100) s = s.substring(0, 100);
             s = s + "_" + Integer.toHexString(name == null ? 0 : name.hashCode());
             return s;
+        }
+        private String ndNameHash(String name){
+            try{
+                java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+                byte[] d = md.digest(name == null ? new byte[0]
+                        : name.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                StringBuilder sb = new StringBuilder();
+                for(int i = 0; i < 8; i++) sb.append(String.format("%02x", d[i]));
+                return sb.toString();
+            }catch(Exception e){
+                return Integer.toHexString(name == null ? 0 : name.hashCode());
+            }
+        }
+        /* 按新名找文件，找不到则试老名；命中老名时原地迁移为新名，之后只走新名 */
+        private File ndResolveFile(String name){
+            File dir = ndBlobDir();
+            File f = new File(dir, ndSafeName(name));
+            if(f.exists()) return f;
+            File legacy = new File(dir, ndSafeNameLegacy(name));
+            if(legacy.exists()){
+                try{ legacy.renameTo(f); }catch(Exception e){ return legacy; }
+                return f.exists() ? f : legacy;
+            }
+            return f;
         }
         @JavascriptInterface
         public String ndFileWrite(final String name, final String text){
             try{
                 File dir = ndBlobDir();
-                File f = new File(dir, ndSafeName(name));
+                File f = ndResolveFile(name); /* 命中老名时先迁移为新名 */
                 byte[] data = text == null ? new byte[0]
                         : text.getBytes(java.nio.charset.StandardCharsets.UTF_8);
                 long total = 0;
@@ -104,7 +138,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String ndFileRead(final String name){
             try{
-                File f = new File(ndBlobDir(), ndSafeName(name));
+                File f = ndResolveFile(name);
                 if(!f.exists()) return null;
                 FileInputStream is = new FileInputStream(f);
                 java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
@@ -121,16 +155,32 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public boolean ndFileDelete(final String name){
             try{
-                File f = new File(ndBlobDir(), ndSafeName(name));
-                return !f.exists() || f.delete();
+                File f = ndResolveFile(name);
+                boolean ok = !f.exists() || f.delete();
+                /* 保险：老名残留也清掉 */
+                File legacy = new File(ndBlobDir(), ndSafeNameLegacy(name));
+                if(legacy.exists() && !legacy.getAbsolutePath().equals(f.getAbsolutePath()))
+                    ok = legacy.delete() && ok;
+                return ok;
             }catch(Exception e){ return false; }
         }
         @JavascriptInterface
         public long ndFileSize(final String name){
             try{
-                File f = new File(ndBlobDir(), ndSafeName(name));
+                File f = ndResolveFile(name);
                 return f.exists() ? f.length() : -1;
             }catch(Exception e){ return -1; }
+        }
+        /* v36: 一键清空整个文件区。wipeAll 不再依赖 localStorage 标记反推，
+         * 直接删目录，由 JS 侧 NDFILE.clearAll() 调用。 */
+        @JavascriptInterface
+        public boolean ndFileClear(){
+            try{
+                boolean ok = true;
+                File[] fs = ndBlobDir().listFiles();
+                if(fs != null) for(File x : fs){ if(!x.delete()) ok = false; }
+                return ok;
+            }catch(Exception e){ return false; }
         }
         @JavascriptInterface
         public long ndFileTotal(){

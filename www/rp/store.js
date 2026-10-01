@@ -259,6 +259,31 @@ function migrate(onProgress){
 /* 同步读取缓存：IDB 内容的内存镜像，保证 localStorage 副本被手动清理后同步读取仍能命中 */
 function cacheGet(key){ var k = String(key); return (k in MEM)? MEM[k]: null; }
 function cacheSet(key, value){ MEM[String(key)] = String(value); }
+/* 同步读（v36）：MEM -> 文件层同步补读（冷启动预热未完成时） -> localStorage。
+ * 解决冷启动快速点开聊天时 getHist 读空、进而 showChat 用空历史覆盖真实记录的问题。 */
+function getSync(key){
+  var k = String(key);
+  if(k in MEM) return MEM[k];
+  if(fileOK() && hasFileMark(k)){
+    var v = null;
+    try{ v = NDFILE.getItemSync(k); }catch(e){ v = null; }
+    if(v != null){ MEM[k] = v; return v; }
+    /* 文件丢了但标记还在：清掉过期标记，回退下层，避免以后每次都走空 */
+    _lsDel(FILE_PREFIX + k);
+  }
+  return _lsGet(k);
+}
+/* 该键是否在文件层（有标记） */
+function hasFileKey(key){ return hasFileMark(String(key)); }
+/* 把键撤下文件层：删原生文件 + 标记（值已变小或调用方另有存储时用）。
+ * 防止旧大文件在下次冷启动 warmCache 时"复活"，盖掉 localStorage 里的新值。 */
+function evictFile(key){
+  var k = String(key);
+  _lsDel(FILE_PREFIX + k);
+  if(fileOK()){
+    try{ NDFILE.removeItem(k); }catch(e){}
+  }
+}
 /* 大键双写：localStorage 写入后，若值超过阈值则异步搬到 IDB/文件层（失败静默，读走 localStorage）。
  * 有原生桥接且值 >256KB 时走文件层并删除 localStorage 副本（这就是 5MB 上限的来源），
  * 同步读取走 MEM 内存镜像不受影响。 */
@@ -340,20 +365,15 @@ function copiedCount(){
   return _lsKeys().filter(function(k){ return k.indexOf(COPY_PREFIX) === 0; }).length;
 }
 /* 清空全部：删 IDB 整库 + 文件层全部文件 + MEM + 各类标记。
- * localStorage 的 nd_ 业务键由调用方（wipeAll）清理。 */
+ * localStorage 的 nd_ 业务键由调用方（wipeAll）清理。
+ * v36: 文件层改用 NDFILE.clearAll() 直接清空目录，不再依赖 nd_fileidx_ 标记反推
+ * （调用方可能先删了 localStorage 导致标记丢失，旧逻辑会留下孤儿文件）。 */
 function wipeAll(){
   try{ for(var k in MEM){ delete MEM[k]; } }catch(e){}
   var pending = [];
-  /* 文件层：用 FILE_PREFIX 标记反推原键（文件名带 hash 后缀不可反解，但 removeItem 传原键即可） */
+  /* 文件层：直接清空整个 ndblob 目录，不依赖标记 */
   if(fileOK()){
-    try{
-      _lsKeys().forEach(function(k){
-        if(k.indexOf(FILE_PREFIX) === 0){
-          var orig = k.slice(FILE_PREFIX.length);
-          pending.push(NDFILE.removeItem(orig).then(function(){}, function(){}));
-        }
-      });
-    }catch(e){}
+    pending.push(NDFILE.clearAll().then(function(){}, function(){}));
   }
   try{
     _lsKeys().forEach(function(k){
@@ -424,6 +444,9 @@ return {
   fileCount: fileCount,
   cacheGet: cacheGet,
   cacheSet: cacheSet,
+  getSync: getSync,
+  hasFileKey: hasFileKey,
+  evictFile: evictFile,
   syncBig: syncBig,
   warmCache: warmCache,
   cleanupCopied: cleanupCopied,

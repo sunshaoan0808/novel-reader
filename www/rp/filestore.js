@@ -49,6 +49,32 @@ function removeItem(key){
     resolve(r);
   });
 }
+/* 同步读：桥接本身是同步返回（JavaBridge 线程），仅供冷启动关键路径
+ * （如 getSync）在内存镜像未预热时一次性补读，避免异步竞态。 */
+function getItemSync(key){
+  var br = bridge();
+  if(!br) return null;
+  try{
+    var r = br.ndFileRead(String(key));
+    return (r == null) ? null : String(r);
+  }catch(e){ return null; }
+}
+/* 清空整个文件区：不依赖 localStorage 标记（wipe 时标记可能已被删），直接删目录下所有文件 */
+function clearAll(){
+  var br = bridge();
+  if(!br) return Promise.resolve(false);
+  return new Promise(function(resolve){
+    try{
+      if(typeof br.ndFileClear === "function"){ resolve(!!br.ndFileClear()); return; }
+      /* 老版本桥接无 ndFileClear：退化为逐个删除 */
+      var s = br.ndFileList(), a = [];
+      try{ a = JSON.parse(s) || []; }catch(e){ a = []; }
+      var ok = true;
+      for(var i = 0; i < a.length; i++){ try{ if(!br.ndFileDelete(a[i])) ok = false; }catch(e){ ok = false; } }
+      resolve(ok);
+    }catch(e){ resolve(false); }
+  });
+}
 /* 文件区总字节数；无桥接返回 -1 */
 function totalBytes(){
   var br = bridge();
@@ -73,7 +99,9 @@ return {
   SUPPORTED: SUPPORTED,
   setItem: setItem,
   getItem: getItem,
+  getItemSync: getItemSync,
   removeItem: removeItem,
+  clearAll: clearAll,
   totalBytes: totalBytes,
   listKeys: listKeys
 };

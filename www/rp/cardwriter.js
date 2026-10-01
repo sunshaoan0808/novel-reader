@@ -42,7 +42,7 @@ function listSessions(){
 function getSession(id){
   try {
     var s = localStorage.getItem(SES_PRE + id);
-    if(s == null && typeof RP_STORE!=="undefined") s = RP_STORE.cacheGet(SES_PRE + id);
+    if(s == null && typeof RP_STORE!=="undefined") s = (RP_STORE.getSync || RP_STORE.cacheGet).call(RP_STORE, SES_PRE + id);
     return JSON.parse(s) || null;
   } catch(e){ return null; }
 }
@@ -67,8 +67,8 @@ function newSession(worldRunId){
 function getCustomChars(){
   try {
     var s = localStorage.getItem(CHAR_KEY);
-    /* P2: localStorage 副本被清理后，回退 IDB 内存镜像 */
-    if(s == null && typeof RP_STORE!=="undefined") s = RP_STORE.cacheGet(CHAR_KEY);
+    /* P2: localStorage 副本被清理后，回退 IDB 内存镜像；v36: getSync 在文件层同步补读，冷启动也安全 */
+    if(s == null && typeof RP_STORE!=="undefined") s = (RP_STORE.getSync || RP_STORE.cacheGet).call(RP_STORE, CHAR_KEY);
     return JSON.parse(s) || [];
   } catch(e){ return []; }
 }

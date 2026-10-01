@@ -33,6 +33,7 @@ ndFileDelete(name){ if(name in files){ total -= bytes(files[name]); delete files
 ndFileSize(name){ return (name in files) ? bytes(files[name]) : -1; },
 ndFileTotal(){ return total; },
 ndFileList(){ return JSON.stringify(Object.keys(files)); },
+ndFileClear(){ for(const k in files){ total -= bytes(files[k]); delete files[k]; } return true; },
 _files: files
 };
 }
@@ -191,6 +192,66 @@ t("wipe 后读不到", await run(`RP_STORE.getItemAsync('${K}')`) === null);
 {
 const {run} = mkCtx(); // 无桥接
 t("无桥接 wipeAll 不抛错", await run("RP_STORE.wipeAll()") === true);
+}
+
+// ---------- 8) v36: 冷启动同步补读 / evictFile / wipeAll 不依赖标记 ----------
+{
+// 8a) getItemSync：桥接同步读
+const {run} = s2;
+await run(`NDFILE.setItem('synck','hello-sync')`);
+t("getItemSync 同步读到", run(`NDFILE.getItemSync('synck')`) === "hello-sync");
+t("getItemSync 读不到返回 null", run(`NDFILE.getItemSync('no-such-key')`) === null);
+await run(`NDFILE.removeItem('synck')`);
+}
+{
+// 8b) 冷启动：MEM 为空、未跑 warmCache，getSync 仍能读到文件层大值
+const bridgeB = makeBridge(2*1024*1024*1024);
+const c1 = mkCtx({Android: bridgeB});
+const K = "nd_chat_r1_coldstart";
+const big = "v".repeat(300*1024);
+await c1.run(`RP_STORE.setItemAsync('${K}', '${"v".repeat(100)}'.padEnd(307200,'v'))`);
+t("8b 写入走文件层", bridgeB._files[K] !== undefined && c1.ls.getItem("nd_fileidx_"+K) === "1");
+// 模拟重启：全新 JS 上下文（MEM 空），localStorage 共享，桥接文件共享
+const c2 = mkCtx({Android: bridgeB});
+Object.assign(c2.ls.m, c1.ls.m);
+t("8b 冷启动 MEM 为空", c2.run(`RP_STORE.cacheGet('${K}')`) === null);
+t("8b getSync 同步补读文件层", c2.run(`RP_STORE.getSync('${K}')`) === big);
+t("8b 补读后 MEM 有值", c2.run(`RP_STORE.cacheGet('${K}')`) === big);
+}
+{
+// 8c) evictFile：值缩小后旧文件不再"复活"
+const bridgeC = makeBridge(2*1024*1024*1024);
+const c3 = mkCtx({Android: bridgeC});
+const K = "nd_chat_r1_shrink";
+await c3.run(`RP_STORE.setItemAsync('${K}', '${"w".repeat(100)}'.padEnd(307200,'w'))`);
+c3.run(`localStorage.setItem('${K}','"small-new"')`); // saveHist 先写 localStorage 新小值
+c3.run(`RP_STORE.cacheSet('${K}','"small-new"')`); // saveHist 同步更新 MEM
+c3.run(`RP_STORE.evictFile('${K}')`);
+t("8c 旧文件已删", bridgeC._files[K] === undefined);
+t("8c 标记已删", c3.ls.getItem("nd_fileidx_"+K) === null);
+t("8c getSync 读到新小值而非旧文件", c3.run(`RP_STORE.getSync('${K}')`) === "\"small-new\"");
+}
+{
+// 8d) wipeAll：标记先被删光也能清掉原生文件（孤儿文件回归）
+const bridgeD = makeBridge(2*1024*1024*1024);
+const c4 = mkCtx({Android: bridgeD});
+const K = "nd_chat_r1_orphan";
+await c4.run(`RP_STORE.setItemAsync('${K}', '${"o".repeat(100)}'.padEnd(307200,'o'))`);
+t("8d 写入走文件层", bridgeD._files[K] !== undefined);
+// 模拟旧版调用方先删光 localStorage（含标记）
+for(const k of Object.keys(c4.ls.m)) c4.ls.removeItem(k);
+t("8d 标记已被删光", c4.ls.getItem("nd_fileidx_"+K) === null);
+await c4.run(`RP_STORE.wipeAll()`);
+t("8d 无标记 wipeAll 仍清掉文件", Object.keys(bridgeD._files).length === 0);
+}
+{
+// 8e) NDFILE.clearAll 直接清空
+const bridgeE = makeBridge(2*1024*1024*1024);
+const c5 = mkCtx({Android: bridgeE});
+await c5.run(`NDFILE.setItem('a','1')`);
+await c5.run(`NDFILE.setItem('b','2')`);
+t("8e clearAll 返回 true", await c5.run(`NDFILE.clearAll()`) === true);
+t("8e 文件全清", Object.keys(bridgeE._files).length === 0);
 }
 
 console.log(`test_filestore: ${pass} pass, ${fail} fail`);

@@ -809,7 +809,12 @@ const getHist = (k)=>{ try{
   /* P2: 优先读 IDB 内存镜像（localStorage 副本被清理后仍能命中），再回退 localStorage */
   /* UI-00 修复: 缓存未命中必须回退 localStorage，否则冷启动后小键历史读成空，
      showChat 的打招呼分支会把真实历史覆盖掉（数据丢失）。 */
-  if(typeof RP_STORE!=="undefined"){ const c = RP_STORE.cacheGet(k); if(c!=null) h = JSON.parse(c)||[]; }
+  /* v36: 改走 getSync —— MEM 未命中且键在文件层时同步补读原生文件，
+     冷启动预热没跑完就点开聊天也不会读空。 */
+  if(typeof RP_STORE!=="undefined"){
+    if(typeof RP_STORE.getSync==="function"){ const c = RP_STORE.getSync(k); if(c!=null) h = JSON.parse(c)||[]; }
+    else { const c = RP_STORE.cacheGet(k); if(c!=null) h = JSON.parse(c)||[]; }
+  }
   if(!h.length){ try{ h = JSON.parse(localStorage.getItem(k))||[]; }catch(e2){} }
   /* P0-4: 老消息补 mid (摘要水位 msg_id 制), 只新增字段 */
   let dirty = false;
@@ -826,7 +831,17 @@ const getHist = (k)=>{ try{
 const saveHist = (k,h)=>{ const s = JSON.stringify(h.slice(-80));
   localStorage.setItem(k, s);
   /* P2: 大键双写 IDB（异步，失败静默回退 localStorage） */
-  try{ if(typeof RP_STORE!=="undefined"){ RP_STORE.cacheSet(k, s); RP_STORE.syncBig(k, s); } }catch(e){}
+  /* v36: 值缩小到文件层阈值下但旧文件还在时，必须把旧文件+标记清掉，
+     否则下次冷启动 warmCache 会把旧大文件"复活"，盖掉 localStorage 里的新值。 */
+  try{ if(typeof RP_STORE!=="undefined"){
+    RP_STORE.cacheSet(k, s);
+    if(typeof RP_STORE.hasFileKey==="function" && RP_STORE.hasFileKey(k) &&
+       s.length <= (RP_STORE.FILE_MIN_BYTES || 262144)){
+      RP_STORE.evictFile(k);
+    } else {
+      RP_STORE.syncBig(k, s);
+    }
+  } }catch(e){}
 };
 
 let CHAT = {mode:"single", runId:null, name:null, members:[], forcedSpeaker:null};
@@ -2573,6 +2588,7 @@ return `<div class="tl-item${m.pin?" gold":""}"><div class="card alb-event${m.pi
 + (m.view?`<div class="alb-view">此刻看法：${esc(m.view)}</div>`:"")
 + `<div class="btnrow" style="margin-top:8px">`
 + `<button class="btn ghost" onclick="memPin(${id})">${m.pin?"取消置顶":icon("pin",14)+" 置顶"}</button>`
++ `<button class="btn ghost" onclick="memEditForm(${id})">✏️ 编辑</button>`
 + `<button class="btn ghost" onclick="memCopyCard(${id})">📋 复制卡片</button>`
 + `<button class="btn danger" onclick="memDel(${id})">删除</button>`
 + `</div></div></div>`;
@@ -2679,6 +2695,29 @@ renderAlbum();
 window.memDel = (id)=>{
 if(!confirm("删除这条记忆？")) return;
 RP_MEM.delItem(ALBUM.runId, ALBUM.name, id);
+renderAlbum();
+};
+/* v36: 自动记忆条目编辑（P0 事件簿"查看/编辑/删除"补齐编辑入口） */
+window.memEditForm = (id)=>{
+const runId = ALBUM.runId, nm = ALBUM.name;
+__backAction = ()=>renderAlbum();
+document.body.classList.remove("chatmode");
+const st = RP_MEM.get(runId, nm);
+const m = ((st && st.short)||[]).find(x=>x.id==id);
+if(!m){ alert("记忆不存在"); return; }
+titleEl.innerHTML = icon("books")+" 编辑记忆"; subEl.textContent = nm;
+view.innerHTML = `<button class="back" onclick="renderAlbum()">${icon("back")} 返回事件簿</button>
+<div class="card">
+<div class="field"><label>时间</label><input id="me_time" value="${esc(m.time||"")}" placeholder="如：三月初三"></div>
+<div class="field"><label>事实${RP_AIFILL.btn("me_fact","关于"+nm+"的记忆事实","一句话，如：她在雨夜把伞给了你","角色"+nm+"；记忆原文：\\n"+(m.fact||""))}</label><textarea id="me_fact" rows="3" placeholder="这条记忆记录的事实">${esc(m.fact||"")}</textarea></div>
+<div class="field"><label>此刻看法（可选）</label><input id="me_view" value="${esc(m.view||"")}" placeholder="她/你现在怎么看这件事"></div>
+<div class="btnrow"><button class="btn" onclick="memEditSave(${id})">保存</button></div></div>`;
+window.scrollTo(0,0);
+};
+window.memEditSave = (id)=>{
+const r = RP_MEM.editItem(ALBUM.runId, ALBUM.name, id, {
+  fact: $("#me_fact").value, view: $("#me_view").value, time: $("#me_time").value});
+if(!r.ok){ alert(r.err==="empty" ? "事实内容不能为空。" : "保存失败，请重试。"); return; }
 renderAlbum();
 };
 /* Tier2 #10: 永久记忆切换 (Talkie "Select the event you want Talkie to remember permanently…")。
@@ -4107,10 +4146,18 @@ inp.click();
 };
 window.wipeAll = ()=>{
 if(!confirm("清空所有任务、聊天记录和 API 配置? 产物数据不受影响。")) return;
-Object.keys(localStorage).filter(k=>k.startsWith("nd_")).forEach(k=>localStorage.removeItem(k));
-/* 大文件层（IDB 整库 + 原生 2GB 文件 + 内存镜像 + 标记）一起清，否则清完重启又冒出来 */
-try{ if(typeof RP_STORE!=="undefined" && RP_STORE.wipeAll){ RP_STORE.wipeAll().catch(()=>{}); } }catch(e){}
-alert("已清空"); showSettings();
+/* v36: 先清存储层（IDB 整库 + 原生文件 + 内存镜像 + 标记），再删 localStorage 业务键。
+ * 顺序不能反：RP_STORE.wipeAll 内部不再依赖标记，但旧版本桥接的逐个删除回退路径
+ * 需要标记；先删标记会导致原生文件变孤儿删不掉。 */
+const finish = ()=>{
+  Object.keys(localStorage).filter(k=>k.startsWith("nd_")).forEach(k=>localStorage.removeItem(k));
+  alert("已清空"); showSettings();
+};
+try{
+  if(typeof RP_STORE!=="undefined" && RP_STORE.wipeAll){
+    RP_STORE.wipeAll().then(finish, finish);
+  } else finish();
+}catch(e){ finish(); }
 };
 
 

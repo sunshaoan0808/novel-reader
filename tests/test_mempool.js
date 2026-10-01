@@ -123,6 +123,18 @@ t("inspector: important items match", b.stats.memPools.important.items === mb.po
 const lp = {stats: b.stats, hasWorldsim: !!b.stats.hasWorldsim, hasDirector: !!b.stats.hasDirector, memPools: b.stats.memPools};
 t("inspector payload complete", lp.stats && lp.memPools && ("hasWorldsim" in lp) && ("hasDirector" in lp));
 
+/* ---------- v36: 事件簿条目可编辑 ---------- */
+RP_MEM.save("r9", "小九", {short: [{id: 11, time: "昨天", fact: "一起逛街", view: ""}]});
+let er = RP_MEM.editItem("r9", "小九", 11, {fact: "一起逛街买了点心", view: "很开心", time: "三月初三"});
+t("editItem 返回 ok", er.ok === true);
+let st9 = RP_MEM.get("r9", "小九");
+t("editItem 改事实", st9.short[0].fact === "一起逛街买了点心");
+t("editItem 改看法", st9.short[0].view === "很开心");
+t("editItem 改时间", st9.short[0].time === "三月初三");
+t("editItem 空事实拒绝", RP_MEM.editItem("r9", "小九", 11, {fact: "  "}).ok === false);
+t("editItem 不存在 id", RP_MEM.editItem("r9", "小九", 999, {fact: "x"}).ok === false);
+t("editItem 导出存在", typeof RP_MEM.editItem === "function");
+
 console.log(`\n${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);
 })();
