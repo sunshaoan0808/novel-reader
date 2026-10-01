@@ -1,0 +1,18 @@
+{
+    "id": "fa003b02-00f0-4dfc-b155-48466e29c822",
+    "scriptName": "Ny-去除之前的四个选项",
+    "findRegex": "<small>[\\s\\S]*?</small>",
+    "replaceString": "",
+    "trimStrings": [],
+    "placement": [
+        1,
+        2
+    ],
+    "disabled": false,
+    "markdownOnly": true,
+    "promptOnly": true,
+    "runOnEdit": true,
+    "substituteRegex": 0,
+    "minDepth": 2,
+    "maxDepth": null
+}

@@ -67,8 +67,10 @@ const st1 = {scriptName:"Ny-测试", findRegex:"/<small>[\\s\\S]*?<\\/small>/i",
 const r1 = E(`stRegexToRule(${JSON.stringify(st1)})`);
 t("st import", r1 && r1.find === "<small>[\\s\\S]*?<\\/small>" && r1.flags === "ig" && r1.enabled === true && r1.name === "Ny-测试");
 const st2 = Object.assign({}, st1, {disabled:true, placement:[2]});
-t("st placement 2 rejected", E(`stRegexToRule(${JSON.stringify(st2)})`) === null);
-const st3 = Object.assign({}, st1, {disabled:true, placement:[1]});
+t("st placement 2 (AI输出) accepted", E(`stRegexToRule(${JSON.stringify(st2)})`) !== null);
+const st2b = Object.assign({}, st1, {placement:[1]});
+t("st placement 1 (仅用户输入) rejected", E(`stRegexToRule(${JSON.stringify(st2b)})`) === null);
+const st3 = Object.assign({}, st1, {disabled:true, placement:[1,2]});
 t("st disabled -> enabled false", E(`stRegexToRule(${JSON.stringify(st3)})`).enabled === false);
 t("st non-script rejected", E(`stRegexToRule({a:1})`) === null);
 const stBad = Object.assign({}, st1, {findRegex:"/([/i"});

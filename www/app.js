@@ -634,7 +634,7 @@ ${regexCharSel(runId, name)}
 <div class="hint">AI 回复发出前按顺序执行：查找（正则）→ 替换为。如把"好的"替换成"好"，或统一口头禅。非法正则会被跳过。</div>
 ${arr.map((r,i)=>`
 <div class="card">${r.name?`<div class="kv" style="color:var(--gold)">${esc(r.name)}${r.flags&&r.flags!=="g"?` <span style="color:var(--ink-faint)">/${esc(r.flags)}</span>`:""}</div>`:""}<div class="name" style="font-size:13px">${esc(r.find||"")} <span style="color:var(--ink-faint)">→</span> ${esc(String(r.replace||"")).slice(0,60)}</div>
-<div class="meta">${r.enabled===false?"停用":"启用"}</div>
+<div class="meta">${r.enabled===false?"停用":"启用"}${r.markdownOnly?` · <span class="badge">markdown显示时</span>`:""}${r.promptOnly&&!r.markdownOnly?` · <span class="badge">纯prompt(不执行)</span>`:""}${r.minDepth!=null?` · 深度≥${r.minDepth}`:""}${r.maxDepth!=null?` · 深度≤${r.maxDepth}`:""}</div>
 <div class="btnrow" style="margin-top:8px">
 <button class="btn ghost" onclick="regexForm('${runId}','${name.replace(/'/g,"\\'")}',${i})">编辑</button>
 <button class="btn ghost" onclick="regexToggle('${runId}','${name.replace(/'/g,"\\'")}',${i})">${r.enabled===false?"启用":"停用"}</button>
@@ -646,17 +646,35 @@ window.regexGoBack = ()=>{ showChat(); };
 window.regexToggle = (runId, name, i)=>{ const a=getRegexUI(runId,name); a[i].enabled = a[i].enabled===false?true:false; saveRegexUI(runId,name,a); renderRegexList(runId,name); };
 window.regexDel = (runId, name, i)=>{ if(!confirm("删除这条规则？")) return; const a=getRegexUI(runId,name); a.splice(i,1); saveRegexUI(runId,name,a); renderRegexList(runId,name); };
 let RX_CTX = {runId:null, name:null};
-/* SillyTavern 正则脚本 -> 本机规则: 只支持 placement 含 1(AI 输出) 的; {{macro}} 类占位不支持 */
+/* SillyTavern 正则脚本 -> 本机规则。
+ * ST 语义(源码 public/scripts/extensions/regex/engine.js 实证):
+ * placement: 1=用户输入, 2=AI输出, 3=斜杠命令, 5=世界书, 6=推理块。
+ * 本机只处理 AI 输出显示: 要求 placement 含 2。
+ * markdownOnly: 只在 markdown 显示路径执行(本机气泡是 markdown 渲染, 视为显示路径);
+ * promptOnly: 只在 prompt 构建时执行, 本机无此路径, 跳过并注明。
+ * minDepth/maxDepth: 按 depth 过滤(新回复 depth=0), 字段保留。
+ * 支持单个脚本对象或数组( ST 可导出多个)。 */
 function stRegexToRule(d){
 if(!d || typeof d.findRegex !== "string") return null;
-const placement = d.placement || [1];
-if(placement.indexOf(1) < 0) return null;
+const placement = d.placement || [2];
+if(placement.indexOf(2) < 0) return null;
 let find = d.findRegex, flags = "g";
 const m = d.findRegex.match(/^\/(.*)\/([a-z]*)$/s);
 if(m){ find = m[1]; flags = ((m[2]||"").replace(/g/g,"")) + "g"; }
 try{ new RegExp(find, flags); }catch(e){ return null; }
 return {name: d.scriptName || "ST 导入", find: find, flags: flags,
-replace: d.replaceString != null ? d.replaceString : "", enabled: !d.disabled};
+replace: d.replaceString != null ? d.replaceString : "", enabled: !d.disabled,
+markdownOnly: !!d.markdownOnly, promptOnly: !!d.promptOnly,
+minDepth: (d.minDepth == null ? null : +d.minDepth),
+maxDepth: (d.maxDepth == null ? null : +d.maxDepth),
+trimStrings: Array.isArray(d.trimStrings) ? d.trimStrings : [],
+runOnEdit: !!d.runOnEdit};
+}
+function stRegexToRules(d){
+const list = Array.isArray(d) ? d : [d];
+const out = [];
+list.forEach(function(x){ const r = stRegexToRule(x); if(r) out.push(r); });
+return out;
 }
 window.importStRegex = ()=>{
 const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".json,application/json";
@@ -666,11 +684,13 @@ const rd = new FileReader();
 rd.onload = ()=>{
 try{
 const d = JSON.parse(rd.result);
-const r = stRegexToRule(d);
-if(!r){ alert("解析失败: 不是 ST 正则脚本, 或只作用于用户输入(本机正则只处理 AI 输出)"); return; }
-const a = getRegexUI(RX_CTX.runId, RX_CTX.name); a.push(r);
+const rs = stRegexToRules(d);
+if(!rs.length){ alert("解析失败: 不是 ST 正则脚本, 或没有作用于 AI 输出的脚本(本机正则只处理 AI 输出显示)"); return; }
+const purePrompt = rs.filter(r=>r.promptOnly && !r.markdownOnly).length;
+const a = getRegexUI(RX_CTX.runId, RX_CTX.name);
+rs.forEach(function(r){ a.push(r); });
 saveRegexUI(RX_CTX.runId, RX_CTX.name, a); renderRegexList(RX_CTX.runId, RX_CTX.name);
-alert("已导入: " + r.name);
+alert("已导入 " + rs.length + " 条正则" + (purePrompt ? "；其中 " + purePrompt + " 条为纯 promptOnly(只在 prompt 构建时执行)，本机无此路径，已保留但不执行" : ""));
 }catch(e){ alert("解析失败: " + e.message); }
 };
 rd.readAsText(f);
@@ -1090,6 +1110,7 @@ ${povChipsHTML()}
 <button class="ditem" onclick="toggleDrawer(false);exportChat()">&#x1F4E4; 复制聊天记录</button>
 <button class="ditem" onclick="toggleDrawer(false);showForeshadow()">${icon("book-open")} 伏笔面板</button>
 <button class="ditem" onclick="toggleDrawer(false);exportChatTxt()">${icon("download")} 导出聊天 TXT</button>
+<button class="ditem" onclick="toggleDrawer(false);importStChat()">${icon("upload")} 导入 ST 聊天记录</button>
 <button class="ditem danger" onclick="toggleDrawer(false);clearChat()">&#x1F5D1; 清空聊天记录</button>
 <h3>设置</h3>
 <button class="ditem" onclick="exitChatTo('settings')">&#x1F527; 大模型与 RP 设置</button>
@@ -1443,6 +1464,103 @@ return `[${ts}] ${who(m)}: ${m.content}`;
 const nm = CHAT.mode === "group" ? "群聊" : (CHAT.name || "聊天");
 downloadTxt(`${nm}_聊天记录.txt`, txt);
 rpToast(`已导出 ${h.length} 条`);
+};
+/* ST 聊天记录(JSONL) -> 本机消息条目。
+ * ST 格式: 每行一个 JSON; 首行是会话元数据 {user_name, character_name, create_date, chat_metadata};
+ * 消息行 {name, is_user, is_system, send_date, mes, extra, ...}。
+ * 映射: is_user->user, is_system->system(进 prompt 时仍是 system, 忠实),
+ * 其它->assistant(保留 speaker=name); send_date 解析失败回退 Date.now();
+ * 空 mes 跳过; swipe 变体等 extra 字段暂不导入。 */
+function stChatParse(text){
+const lines = String(text || "").split("\n");
+const raw = [];
+for(const ln of lines){ const s = ln.trim(); if(!s) continue;
+try{ raw.push(JSON.parse(s)); }catch(e){ return null; } }
+if(!raw.length) return null;
+let meta = null; const msgs = [];
+raw.forEach(function(o){
+if(!o || typeof o !== "object") return;
+if(!meta && o.mes === undefined && (o.character_name || o.user_name)){ meta = o; return; }
+msgs.push(o);
+});
+return {meta: meta, msgs: msgs};
+}
+function stChatToEntries(parsed){
+if(!parsed || !parsed.msgs) return [];
+const out = [];
+parsed.msgs.forEach(function(m){
+if(!m || typeof m.mes !== "string" || !m.mes.trim()) return;
+const role = m.is_user ? "user" : (m.is_system ? "system" : "assistant");
+const e = {role: role, content: m.mes};
+/* ST 的 send_date 如 "January 27, 2026 2:32am"(am 前无空格) Date.parse 吃不下，先规范化 */
+let sd = String(m.send_date || "").replace(/(\d)(am|pm)\s*$/i, "$1 $2");
+let ts = Date.parse(sd); e.ts = isNaN(ts) ? Date.now() : ts;
+if(role === "assistant" && m.name) e.speaker = m.name;
+out.push(e);
+});
+return out;
+}
+/* ST 聊天记录导入: 聊天页抽屉 -> 选 .jsonl -> 确认页(目标/追加或覆盖) -> 写入当前单人聊天 */
+let STCHAT_PENDING = null;
+window.importStChat = ()=>{
+if(CHAT.mode !== "single" || !CHAT.name){ alert("请先打开一个单人聊天再导入"); return; }
+const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".jsonl,application/json";
+inp.onchange = ()=>{
+const f = inp.files[0]; if(!f) return;
+const rd = new FileReader();
+rd.onload = ()=>{
+try{
+const parsed = stChatParse(rd.result);
+if(!parsed){ alert("解析失败: 不是 ST 聊天记录(JSONL, 每行一个 JSON)"); return; }
+const entries = stChatToEntries(parsed);
+if(!entries.length){ alert("解析失败: 文件里没有可导入的消息"); return; }
+STCHAT_PENDING = {parsed: parsed, entries: entries, file: f.name};
+stChatConfirm();
+}catch(e){ alert("解析失败: " + e.message); }
+};
+rd.readAsText(f);
+};
+inp.click();
+};
+function stChatConfirm(){
+const p = STCHAT_PENDING; if(!p) return;
+__backAction = ()=>showChat();
+document.body.classList.remove("chatmode");
+titleEl.innerHTML = icon("upload") + " 导入 ST 聊天记录";
+const meta = p.parsed.meta || {};
+const charName = meta.character_name || "";
+const userName = meta.user_name || "";
+const n = p.entries.length;
+const tss = p.entries.map(e=>e.ts).filter(Boolean);
+const range = tss.length ? (new Date(Math.min.apply(null, tss)).toLocaleString("zh-CN") + " ~ " + new Date(Math.max.apply(null, tss)).toLocaleString("zh-CN")) : "";
+const nUser = p.entries.filter(e=>e.role === "user").length;
+const nAsst = p.entries.filter(e=>e.role === "assistant").length;
+const nSys = p.entries.filter(e=>e.role === "system").length;
+const mismatch = charName && charName !== CHAT.name;
+subEl.textContent = p.file;
+view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回聊天</button>
+<div class="card"><div class="kv">文件角色</div><div class="name">${esc(charName || "未知")}</div>
+<div class="meta">玩家: ${esc(userName || "未知")}${range ? ` · ${esc(range)}` : ""}</div>
+<div class="meta">共 ${n} 条消息（我 ${nUser} / AI ${nAsst}${nSys ? ` / 系统 ${nSys}` : ""}）</div></div>
+<div class="card"><div class="kv">导入到</div><div class="name">${esc(CHAT.name)}</div>
+<div class="meta">当前单人聊天${mismatch ? ` · <span style="color:var(--danger)">文件中角色名「${esc(charName)}」与当前角色不一致，仍可导入</span>` : ""}</div></div>
+<div class="field"><label>导入方式</label>
+<label style="display:block;margin:6px 0"><input type="radio" name="stchat_mode" value="append" checked style="width:auto"> 追加到现有记录后面</label>
+<label style="display:block;margin:6px 0"><input type="radio" name="stchat_mode" value="replace" style="width:auto"> 覆盖（清空当前聊天记录）</label></div>
+<div class="meta" style="margin-bottom:10px">聊天记录最多保留 80 条，超出部分只保留最新的 80 条；swipe 变体等多轮回复只导入当前显示的一条。</div>
+<button class="btn primary" onclick="doStChatImport()">开始导入</button>`;
+}
+window.doStChatImport = ()=>{
+const p = STCHAT_PENDING; if(!p) return;
+const mode = (document.querySelector('input[name="stchat_mode"]:checked') || {}).value || "append";
+if(mode === "replace" && !confirm("确定清空当前聊天记录并导入？")) return;
+const k = chatHistKey();
+const cur = mode === "append" ? getHist(k) : [];
+const merged = cur.concat(p.entries);
+saveHist(k, merged);
+STCHAT_PENDING = null;
+rpToast(`已导入 ${p.entries.length} 条`);
+showChat();
 };
 function copyText(t){
 if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(t); return; }

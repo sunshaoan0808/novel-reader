@@ -137,11 +137,18 @@ function getRegex(runId, name){
   try{ return JSON.parse(localStorage.getItem("nd_regex_" + runId + "_" + name)) || []; }
   catch(e){ return []; }
 }
-function applyRegex(text, rules){
+function applyRegex(text, rules, depth){
   if(!text || !rules || !rules.length) return text;
+  /* ST 语义(engine.js): markdownOnly 只在 markdown 显示路径执行(本机气泡即 markdown
+   * 渲染, 视为显示路径); 纯 promptOnly(只在 prompt 构建时执行)本机无此路径, 跳过;
+   * minDepth/maxDepth 按 depth 过滤(新回复 depth=0)。 */
+  if(depth == null) depth = 0;
   var out = text;
   rules.forEach(function(r){
     if(r.enabled === false || !r.find) return;
+    if(r.promptOnly && !r.markdownOnly) return;
+    if(r.minDepth != null && depth < r.minDepth) return;
+    if(r.maxDepth != null && depth > r.maxDepth) return;
     try{ out = out.replace(new RegExp(r.find, r.flags || "g"), r.replace == null ? "" : r.replace); }
     catch(e){ /* 非法正则跳过 */ }
   });

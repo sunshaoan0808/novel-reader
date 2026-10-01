@@ -283,19 +283,59 @@ function build(entries, textOrMessages, budgetTokens, msgCount, estFn){
 
 /* ST 世界书 JSON -> 本机条目 (别名映射见规格 1.5 NLe; 缺字段走 Janitor 默认)。
  * 接受 {entries: {...}|[...]}; priority 一律由列表位置派生。 */
+/* ST position 语义映射到本机 placement/placementPosition。
+ * ST 经典: 0=角色定义前 1=角色定义后 2=作者注前 3=作者注后 4=按depth;
+ * RisuAI 系变体(真实卡实证): "before_char"/"after_char" 字符串。 */
+function mapStPosition(p){
+  if(typeof p === "string"){
+    var s = p.toLowerCase();
+    if(s === "before_char") return {placement: "personality", placementPosition: "before"};
+    if(s === "after_char") return {placement: "personality", placementPosition: "after"};
+    if(s === "before_an") return {placement: "default", placementPosition: "before"};
+    if(s === "after_an") return {placement: "default", placementPosition: "after"};
+    return null;
+  }
+  if(typeof p === "number" && isFinite(p)){
+    if(p === 0) return {placement: "personality", placementPosition: "before"};
+    if(p === 1) return {placement: "personality", placementPosition: "after"};
+    if(p === 2) return {placement: "default", placementPosition: "before"};
+    if(p === 3) return {placement: "default", placementPosition: "after"};
+    if(p === 4) return {placement: "default", placementPosition: "after"};
+  }
+  return null;
+}
 function importST(d){
   var raw = d && d.entries;
   if(!raw) return null;
-  var list = Array.isArray(raw) ? raw : Object.keys(raw).map(function(k){ return raw[k]; });
+  var list = Array.isArray(raw) ? raw.slice() : Object.keys(raw).map(function(k){ return raw[k]; });
+  /* 真实卡的经典 ST 字段常藏在 extensions 里(如 selectiveLogic/group/depth), 顶层用变体名;
+   * insertion_order/order/display_index 决定条目顺序(越小越靠前), 缺省保持原序(稳定排序)。 */
+  list = list.map(function(e, i){ return {e: e, i: i}; }).sort(function(a, b){
+    var ka = firstVal(a.e && a.e.insertion_order, a.e && a.e.order,
+                       a.e && a.e.extensions && a.e.extensions.display_index);
+    var kb = firstVal(b.e && b.e.insertion_order, b.e && b.e.order,
+                       b.e && b.e.extensions && b.e.extensions.display_index);
+    var na = (ka === undefined || ka === null || ka === "") ? Infinity : +ka;
+    var nb = (kb === undefined || kb === null || kb === "") ? Infinity : +kb;
+    if(na !== nb) return na - nb;
+    return a.i - b.i;
+  }).map(function(x){ return x.e; });
   var out = [];
   list.forEach(function(e){
     if(!e) return;
+    var ext = (e.extensions && typeof e.extensions === "object") ? e.extensions : {};
     var content = firstStr(e.content, e.entry, e.text);
     if(!content) return;
     var keys = splitKeys(firstVal(e.key, e.keys, e.keywords));
     var secs = splitKeys(firstVal(e.keysecondary, e.secondaryKeys, e.secondary_keys));
-    var grpRaw = firstVal(e.inclusionGroup, e.group);
-    var mw = firstVal(e.matchWholeWords, e.match_whole_word, e.matchWholeWord);
+    var grpRaw = firstVal(e.inclusionGroup, e.group, ext.group);
+    var mw = firstVal(e.matchWholeWords, e.match_whole_word, e.matchWholeWord, ext.match_whole_words);
+    var pos = mapStPosition(firstVal(e.position, ext.position));
+    var prob = (ext.useProbability === false) ? 100 : firstVal(e.probability, ext.probability);
+    var mergedExt = {};
+    for(var k in ext) mergedExt[k] = ext[k];
+    /* use_regex=true 但 key 不是 /re/flags 写法时, 本机仍按字面匹配(限制, 已注明) */
+    if(e.use_regex !== undefined) mergedExt.use_regex = e.use_regex;
     /* NLe 的 matchWholeWords 缺省为 false (PLe 为 true), 此处忠实还原 */
     out.push(normalize({
       id: uid("st"),
@@ -307,20 +347,21 @@ function importST(d){
       enabled: e.enabled !== undefined ? !!e.enabled
              : (e.active !== undefined ? !!e.active
              : (e.disable !== undefined ? !e.disable : true)),
-      case_sensitive: !!(e.case_sensitive !== undefined ? e.case_sensitive : e.caseSensitive),
+      case_sensitive: !!(firstVal(e.case_sensitive, e.caseSensitive, ext.case_sensitive)),
       matchWholeWords: mw === undefined ? false : !!mw,
       inclusionGroup: grpRaw,
       constant: !!e.constant,
-      probability: e.probability,
+      probability: prob,
       minMessages: e.minMessages,
-      selectiveLogic: e.selectiveLogic,
-      groupWeight: e.groupWeight,
+      selectiveLogic: firstVal(e.selectiveLogic, ext.selectiveLogic),
+      groupWeight: firstVal(e.groupWeight, ext.group_weight),
       prioritizeInclusion: e.prioritizeInclusion,
       keyMatchPriority: e.keyMatchPriority,
-      placement: e.placement,
-      placementPosition: e.placementPosition,
-      depth: e.depth,
-      category: e.category
+      placement: pos ? pos.placement : e.placement,
+      placementPosition: pos ? pos.placementPosition : e.placementPosition,
+      depth: firstVal(e.depth, ext.depth),
+      category: e.category,
+      extensions: mergedExt
     }, out.length));
   });
   return out.length ? out : null;
