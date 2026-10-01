@@ -473,7 +473,7 @@ function renderLoreList(runId){
 __backAction = ()=>loreGoBack();
 const arr = getLore(runId);
 view.innerHTML = `<button class="back" onclick="loreGoBack()">${icon("back")} 返回</button>
-<div class="btnrow" style="margin-bottom:10px"><button class="btn" onclick="loreForm('${runId}')">${icon("plus")} 新增条目</button><button class="btn" onclick="importStLore('${runId}')">导入 ST 世界书</button></div>
+<div class="btnrow" style="margin-bottom:10px"><button class="btn" onclick="loreForm('${runId}')">${icon("plus")} 新增条目</button><button class="btn" onclick="importStLore('${runId}')">导入 ST 世界书</button><button class="btn ghost" onclick="exportStLore('${runId}')">导出 ST 世界书</button></div>
 <div class="hint">自建条目和蒸馏产出的世界书一起参与关键词触发（常驻条目每轮必进），存在本机。列表顺序即优先级（越靠上越强），用 ↑↓ 调整。</div>
 ${arr.map((e,i)=>{
 const n = normLore(e,i);
@@ -538,7 +538,22 @@ rd.readAsText(f);
 };
 inp.click();
 };
+/* ST 正则导出(JSON 数组): stRuleToScript, 与 stRegexToRules 互逆, 可导回 ST */
+window.exportStRegex = ()=>{
+const a = getRegexUI(RX_CTX.runId, RX_CTX.name);
+if(!a.length){ rpToast("没有可导出的正则规则"); return; }
+downloadJson("regex_st.json", a.map(stRuleToScript));
+rpToast(`已导出 ${a.length} 条正则 (ST 格式)`);
+};
 window.loreDel = (runId, i)=>{ if(!confirm("删除这条世界书？")) return; const a = getLore(runId); a.splice(i,1); saveLore(runId, a); renderLoreList(runId); };
+/* ST 世界书导出(JSON): RP_LOREBOOK.exportST 的逆操作, 可导回 ST */
+window.exportStLore = (runId)=>{
+if(typeof RP_LOREBOOK === "undefined" || !RP_LOREBOOK.exportST){ rpToast("世界书模块未加载"); return; }
+const a = getLore(runId);
+if(!a.length){ rpToast("没有可导出的世界书条目"); return; }
+downloadJson("lorebook_st.json", RP_LOREBOOK.exportST(a));
+rpToast(`已导出 ${a.length} 条世界书 (ST 格式)`);
+};
 window.loreForm = (runId, i)=>{
 __backAction = ()=>renderLoreList(runId);
 const _ll = getLore(runId);
@@ -631,7 +646,7 @@ titleEl.textContent = "正则替换"; subEl.textContent = (name? name+" · ":"")
 const arr = name ? getRegexUI(runId, name) : [];
 view.innerHTML = `<button class="back" onclick="regexGoBack()">${icon("back")} 返回</button>
 ${regexCharSel(runId, name)}
-<div class="btnrow" style="margin-bottom:10px"><button class="btn" onclick="importStRegex()">${icon("download")} 导入 ST 脚本</button><button class="btn" onclick="regexForm('${runId}','${name.replace(/'/g,"\\'")}')">${icon("plus")} 新增规则</button></div>
+<div class="btnrow" style="margin-bottom:10px"><button class="btn" onclick="importStRegex()">${icon("download")} 导入 ST 脚本</button><button class="btn ghost" onclick="exportStRegex()">导出 ST 脚本</button><button class="btn" onclick="regexForm('${runId}','${name.replace(/'/g,"\\'")}')">${icon("plus")} 新增规则</button></div>
 <div class="hint">AI 回复发出前按顺序执行：查找（正则）→ 替换为。如把"好的"替换成"好"，或统一口头禅。非法正则会被跳过。</div>
 ${arr.map((r,i)=>`
 <div class="card">${r.name?`<div class="kv" style="color:var(--gold)">${esc(r.name)}${r.flags&&r.flags!=="g"?` <span style="color:var(--ink-faint)">/${esc(r.flags)}</span>`:""}</div>`:""}<div class="name" style="font-size:13px">${esc(r.find||"")} <span style="color:var(--ink-faint)">→</span> ${esc(String(r.replace||"")).slice(0,60)}</div>
@@ -676,6 +691,23 @@ const list = Array.isArray(d) ? d : [d];
 const out = [];
 list.forEach(function(x){ const r = stRegexToRule(x); if(r) out.push(r); });
 return out;
+}
+/* 本机正则规则 -> ST 正则脚本 (stRegexToRule 的逆操作)。
+ * findRegex 写成 /find/flags 形式(ST 经典写法); placement 固定 [2](AI 输出,
+ * 本机正则只处理 AI 输出显示路径)。 */
+function stRuleToScript(r){
+r = r || {};
+return {scriptName: r.name || "novel-reader",
+findRegex: "/" + (r.find || "") + "/" + (r.flags || "g"),
+replaceString: r.replace != null ? r.replace : "",
+disabled: r.enabled === false,
+placement: [2],
+markdownOnly: !!r.markdownOnly,
+promptOnly: !!r.promptOnly,
+minDepth: (r.minDepth == null ? null : +r.minDepth),
+maxDepth: (r.maxDepth == null ? null : +r.maxDepth),
+trimStrings: Array.isArray(r.trimStrings) ? r.trimStrings : [],
+runOnEdit: !!r.runOnEdit};
 }
 window.importStRegex = ()=>{
 const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".json,application/json";
@@ -1111,6 +1143,7 @@ ${povChipsHTML()}
 <button class="ditem" onclick="toggleDrawer(false);exportChat()">&#x1F4E4; 复制聊天记录</button>
 <button class="ditem" onclick="toggleDrawer(false);showForeshadow()">${icon("book-open")} 伏笔面板</button>
 <button class="ditem" onclick="toggleDrawer(false);exportChatTxt()">${icon("download")} 导出聊天 TXT</button>
+<button class="ditem" onclick="toggleDrawer(false);exportChatJsonl()">${icon("download")} 导出 ST JSONL</button>
 <button class="ditem" onclick="toggleDrawer(false);importStChat()">${icon("upload")} 导入 ST 聊天记录</button>
 <button class="ditem danger" onclick="toggleDrawer(false);clearChat()">&#x1F5D1; 清空聊天记录</button>
 <h3>设置</h3>
@@ -1185,6 +1218,7 @@ ${povChipsHTML()}
 <button class="ditem" onclick="toggleDrawer(false);exportChat()">&#x1F4E4; 复制聊天记录</button>
 <button class="ditem" onclick="toggleDrawer(false);showForeshadow()">${icon("book-open")} 伏笔面板</button>
 <button class="ditem" onclick="toggleDrawer(false);exportChatTxt()">${icon("download")} 导出聊天 TXT</button>
+<button class="ditem" onclick="toggleDrawer(false);exportChatJsonl()">${icon("download")} 导出 ST JSONL</button>
 <button class="ditem danger" onclick="toggleDrawer(false);clearChat()">&#x1F5D1; 清空聊天记录</button>
 <h3>设置</h3>
 <button class="ditem" onclick="exitChatTo('settings')">&#x1F527; 大模型与 RP 设置</button>
@@ -1453,6 +1487,21 @@ document.body.appendChild(a); a.click();
 setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); }catch(e){} a.remove(); }, 800);
 }catch(e){ copyText(text); rpToast("下载失败, 已复制到剪贴板"); }
 }
+/* JSON 下载 (ST 制品导出用, 无 BOM) */
+function downloadJson(name, obj){
+downloadRaw(name, JSON.stringify(obj, null, 2), "application/json;charset=utf-8");
+}
+/* 原始文本下载 (无 BOM, JSONL 等用) */
+function downloadRaw(name, text, mime){
+try{
+const blob = new Blob([text], {type: mime || "text/plain;charset=utf-8"});
+const a = document.createElement("a");
+a.href = URL.createObjectURL(blob);
+a.download = name;
+document.body.appendChild(a); a.click();
+setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); }catch(e){} a.remove(); }, 800);
+}catch(e){ copyText(text); rpToast("下载失败, 已复制到剪贴板"); }
+}
 window.exportChatTxt = ()=>{
 const h = getHist(chatHistKey());
 if(!h.length){ rpToast("没有可导出的聊天记录"); return; }
@@ -1465,6 +1514,17 @@ return `[${ts}] ${who(m)}: ${m.content}`;
 const nm = CHAT.mode === "group" ? "群聊" : (CHAT.name || "聊天");
 downloadTxt(`${nm}_聊天记录.txt`, txt);
 rpToast(`已导出 ${h.length} 条`);
+};
+/* ST 聊天记录导出(JSONL): 与 stChatParse/stChatToEntries 互逆, 可导回 ST */
+window.exportChatJsonl = ()=>{
+const h = getHist(chatHistKey());
+if(!h.length){ rpToast("没有可导出的聊天记录"); return; }
+const p = (typeof RP_PERSONA !== "undefined") ? RP_PERSONA.getGlobal() : null;
+const meta = {userName: (p && p.name) || "User",
+  charName: CHAT.mode === "group" ? "群聊" : (CHAT.name || "")};
+const nm = CHAT.mode === "group" ? "群聊" : (CHAT.name || "聊天");
+downloadRaw(`${nm}_st.jsonl`, stEntriesToJsonl(h, meta), "application/jsonl");
+rpToast(`已导出 ${h.length} 条 (ST JSONL)`);
 };
 /* ST 聊天记录(JSONL) -> 本机消息条目。
  * ST 格式: 每行一个 JSON; 首行是会话元数据 {user_name, character_name, create_date, chat_metadata};
@@ -1500,6 +1560,35 @@ if(role === "assistant" && m.name) e.speaker = m.name;
 out.push(e);
 });
 return out;
+}
+/* ST send_date 格式: "January 27, 2026 2:32am" (am 前无空格, 与 ST 一致) */
+function stFormatDate(ts){
+const d = new Date(+ts || Date.now());
+const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+let h = d.getHours(); const ap = h >= 12 ? "pm" : "am"; h = h % 12; if(h === 0) h = 12;
+const mm = (d.getMinutes() < 10 ? "0" : "") + d.getMinutes();
+return months[d.getMonth()] + " " + d.getDate() + ", " + d.getFullYear() + " " + h + ":" + mm + ap;
+}
+/* 本机消息条目 -> ST 聊天记录 JSONL (stChatParse/stChatToEntries 的逆操作)。
+ * entries: [{role:'user'|'assistant'|'system', content, ts, speaker}];
+ * meta: {userName, charName}。首行写会话元数据, 其后每行一条消息。 */
+function stEntriesToJsonl(entries, meta){
+meta = meta || {};
+const userName = meta.userName || "User", charName = meta.charName || "";
+const lines = [JSON.stringify({user_name: userName, character_name: charName,
+create_date: stFormatDate((entries && entries[0] && entries[0].ts) || Date.now())})];
+(entries || []).forEach(function(e){
+if(!e || typeof e.content !== "string" || !e.content.trim()) return;
+const isUser = e.role === "user", isSys = e.role === "system";
+lines.push(JSON.stringify({
+name: isUser ? userName : (e.speaker || charName),
+is_user: isUser,
+is_system: isSys,
+send_date: stFormatDate(e.ts),
+mes: e.content
+}));
+});
+return lines.join("\n");
 }
 /* ST 聊天记录导入: 聊天页抽屉 -> 选 .jsonl -> 确认页(目标/追加或覆盖) -> 写入当前单人聊天 */
 let STCHAT_PENDING = null;
@@ -3897,6 +3986,7 @@ view.innerHTML = renderStorageCard() + `
 <div class="hint">导入 SillyTavern 导出的预设 JSON（如 MoM 类预设）。启用后，聊天 prompt 按预设的条目顺序组装；留空则用上面的经典组装。</div>
 <div class="btnrow"><button class="btn ghost" onclick="document.getElementById('stpreset_file').click()">导入完整 ST 预设</button>
 <button class="btn ghost" onclick="stPresetEntries()">管理条目</button>
+<button class="btn ghost" onclick="exportStPreset()">导出所选预设</button>
 <button class="btn ghost" onclick="delStPromptPreset()">删除所选预设</button>
 <input type="file" id="stpreset_file" accept=".json,application/json" style="display:none" onchange="importStPromptPreset(this)"></div></div>
 <div class="field"><label>上下文窗口（tokens，按模型填，如 8192/32768）</label>
@@ -4304,6 +4394,17 @@ RP_PRESET.remove(id);
 const rc = getRpCfg();
 if(rc.stPreset === id){ rc.stPreset = null; saveRpCfg(rc); }
 renderStPresetSel();
+};
+/* ST 预设导出(JSON): RP_PRESETEXPORT.exportPreset, 与 RP_PRESET.parseFile 互逆, 可导回 ST */
+window.exportStPreset = ()=>{
+const sel = document.getElementById("r_stpreset");
+const id = sel ? sel.value : "";
+if(!id || typeof RP_PRESET === "undefined" || typeof RP_PRESETEXPORT === "undefined"){
+  rpToast("请先在下拉框选择要导出的预设"); return; }
+const p = RP_PRESET.get(id);
+if(!p){ rpToast("预设不存在"); return; }
+downloadJson("preset_st_" + p.name + ".json", RP_PRESETEXPORT.exportPreset(p));
+rpToast(`已导出预设「${p.name}」(ST 格式)`);
 };
 /* v38: ST 预设逐条开关。条目列表页(分组标题+开关+点行进详情) */
 window.stPresetEntries = ()=>{

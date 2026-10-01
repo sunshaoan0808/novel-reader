@@ -100,5 +100,23 @@ const asrc = fs.readFileSync(WWW+"/app.js", "utf8");
 t("exportCard exists", asrc.indexOf("window.exportCard") >= 0);
 t("export button on card", asrc.indexOf("exportCard('${c.id}')") >= 0);
 
+// --- 导出->导入往返: buildTavernCard -> normalizeTavern, 关键字段不丢 ---
+const csrc = fs.readFileSync(WWW+"/rp/cardimport.js", "utf8");
+const cctx = {console};
+vm.createContext(cctx);
+vm.runInContext(csrc + "\n;globalThis.RP_CARDIMPORT = RP_CARDIMPORT;", cctx);
+const c2 = {name: "武松", novel: "水浒传", greeting: "洒家行不更名",
+  altGreetings: ["这厮好生无礼", "且吃洒家一拳"],
+  fields: {core_identity: "行者", appearance_feature: "身长八尺",
+    core_traits: "豪爽", speech_style: "直来直去",
+    typical_lines: ["第一句", "第二句"]}};
+const back2 = cctx.RP_CARDIMPORT.normalizeTavern(X.buildTavernCard(c2).data);
+t("rt name", back2.name === "武松");
+t("rt greeting", back2.greeting === "洒家行不更名");
+t("rt altGreetings", back2.altGreetings.join("|") === "这厮好生无礼|且吃洒家一拳");
+t("rt core_identity", (back2.fields.core_identity||"").indexOf("行者") >= 0
+  && (back2.fields.core_identity||"").indexOf("身长八尺") >= 0);
+t("rt core_traits", (back2.fields.core_traits||"").indexOf("豪爽") >= 0);
+
 console.log(`\ncardexport: ${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);

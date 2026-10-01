@@ -99,5 +99,33 @@ t("按顺序链式替换", run(`applyRegex("a", __seq)`) === "c");
 t("enabled=false 跳过", run(`applyRegex("c", __seq)`) === "c");
 t("空输入/空规则", run(`applyRegex("", __seq)`) === "" && run(`applyRegex("x", [])`) === "x");
 
+// ---- 9) 导出: stRuleToScript (stRegexToRule 的逆操作), 真实 NY 脚本往返 ----
+ctx.__rr = run(`stRegexToRules([__ny1, __ny2])`);
+t("NY 两脚本导入 2 条", ctx.__rr.length === 2);
+const __scripts = run(`__rr.map(stRuleToScript)`);
+t("导出为数组", Array.isArray(__scripts) && __scripts.length === 2);
+t("导出脚本含 ST 字段", __scripts.every(s=>
+  typeof s.scriptName === "string" && typeof s.findRegex === "string"
+  && typeof s.replaceString === "string" && Array.isArray(s.placement)));
+t("导出 findRegex 为 /re/flags 写法",
+  __scripts.every(s=> s.findRegex.indexOf("/") === 0));
+t("导出 placement 含 2", __scripts.every(s=> s.placement.indexOf(2) >= 0));
+ctx.__scripts = __scripts;
+const __back = run(`stRegexToRules(__scripts)`);
+t("往返规则一致", JSON.stringify(ctx.__rr) === JSON.stringify(__back));
+// 单条往返: 纯 promptOnly 规则字段保留
+const __po = run(`stRegexToRules(stRuleToScript({find:"x", replace:"y", flags:"g",
+  enabled:true, markdownOnly:false, promptOnly:true, minDepth:1, maxDepth:3,
+  trimStrings:["a"], runOnEdit:true, name:"n"}))`);
+t("promptOnly/深度/trim/runOnEdit 往返保留",
+  __po.length === 1 && __po[0].promptOnly === true && __po[0].minDepth === 1
+  && __po[0].maxDepth === 3 && __po[0].trimStrings[0] === "a"
+  && __po[0].runOnEdit === true && __po[0].name === "n");
+
+// ---- 10) 静态: 导出 UI 入口 ----
+const __asrc = fs.readFileSync(WWW+"/app.js", "utf8");
+t("导出 ST 脚本 button", __asrc.indexOf("exportStRegex()") >= 0);
+t("window.exportStRegex", __asrc.indexOf("window.exportStRegex") >= 0);
+
 console.log(`\n${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);

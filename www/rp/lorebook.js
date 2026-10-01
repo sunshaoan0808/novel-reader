@@ -385,6 +385,59 @@ function splitKeys(v){
   return a.map(trimStr).filter(Boolean);
 }
 
+  /* ST position 逆映射: 本机 placement/placementPosition -> ST position 字符串。
+ * 四种经典组合用 RisuAI 系字符串(本机导入可读回); scenario/exampleDialogs 是
+ * Janitor 系概念, ST 无对应, 用 "after_scenario"/"after_example_dialogs" 标记
+ * (ST 会忽略未知值, 本机重导入时经 placement 字段还原, 见 exportST)。 */
+function placementToStPosition(placement, placementPosition){
+  if(placement === "personality") return placementPosition === "before" ? "before_char" : "after_char";
+  if(placement === "scenario") return "after_scenario";
+  if(placement === "exampleDialogs") return "after_example_dialogs";
+  return placementPosition === "before" ? "before_an" : "after_an";
+}
+
+/* 本机条目 -> SillyTavern 世界书 JSON (importST 的逆操作)。
+ * 写 ST 经典 schema: {entries: {uid: {uid,key,keysecondary,comment,content,
+ * constant,selective,selectiveLogic,order,position,disable,probability,
+ * useProbability,depth,group,groupOverride,groupWeight,caseSensitive,
+ * matchWholeWords,extensions}}}。
+ * placement/placementPosition/depth 同时原样写出, 供本机重导入还原
+ * (ST 会忽略它不认识的顶层字段)。 */
+function exportST(list){
+  var entries = {};
+  (list || []).forEach(function(raw, i){
+    var e = normalize(raw, i);
+    var uid = str(e.id) || ("lore" + i);
+    var prob = (e.probability == null ? 100 : +e.probability);
+    var grp = (e.inclusionGroup || []).join(",");
+    entries[uid] = {
+      uid: uid,
+      key: e.key || [],
+      keysecondary: e.keysecondary || [],
+      comment: e.comment || "",
+      content: e.content || "",
+      constant: !!e.constant,
+      selective: (e.keysecondary || []).length > 0,
+      selectiveLogic: (e.selectiveLogic == null ? 0 : +e.selectiveLogic),
+      order: (e.priority == null ? (i + 1) : +e.priority),
+      position: placementToStPosition(e.placement, e.placementPosition),
+      disable: e.enabled === false,
+      probability: prob,
+      useProbability: prob < 100,
+      depth: (e.depth == null ? null : +e.depth),
+      group: grp,
+      groupOverride: !!e.prioritizeInclusion,
+      groupWeight: (e.groupWeight == null ? 100 : +e.groupWeight),
+      caseSensitive: !!e.case_sensitive,
+      matchWholeWords: !!e.matchWholeWords,
+      placement: e.placement || "default",
+      placementPosition: e.placementPosition || "after",
+      extensions: (e.extensions && typeof e.extensions === "object") ? e.extensions : {}
+    };
+  });
+  return {entries: entries};
+}
+
 return {
   SELECTIVE: SELECTIVE,
   SELECTIVE_NAMES: SELECTIVE_NAMES,
@@ -399,6 +452,7 @@ return {
   matchMessages: matchMessages,
   build: build,
   importST: importST,
+  exportST: exportST,
   estTokens: estTokens
 };
 })();
