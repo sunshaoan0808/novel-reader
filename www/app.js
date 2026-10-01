@@ -125,8 +125,9 @@ tabs.querySelectorAll("button").forEach(b=>
 b.addEventListener("click", ()=>setTab(b.dataset.tab)));
 
 function tagline(p){
-const m = p.md.match(/\*\*core_identity\*\*:\s*([^\n]+)/)
-|| p.md.match(/\*\*core_traits\*\*:\s*([^\n]+)/);
+/* 兼容两种档案格式: 红楼 `- **core_identity**: ...` / 水浒 `- core_identity: ...` */
+const m = p.md.match(/(?:\*\*)?core_identity(?:\*\*)?:\s*([^\n]+)/)
+|| p.md.match(/(?:\*\*)?core_traits(?:\*\*)?:\s*([^\n]+)/);
 return m ? m[1].trim().slice(0, 46) : "";
 }
 /* Janitor 式角色卡片网格 (v24) */

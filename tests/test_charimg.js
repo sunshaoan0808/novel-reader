@@ -17,7 +17,7 @@ const window = {};
 eval(fs.readFileSync(WWW + "/data/charimg.js", "utf8"));
 ok("CHARIMG 已定义", window.CHARIMG && typeof window.CHARIMG === "object");
 const keys = Object.keys(window.CHARIMG);
-ok("18 个人物全覆盖", keys.length === 18);
+ok("20 个人物全覆盖", keys.length === 20);
 
 // 2) data.js 里每个 run 的每个人物都有图
 const dataJs = fs.readFileSync(WWW + "/data.js", "utf8");

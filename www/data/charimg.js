@@ -21,5 +21,7 @@ window.CHARIMG = {
 "水浒传|杨志":"data/charimg/shuihu/yangzhi.jpg",
 "水浒传|林冲":"data/charimg/shuihu/linchong.jpg",
 "水浒传|武松":"data/charimg/shuihu/wusong.png",
-"水浒传|鲁智深":"data/charimg/shuihu/luzhishen.jpg"
+"水浒传|鲁智深":"data/charimg/shuihu/luzhishen.jpg",
+"水浒传|卢俊义":"data/charimg/shuihu/lujunyi.png",
+"水浒传|李逵":"data/charimg/shuihu/likui.png"
 };
