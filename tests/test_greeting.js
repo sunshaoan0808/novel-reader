@@ -57,7 +57,8 @@ const run = (ctx, code) => vm.runInContext(code, ctx);
     tags: ["测试世界"]};
   run(ctx, "var __c = RP_CARDIMPORT.normalizeTavern(" + JSON.stringify(tavern) + "); RP_CARDIMPORT.add(__c);");
   t("归一化保留 greeting", run(ctx, "__c.greeting") === "嗨！我是小红，今天想聊点什么？");
-  t("first_mes 仍在 typical_lines 首位(导出 roundtrip)", run(ctx, "__c.fields.typical_lines[0]") === "嗨！我是小红，今天想聊点什么？");
+  t("first_mes 不再塞进 typical_lines(开场场景≠典型台词)", run(ctx, "(__c.fields.typical_lines||[]).indexOf('嗨！我是小红，今天想聊点什么？')") === -1);
+  t("mes_example 台词仍进 typical_lines", run(ctx, "(__c.fields.typical_lines||[]).indexOf('你好呀！')") !== -1);
 
   /* 2) 聊天开场白: 无 key 也用卡片原开场白, 不再是"打量着你" */
   let g = await run(ctx, "RP.greeting('imported','小红',{},'测试世界')");

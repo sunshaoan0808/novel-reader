@@ -91,7 +91,9 @@ function normalizeTavern(d){
   if(d.description) fields.core_identity = String(d.description).trim();
   if(d.personality) fields.core_traits = String(d.personality).trim();
   var lines = [];
-  if(d.first_mes) lines.push(String(d.first_mes).trim());
+  /* first_mes 不再塞进 typical_lines: 它是开场场景原文(常数千字), 不是"典型台词",
+     进了 typical_lines 会污染【说话方式】并被 buildExamples 配上假 opener 生成误导性 few-shot。
+     开场白走独立 greeting 字段。 */
   exampleLines(d.mes_example, name).forEach(function(l){
     if(l && lines.indexOf(l) < 0) lines.push(l);
   });

@@ -128,6 +128,8 @@ bg = "世界设定：" + (card.scenario || f.core_identity || "（卡片未写�
 loreEntries = (card.worldbook || []).filter(function(e){ return e.enabled!== false;});
 /* 卡片原开场白: 开场生成时作为情境参考 */
 greeting = card.greeting || "";
+/* ST 宏替换: 卡片 description 常带 {{char}}/{{user}} */
+if(bg && typeof RP_PROMPT !== "undefined" && RP_PROMPT.subMacros) bg = RP_PROMPT.subMacros(bg, card.name, "");
 }
 }
 /* P1: 用户已确认的 AI 世界补完（nd_wb2_），与原文合并，补完部分自带来源标注 */
@@ -229,6 +231,7 @@ var ref = "";
 if(typeof RP_PROMPT!== "undefined"){
 ref = RP_PROMPT.renderFields(card, ["core_identity", "gender", "age_stage",
 "core_traits", "speech_style", "signature_phrases", "taboo_topics"]);
+if(ref && typeof RP_PROMPT.subMacros === "function") ref = RP_PROMPT.subMacros(ref, card.name, "");
 }
 return "「你的身份」你是" + trav.charName + "，玩家本人正在扮演 TA。\n" +
 (ref? "人设参考：\n" + ref + "\n": "") +

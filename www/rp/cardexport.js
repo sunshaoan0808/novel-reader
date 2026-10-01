@@ -35,7 +35,7 @@ function buildTavernCard(c){
       description: desc,
       personality: pers.join("\n"),
       scenario: "",
-      first_mes: lines[0] || "",
+      first_mes: ((c && c.greeting) || lines[0] || ""),
       mes_example: lines.slice(1).map(function(q){
         return "<START>\n{{user}}: ...\n{{char}}: " + q;
       }).join("\n"),

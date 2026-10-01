@@ -66,6 +66,16 @@ function estTokens(s){
   return Math.ceil(zh * 1.6 + en * 1.3 + rest * 0.5);
 }
 
+/* ST 宏替换: {{char}}->角色名, {{user}}->玩家名(无则"你"); 大小写/空格容忍, 全局替换 */
+function subMacros(text, charName, userName){
+  var s = String(text == null ? "" : text);
+  var cn = String(charName || "");
+  var un = String(userName || "你");
+  s = s.replace(/{{\s*char\s*\d*\s*}}/gi, cn);
+  s = s.replace(/{{\s*user\s*}}/gi, un);
+  return s;
+}
+
 function renderFields(card, names){
   var out = [];
   names.forEach(function(n){
@@ -92,7 +102,11 @@ function itemsOf(card, name){
 
 /* P0-4: few-shot 对话示例, 从 typical_lines 生成; P1-2: 卡片自带 example_dialogue 追加拼入 */
 function buildExamples(card, name, budgetTokens){
-  var lines = itemsOf(card, "typical_lines").slice(0, 3);
+  var greet = String((card && card.greeting) || "").trim();
+  var lines = itemsOf(card, "typical_lines").filter(function(l){
+    /* 开场白原文/超长场景文本不是"台词", 不适合做 few-shot(兼容已导入的旧卡) */
+    return l && l !== greet && l.length <= 400;
+  }).slice(0, 3);
   var extra = String((card && card.exampleDialogue) || "").trim();
   if(!lines.length && !extra) return "";
   var openers = [
@@ -299,7 +313,8 @@ function buildMessages(card, ctx, budget){
   add("arc", ctx.arc ? "【人物弧光】\n" + ctx.arc : "");
   add("speech", "【说话方式】\n" + renderFields(card, LAYERS.speech));
   add("examples", buildExamples(card, name, 600) + lorePlacedText(loreRes, "examples"));
-  add("background", "【背景】\n" + renderFields(card, LAYERS.background) + lorePlacedText(loreRes, "background"));
+  add("background", "【背景】\n" + renderFields(card, LAYERS.background) +
+    (card.scenario ? "\n世界设定：" + String(card.scenario).trim() : "") + lorePlacedText(loreRes, "background"));
   var rel = pickRelations(ctx.relations, name);
   add("relations", rel ? "【人物关系】\n" + rel : "");
   add("lore", loreRes.text);
@@ -326,6 +341,8 @@ function buildMessages(card, ctx, budget){
   }
 
   var sysText = sysParts.join("\n\n");
+  /* ST 宏全局替换(酒馆卡 description/personality 常带 {{char}}/{{user}}, 不替换模型看到字面宏) */
+  sysText = subMacros(sysText, name, ctx.personaName);
   if(ctx.concise) sysText += "\n\n" + CONCISE_INSTR; /* #15 简洁回复指令 */
   var messages = [{role: "system", content: sysText}];
   for(var k = 0; k < hist.length; k++) messages.push(hist[k]);
@@ -346,6 +363,6 @@ return {
   buildMessages: buildMessages, postInstructions: postInstructions, PRESETS: PRESETS,
   estTokens: estTokens, renderFields: renderFields, LAYERS: LAYERS, matchLore: matchLore,
   buildLore: buildLore, LABELS: LABELS, buildExamples: buildExamples,
-  CONCISE_INSTR: CONCISE_INSTR,
+  CONCISE_INSTR: CONCISE_INSTR, subMacros: subMacros,
 };
 })();

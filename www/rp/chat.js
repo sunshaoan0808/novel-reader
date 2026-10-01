@@ -387,6 +387,7 @@ async function send(runId, name, text, opts){
     arc: arcText,
     history: mapHistory(h),
     persona: RP_PERSONA.renderText(RP_PERSONA.resolve(runId)),
+    personaName: (function(){ try{ var p = RP_PERSONA.resolve(runId); return (p && p.name) || ""; }catch(e){ return ""; } })(),
     pov: opts.pov, person: opts.person,
     concise: !!opts.concise, /* Tier2 #15 简洁回复开关 */
   }, budget);
@@ -633,6 +634,7 @@ async function genOneSpeaker(runId, run, members, speaker, text, h, opts, budget
     arc: arcTextSpk,
     history: mapHistory(h),
     persona: RP_PERSONA.renderText(RP_PERSONA.resolve(runId)),
+    personaName: (function(){ try{ var p = RP_PERSONA.resolve(runId); return (p && p.name) || ""; }catch(e){ return ""; } })(),
     pov: opts.pov, person: opts.person,
     concise: !!opts.concise, /* Tier2 #15 简洁回复开关 */
   }, budget);
