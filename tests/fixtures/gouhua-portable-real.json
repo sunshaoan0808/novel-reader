@@ -1,0 +1,144 @@
+{
+ "format": "st-sevendayscal-portable",
+ "version": 1,
+ "exportedAt": "2026-10-01T07:19:28.147Z",
+ "selectedModules": [
+  "points",
+  "lines",
+  "outline",
+  "space",
+  "calendar",
+  "theater"
+ ],
+ "modules": {
+  "points": {
+   "entries": {
+    "schedule-user": {
+     "raw": "周一：晨练；周二：与林黛玉游园",
+     "userName": "宝玉",
+     "ts": 1727745600000
+    },
+    "schedule-char-林黛玉": {
+     "raw": "黛玉：周三抚琴",
+     "userName": "",
+     "ts": 1727745600000
+    },
+    "charnames-recent": [
+     "林黛玉",
+     "薛宝钗"
+    ],
+    "char-pins": [
+     "林黛玉"
+    ]
+   }
+  },
+  "lines": {
+   "entries": {
+    "lines-user": {
+     "raw": "第一回：甄士隐梦幻识通灵",
+     "ts": 1727745600000
+    },
+    "dashed-user": {
+     "items": [
+      {
+       "id": "d1",
+       "text": "冷知识：通灵宝玉正面刻字",
+       "createdAt": 1727745600000,
+       "locked": false
+      }
+     ],
+     "ts": 1727745600000
+    }
+   }
+  },
+  "outline": {
+   "entries": {
+    "outline-user": {
+     "raw": "大纲：宝黛初会",
+     "ts": 1727745600000
+    },
+    "creative-chat-user": [
+     {
+      "role": "user",
+      "content": "这个大纲节奏如何？"
+     },
+     {
+      "role": "assistant",
+      "content": "节奏偏快，建议加铺垫"
+     }
+    ]
+   }
+  },
+  "space": {
+   "entries": {
+    "space-chat-user": [
+     {
+      "role": "user",
+      "content": "（出戏）今天写得不错"
+     },
+     {
+      "role": "assistant",
+      "content": "谢谢！"
+     }
+    ]
+   }
+  },
+  "calendar": {
+   "entries": {
+    "almanac-user": {
+     "items": [
+      {
+       "id": "a1",
+       "name": "元宵",
+       "type": "festival",
+       "month": 1,
+       "day": 15,
+       "days": 1,
+       "displayDate": "",
+       "note": "吃元宵",
+       "pin": false,
+       "source": "user"
+      },
+      {
+       "id": "a2",
+       "name": "黛玉生辰",
+       "type": "birthday",
+       "month": 2,
+       "day": 12,
+       "days": 1,
+       "displayDate": "",
+       "note": "",
+       "pin": true,
+       "source": "user"
+      }
+     ],
+     "ts": 1727745600000
+    },
+    "caldesc-user": {
+     "raw": "大观园历法：一年十二月，每月三十天",
+     "ts": 1727745600000
+    },
+    "date-anchor-user": {
+     "raw": "当前：三月初三",
+     "ts": 1727745600000
+    }
+   }
+  },
+  "theater": {
+   "saved": [
+    {
+     "id": "t1",
+     "title": "葬花",
+     "script": "黛玉葬花词……",
+     "createdAt": 1727745600000
+    },
+    {
+     "id": "t2",
+     "title": "夜宴",
+     "content": "众人夜宴大观园",
+     "createdAt": 1727745600000
+    }
+   ]
+  }
+ }
+}

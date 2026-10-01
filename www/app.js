@@ -1145,6 +1145,7 @@ ${povChipsHTML()}
 <button class="ditem" onclick="toggleDrawer(false);exportChatTxt()">${icon("download")} 导出聊天 TXT</button>
 <button class="ditem" onclick="toggleDrawer(false);exportChatJsonl()">${icon("download")} 导出 ST JSONL</button>
 <button class="ditem" onclick="toggleDrawer(false);importStChat()">${icon("upload")} 导入 ST 聊天记录</button>
+<button class="ditem" onclick="toggleDrawer(false);importGouhua()">${icon("upload")} 导入构画便携包</button>
 <button class="ditem danger" onclick="toggleDrawer(false);clearChat()">&#x1F5D1; 清空聊天记录</button>
 <h3>设置</h3>
 <button class="ditem" onclick="exitChatTo('settings')">&#x1F527; 大模型与 RP 设置</button>
@@ -1521,7 +1522,8 @@ const h = getHist(chatHistKey());
 if(!h.length){ rpToast("没有可导出的聊天记录"); return; }
 const p = (typeof RP_PERSONA !== "undefined") ? RP_PERSONA.getGlobal() : null;
 const meta = {userName: (p && p.name) || "User",
-  charName: CHAT.mode === "group" ? "群聊" : (CHAT.name || "")};
+  charName: CHAT.mode === "group" ? "群聊" : (CHAT.name || ""),
+  chatMeta: getStChatMeta()};
 const nm = CHAT.mode === "group" ? "群聊" : (CHAT.name || "聊天");
 downloadRaw(`${nm}_st.jsonl`, stEntriesToJsonl(h, meta), "application/jsonl");
 rpToast(`已导出 ${h.length} 条 (ST JSONL)`);
@@ -1531,7 +1533,8 @@ rpToast(`已导出 ${h.length} 条 (ST JSONL)`);
  * 消息行 {name, is_user, is_system, send_date, mes, extra, ...}。
  * 映射: is_user->user, is_system->system(进 prompt 时仍是 system, 忠实),
  * 其它->assistant(保留 speaker=name); send_date 解析失败回退 Date.now();
- * 空 mes 跳过; swipe 变体等 extra 字段暂不导入。 */
+ * 空 mes 跳过; extra 字段(如构画 gouhua_snapshot、swipe 变体)原样保留进条目 stExtra,
+ * 导出时写回; 首行 chat_metadata 按聊天另存, 覆盖导入时替换、导出时写回。 */
 function stChatParse(text){
 const lines = String(text || "").split("\n");
 const raw = [];
@@ -1553,6 +1556,12 @@ parsed.msgs.forEach(function(m){
 if(!m || typeof m.mes !== "string" || !m.mes.trim()) return;
 const role = m.is_user ? "user" : (m.is_system ? "system" : "assistant");
 const e = {role: role, content: m.mes};
+/* ST 扩展数据透传: message.extra(如构画 gouhua_snapshot、swipe 变体)原样保留,
+ * 导出时写回, 经本机一进一出不丢失。 */
+if(m.extra && typeof m.extra === "object"){
+try{ const ex = JSON.parse(JSON.stringify(m.extra));
+if(ex && Object.keys(ex).length) e.stExtra = ex; }catch(_){}
+}
 /* ST 的 send_date 如 "January 27, 2026 2:32am"(am 前无空格) Date.parse 吃不下，先规范化 */
 let sd = String(m.send_date || "").replace(/(\d)(am|pm)\s*$/i, "$1 $2");
 let ts = Date.parse(sd); e.ts = isNaN(ts) ? Date.now() : ts;
@@ -1575,21 +1584,38 @@ return months[d.getMonth()] + " " + d.getDate() + ", " + d.getFullYear() + " " +
 function stEntriesToJsonl(entries, meta){
 meta = meta || {};
 const userName = meta.userName || "User", charName = meta.charName || "";
-const lines = [JSON.stringify({user_name: userName, character_name: charName,
-create_date: stFormatDate((entries && entries[0] && entries[0].ts) || Date.now())})];
+const first = {user_name: userName, character_name: charName,
+create_date: stFormatDate((entries && entries[0] && entries[0].ts) || Date.now())};
+/* 扩展数据透传: 首行 chat_metadata(如构画 sp-store/sp-memory/sp-theater/sp-ledger)原样写回 */
+if(meta.chatMeta && typeof meta.chatMeta === "object" && Object.keys(meta.chatMeta).length)
+first.chat_metadata = meta.chatMeta;
+const lines = [JSON.stringify(first)];
 (entries || []).forEach(function(e){
 if(!e || typeof e.content !== "string" || !e.content.trim()) return;
 const isUser = e.role === "user", isSys = e.role === "system";
-lines.push(JSON.stringify({
+const line = {
 name: isUser ? userName : (e.speaker || charName),
 is_user: isUser,
 is_system: isSys,
 send_date: stFormatDate(e.ts),
 mes: e.content
-}));
+};
+/* 扩展数据透传: 消息级 extra(如 gouhua_snapshot)原样写回 */
+if(e.stExtra && typeof e.stExtra === "object" && Object.keys(e.stExtra).length)
+line.extra = e.stExtra;
+lines.push(JSON.stringify(line));
 });
 return lines.join("\n");
 }
+/* ST 扩展数据透传(chat_metadata): 构画等扩展把点线面间数据存在首行 chat_metadata
+ * (sp-store/sp-memory/sp-theater/sp-ledger)。导入时按聊天存下, 导出时原样写回。
+ * 只透传不解析, 不进 prompt, 不在 UI 展示。 */
+const stChatMetaKey = ()=> "nd_stmeta_" + chatHistKey();
+function getStChatMeta(){ try{ return JSON.parse(localStorage.getItem(stChatMetaKey())) || null; }catch(e){ return null; } }
+function setStChatMeta(o){ try{
+if(o && typeof o === "object" && Object.keys(o).length) localStorage.setItem(stChatMetaKey(), JSON.stringify(o));
+else localStorage.removeItem(stChatMetaKey());
+}catch(e){} }
 /* ST 聊天记录导入: 聊天页抽屉 -> 选 .jsonl -> 确认页(目标/追加或覆盖) -> 写入当前单人聊天 */
 let STCHAT_PENDING = null;
 window.importStChat = ()=>{
@@ -1627,17 +1653,24 @@ const nUser = p.entries.filter(e=>e.role === "user").length;
 const nAsst = p.entries.filter(e=>e.role === "assistant").length;
 const nSys = p.entries.filter(e=>e.role === "system").length;
 const mismatch = charName && charName !== CHAT.name;
+/* 扩展数据透传提示: 首行 chat_metadata(如构画点线面间)与消息 extra(如楼层快照) */
+const chatMetaKeys = meta.chat_metadata && typeof meta.chat_metadata === "object"
+? Object.keys(meta.chat_metadata) : [];
+const hasChatMeta = chatMetaKeys.length > 0;
+const nExtra = p.entries.filter(e=>e.stExtra).length;
 subEl.textContent = p.file;
 view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回聊天</button>
 <div class="card"><div class="kv">文件角色</div><div class="name">${esc(charName || "未知")}</div>
 <div class="meta">玩家: ${esc(userName || "未知")}${range ? ` · ${esc(range)}` : ""}</div>
-<div class="meta">共 ${n} 条消息（我 ${nUser} / AI ${nAsst}${nSys ? ` / 系统 ${nSys}` : ""}）</div></div>
+<div class="meta">共 ${n} 条消息（我 ${nUser} / AI ${nAsst}${nSys ? ` / 系统 ${nSys}` : ""}）</div>
+${hasChatMeta ? `<div class="meta">含 ST 扩展数据（chat_metadata: ${esc(chatMetaKeys.slice(0,4).join("、"))}${chatMetaKeys.length>4?"…":""}），覆盖导入时会一并保留</div>` : ""}
+${nExtra ? `<div class="meta">${nExtra} 条消息含 extra 扩展数据（如楼层快照），将保留并在导出时写回</div>` : ""}</div>
 <div class="card"><div class="kv">导入到</div><div class="name">${esc(CHAT.name)}</div>
 <div class="meta">当前单人聊天${mismatch ? ` · <span style="color:var(--danger)">文件中角色名「${esc(charName)}」与当前角色不一致，仍可导入</span>` : ""}</div></div>
 <div class="field"><label>导入方式</label>
 <label style="display:block;margin:6px 0"><input type="radio" name="stchat_mode" value="append" checked style="width:auto"> 追加到现有记录后面</label>
 <label style="display:block;margin:6px 0"><input type="radio" name="stchat_mode" value="replace" style="width:auto"> 覆盖（清空当前聊天记录）</label></div>
-<div class="meta" style="margin-bottom:10px">聊天记录最多保留 80 条，超出部分只保留最新的 80 条；swipe 变体等多轮回复只导入当前显示的一条。</div>
+<div class="meta" style="margin-bottom:10px">聊天记录最多保留 80 条，超出部分只保留最新的 80 条；swipe 变体等多轮回复只导入当前显示的一条；消息的 extra 扩展数据会一并保留，导出时写回。</div>
 <button class="btn primary" onclick="doStChatImport()">开始导入</button>`;
 }
 window.doStChatImport = ()=>{
@@ -1648,8 +1681,70 @@ const k = chatHistKey();
 const cur = mode === "append" ? getHist(k) : [];
 const merged = cur.concat(p.entries);
 saveHist(k, merged);
+/* 扩展数据透传: 覆盖模式连首行 chat_metadata 一起换(构画点线面间数据跟聊天走);
+ * 追加模式保留当前聊天的, 只带走消息级 extra。 */
+if(mode === "replace"){
+const cm = p.parsed.meta && p.parsed.meta.chat_metadata;
+setStChatMeta(cm && typeof cm === "object" ? cm : null);
+}
 STCHAT_PENDING = null;
 rpToast(`已导入 ${p.entries.length} 条`);
+showChat();
+};
+/* 构画便携包导入: 聊天页抽屉 -> 选 .json -> 确认页(模块清单/映射预览) -> 世界书+当前聊天
+ * 模块映射(见 RP_GOUHUA): 点/线/面(大纲)/历/棱 -> 世界书条目; 间/面讨论 -> 聊天消息。
+ * 只做数据吸收, 不解释构画功能; 世界书条目走既有 lorebook 存储, 照常参与触发。 */
+let GOUHUA_PENDING = null;
+window.importGouhua = ()=>{
+if(CHAT.mode !== "single" || !CHAT.name){ alert("请先打开一个单人聊天再导入"); return; }
+if(typeof RP_GOUHUA === "undefined" || !RP_GOUHUA.parsePortable){ rpToast("构画模块未加载"); return; }
+const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".json,application/json";
+inp.onchange = ()=>{
+const f = inp.files[0]; if(!f) return;
+const rd = new FileReader();
+rd.onload = ()=>{
+const r = RP_GOUHUA.parsePortable(rd.result);
+if(!r.ok){ alert("解析失败: " + r.message); return; }
+GOUHUA_PENDING = {pkg: r.pkg, file: f.name};
+gouhuaConfirm();
+};
+rd.readAsText(f);
+};
+inp.click();
+};
+function gouhuaConfirm(){
+const p = GOUHUA_PENDING; if(!p) return;
+__backAction = ()=>showChat();
+document.body.classList.remove("chatmode");
+titleEl.innerHTML = icon("upload") + " 导入构画便携包";
+subEl.textContent = p.file;
+const rows = RP_GOUHUA.summarize(p.pkg);
+const nLore = rows.reduce((a,r)=>a+r.lore, 0), nChat = rows.reduce((a,r)=>a+r.chat, 0);
+view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回聊天</button>
+<div class="card"><div class="kv">数据包</div><div class="name">${esc(p.file)}</div>
+<div class="meta">构画便携包 v${p.pkg.version}${p.pkg.exportedAt ? " · " + esc(p.pkg.exportedAt.slice(0,10)) : ""}</div>
+<div class="meta">共 ${rows.length} 个模块 → 世界书 ${nLore} 条${nChat ? " + 聊天 " + nChat + " 条" : ""}</div></div>
+<div class="card"><div class="kv">模块映射</div>
+${rows.map(r=>`<div class="meta" style="margin:4px 0">· ${esc(r.label)} → ${esc(r.target)}</div>`).join("")}
+<div class="meta" style="margin-top:8px">导入到：世界书（${esc(CHAT.name)} 所在世界）${nChat ? "＋当前聊天" : ""}</div></div>
+<div class="meta" style="margin-bottom:10px">点/线/面(大纲)/历/棱进入世界书参与关键词触发；间(局外聊天)与面讨论追加到当前聊天记录后面。</div>
+<button class="btn primary" onclick="doGouhuaImport()">开始导入</button>`;
+}
+window.doGouhuaImport = ()=>{
+const p = GOUHUA_PENDING; if(!p) return;
+const loreEntries = RP_GOUHUA.toLoreEntries(p.pkg);
+const chatEntries = RP_GOUHUA.toChatEntries(p.pkg);
+if(loreEntries.length && CHAT.runId){
+const a = getLore(CHAT.runId);
+loreEntries.forEach(e=>a.push(e));
+saveLore(CHAT.runId, a);
+}
+if(chatEntries.length){
+const k = chatHistKey();
+saveHist(k, getHist(k).concat(chatEntries));
+}
+GOUHUA_PENDING = null;
+rpToast(`已导入构画数据：世界书 ${loreEntries.length} 条，聊天 ${chatEntries.length} 条`);
 showChat();
 };
 function copyText(t){
