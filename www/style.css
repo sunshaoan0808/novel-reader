@@ -96,6 +96,20 @@ body{
 .btnrow{display:flex; gap:10px; margin:14px 0; flex-wrap:wrap;}
 .btnrow .btn{flex:1; padding:10px 8px; font-size:13px;}
 
+/* ST 预设条目开关(大触控区) */
+.pswitch{flex:none; width:66px; height:42px; border-radius:999px; border:1px solid var(--line);
+  background:#2a241d; position:relative; cursor:pointer; padding:0;}
+.pswitch::after{content:""; position:absolute; top:5px; left:6px; width:30px; height:30px;
+  border-radius:50%; background:#8a7a5c; transition:left .15s;}
+.pswitch.on{background:rgba(212,162,78,.35); border-color:var(--gold-deep);}
+.pswitch.on::after{left:28px; background:var(--gold);}
+.spname{font-size:15px; font-weight:600; overflow-wrap:anywhere;}
+.spname .badge{margin:2px 0 2px 6px;}
+.spdetail{white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.7;
+  background:rgba(0,0,0,.25); border:1px solid var(--line); border-radius:8px;
+  padding:12px; margin-top:10px; max-height:60vh; overflow-y:auto;}
+.spgrp{font-size:13px; color:var(--gold-soft); margin:18px 0 8px; font-weight:700;}
+
 /* 表单 */
 .field{margin:14px 0;}
 .field label{display:block; font-size:12px; color:var(--ink-faint); letter-spacing:.08em; margin-bottom:7px;}

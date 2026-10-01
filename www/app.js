@@ -3776,7 +3776,8 @@ view.innerHTML = renderStorageCard() + `
 <div class="field"><label>${icon("books",15)} 酒馆预设（ST 预设导入，控制整套 prompt 的组装顺序与指令）</label>
 <select id="r_stpreset"></select>
 <div class="hint">导入 SillyTavern 导出的预设 JSON（如 MoM 类预设）。启用后，聊天 prompt 按预设的条目顺序组装；留空则用上面的经典组装。</div>
-<div class="btnrow"><button class="btn ghost" onclick="document.getElementById('stpreset_file').click()">导入预设 JSON</button>
+<div class="btnrow"><button class="btn ghost" onclick="document.getElementById('stpreset_file').click()">导入完整 ST 预设</button>
+<button class="btn ghost" onclick="stPresetEntries()">管理条目</button>
 <button class="btn ghost" onclick="delStPromptPreset()">删除所选预设</button>
 <input type="file" id="stpreset_file" accept=".json,application/json" style="display:none" onchange="importStPromptPreset(this)"></div></div>
 <div class="field"><label>上下文窗口（tokens，按模型填，如 8192/32768）</label>
@@ -3820,7 +3821,7 @@ view.innerHTML = renderStorageCard() + `
 <select id="r_ppa_mode"><option value="off">关闭</option><option value="key">关键轮触发（默认）</option><option value="always">每轮都跑</option></select></div>
 <div class="field"><label>二遍对齐模型（留空=用摘要模型，再空=用主模型，建议填便宜小模型）</label>
 <input id="r_ppa_model" placeholder="留空跟随" value=""></div>
-<div class="btnrow"><button class="btn" onclick="saveRpCfgUI()">保存 RP 设置</button><button class="btn ghost" onclick="importStPreset()">${icon("download")} 导入 ST 预设(采样参数)</button></div>
+<div class="btnrow"><button class="btn" onclick="saveRpCfgUI()">保存 RP 设置</button><button class="btn ghost" onclick="importStPreset()">${icon("download")} 仅导入采样参数</button></div>
 <div class="hint">每 N 条消息，引擎自动整理一次记忆：LeanMem 三库分流（画像库 / 事件库 / 记录库）+ 当前心境（1 次模型调用），存在本机；关闭三库记忆则回退为三池旧行为。</div>
 <div class="hint">Key 只保存在本机, 聊天时由手机直接请求你填的接口, 不经过任何中转。
 免费/便宜的兼容接口 (如硅基流动、DeepSeek) 都可以直接填。</div>
@@ -4145,7 +4146,8 @@ if(!sel || typeof RP_PRESET === "undefined") return;
 const cur = getRpCfg().stPreset || "";
 let html = `<option value="">不使用（经典组装）</option>`;
 RP_PRESET.list().forEach(p=>{
-html += `<option value="${p.id}" ${p.id===cur?"selected":""}>${esc(p.name)}（${p.prompts.length} 条）</option>`;
+const n = (p.prompts||[]).length, on = (p.prompts||[]).filter(e=>e && e.enabled!==false).length;
+html += `<option value="${p.id}" ${p.id===cur?"selected":""}>${esc(p.name)}（${on}/${n} 启用）</option>`;
 });
 sel.innerHTML = html;
 }
@@ -4164,10 +4166,12 @@ return;
 RP_PRESET.save(r.preset);
 const rc = getRpCfg(); rc.stPreset = r.preset.id; saveRpCfg(rc);
 renderStPresetSel();
-const n = r.preset.prompts.filter(p=>!p.marker).length;
-alert("已导入预设「" + r.preset.name + "」：" + n + " 条指令，" +
-  r.preset.prompts.filter(p=>p.marker).length + " 个定位标记。" +
-  (r.preset.params.temperature != null ? "采样温度 " + r.preset.params.temperature + " 将在保存设置时应用。" : ""));
+const all = r.preset.prompts, on = all.filter(p=>p.enabled!==false).length;
+const mk = all.filter(p=>p.marker).length;
+alert("已导入预设「" + r.preset.name + "」：" + all.length + " 条（" + on + " 启用），" +
+  mk + " 个定位标记。" +
+  (r.preset.params.temperature != null ? "采样温度 " + r.preset.params.temperature + " 将在保存设置时应用。" : "") +
+  "可在「管理条目」里逐条开关。");
 };
 rd.readAsText(f);
 };
@@ -4181,6 +4185,76 @@ RP_PRESET.remove(id);
 const rc = getRpCfg();
 if(rc.stPreset === id){ rc.stPreset = null; saveRpCfg(rc); }
 renderStPresetSel();
+};
+/* v38: ST 预设逐条开关。条目列表页(分组标题+开关+点行进详情) */
+window.stPresetEntries = ()=>{
+if(typeof RP_PRESET === "undefined") return;
+const sel = document.getElementById("r_stpreset");
+const id = sel ? sel.value : "";
+if(!id){ alert("请先在下拉框选择一个已导入的预设。"); return; }
+renderStPresetEntries(id);
+};
+function stPresetEntryBadges(e){
+let b = `<span class="badge">${e.marker ? "定位标记" : esc(e.role)}</span>`;
+const id = String(e.identifier || "");
+/* UUID 式 identifier 无信息量, 只在详情页展示 */
+if(id && (e.marker || !/^[0-9a-f-]{8,}$/i.test(id))) b += `<span class="badge">${esc(id)}</span>`;
+if(e.enabled === false) b += `<span class="badge">停用</span>`;
+return b;
+}
+function renderStPresetEntries(pid){
+__backAction = ()=>{ setNav("settings"); };
+const p = RP_PRESET.get(pid);
+if(!p){ setNav("settings"); return; }
+const total = p.prompts.length, on = p.prompts.filter(e=>e.enabled!==false).length;
+let html = `<button class="back" onclick="setNav('settings')">${icon("back")} 返回设置</button>
+<h2 style="margin:6px 0">${esc(p.name)}</h2>
+<div class="hint">${total} 条目，${on} 启用 · 点行查看详情，右侧开关逐条启用/停用（停用条目不参与 prompt 组装）</div>`;
+let lastGroup = "\0";
+p.prompts.forEach((e, i)=>{
+const g = e.group || "";
+if(g && g !== lastGroup){ html += `<div class="spgrp">${esc(g)}</div>`; }
+lastGroup = g;
+const en = e.enabled !== false;
+const preview = String(e.content || "").replace(/\s+/g, " ").slice(0, 60);
+html += `<div class="card" style="padding:12px 14px" onclick="stPresetEntryDetail('${pid}',${i})"><div class="row"><div style="flex:1;min-width:0">`
++ `<div class="spname">${esc(e.name)}${stPresetEntryBadges(e)}</div>`
++ (preview ? `<div class="meta">${esc(preview)}…</div>` : `<div class="meta">（空内容）</div>`)
++ `</div><button class="pswitch${en ? " on" : ""}" aria-label="启用开关" onclick="event.stopPropagation();stPresetToggleEntry('${pid}',${i})"></button>`
++ `</div></div>`;
+});
+view.innerHTML = html;
+window.scrollTo(0, 0);
+}
+window.stPresetToggleEntry = (pid, i)=>{
+const p = RP_PRESET.get(pid);
+if(!p || !p.prompts[i]) return;
+p.prompts[i].enabled = p.prompts[i].enabled === false ? true : false;
+RP_PRESET.save(p);
+renderStPresetSel();
+renderStPresetEntries(pid);
+};
+/* 条目详情页: 全文内容 + 开关 */
+window.stPresetEntryDetail = (pid, i)=>{
+const p = RP_PRESET.get(pid), e = p && p.prompts[i];
+if(!e) return;
+__backAction = ()=>renderStPresetEntries(pid);
+const en = e.enabled !== false;
+view.innerHTML = `<button class="back" onclick="renderStPresetEntries('${pid}')">${icon("back")} 返回条目</button>
+<div class="card"><div class="row"><div style="flex:1;min-width:0">
+<div class="spname">${esc(e.name)}</div>
+<div class="meta">${e.marker ? "定位标记" : "普通条目"} · role=${esc(e.role)}${e.identifier ? " · " + esc(e.identifier) : ""}${e.group ? " · 分组:" + esc(e.group) : ""} · 顺序 #${(e.pos == null ? i : e.pos) + 1}</div>
+</div><button class="pswitch${en ? " on" : ""}" aria-label="启用开关" onclick="stPresetToggleEntryDetail('${pid}',${i})"></button></div>
+<div class="spdetail">${esc(e.content) || "（空内容）"}</div></div>`;
+window.scrollTo(0, 0);
+};
+window.stPresetToggleEntryDetail = (pid, i)=>{
+const p = RP_PRESET.get(pid);
+if(!p || !p.prompts[i]) return;
+p.prompts[i].enabled = p.prompts[i].enabled === false ? true : false;
+RP_PRESET.save(p);
+renderStPresetSel();
+stPresetEntryDetail(pid, i);
 };
 function stPresetToCfg(d, rc){
 if(!d || typeof d.temperature === "undefined") return null;

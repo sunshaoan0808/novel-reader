@@ -2,14 +2,21 @@
  * 覆盖: SillyTavern 文本预设 JSON(含 prompts 数组)。导入后按条目顺序组装 prompt,
  * marker 条目( personaDescription / charDescription / charPersonality / scenario /
  * dialogueExamples / worldInfoBefore / worldInfoAfter / chatHistory )替换为 App 侧
- * 对应内容, 其余 enabled 条目按 role 注入, ST 宏做展开/剥离。
- * v1 范围: 只处理数组顺序组装; injection_position=chat 的深度注入暂不支持(实测 MoM
- * 预设中没有这类条目)。
+ * 对应内容, 其余 enabled 条目按 role 注入。
+ *
+ * v2 (2026-10-01):
+ * - 保留全部条目(含 disabled)及其 enabled 状态, 设置页可逐条开关并持久化。
+ * - 变量宏按条目顺序在单次组装内求值: setvar/getvar/addvar/incvar/decvar
+ *   (局部) + setglobalvar/getglobalvar (全局, localStorage 持久化)。
+ *   另支持 MoM 实测出现的全部宏: trim/newline/pick/random/user/char/
+ *   time/date/weekday/lastUserMessage/注释。未知宏剥离。
+ * - v1 范围保留: injection_position=chat 的深度注入暂不支持(实测 MoM 预设中没有)。
  */
 (function(){
 "use strict";
 
 var LS_KEY = "nd_stpresets";
+var GLOBALS_KEY = "nd_stglobalvars";
 
 /* identifier -> parts 键 */
 var MARKER_PARTS = {
@@ -44,25 +51,38 @@ function save(p){
 }
 function remove(id){ _saveAll(_load().filter(function(p){ return !p || p.id !== id; })); }
 
-/* 解析 ST 预设文件 JSON。成功返回 {ok:true, preset}; 失败 {ok:false, err} */
+/* 全局变量存取(ST setglobalvar/getglobalvar, 跨会话持久化) */
+function _getGlobals(){
+  try{ var g = JSON.parse(localStorage.getItem(GLOBALS_KEY) || "{}"); return (g && typeof g === "object") ? g : {}; }
+  catch(e){ return {}; }
+}
+function _setGlobals(g){ try{ localStorage.setItem(GLOBALS_KEY, JSON.stringify(g)); }catch(e){} }
+
+/* 解析 ST 预设文件 JSON。保留全部条目(含 disabled)与 enabled 状态, 供逐条开关。
+ * 成功返回 {ok:true, preset}; 失败 {ok:false, err} */
 function parseFile(json){
   var d;
   try{ d = (typeof json === "string") ? JSON.parse(json) : json; }
   catch(e){ return {ok: false, err: "json"}; }
   if(!d || !Array.isArray(d.prompts)) return {ok: false, err: "noprompts"};
   var prompts = [];
-  d.prompts.forEach(function(p){
-    if(!p || p.enabled === false) return;
-    var content = String(p.content || "").trim();
+  d.prompts.forEach(function(p, idx){
+    if(!p) return;
+    var content = String(p.content == null ? "" : p.content);
     var isMarker = !!p.marker;
-    if(!isMarker && !content) return; /* 空条目无意义 */
     var role = (p.role === "user" || p.role === "assistant") ? p.role : "system";
+    var ext = p.extension || {};
     prompts.push({
-      name: String(p.name || ""),
+      name: String(p.name || ("条目" + (idx + 1))),
       role: role,
       content: content,
       marker: isMarker,
-      identifier: String(p.identifier || "")
+      identifier: String(p.identifier || ""),
+      enabled: p.enabled !== false,
+      group: String(ext.entryGrouping || p.entryGrouping || ""),
+      injection_position: p.injection_position || "",
+      injection_depth: (p.injection_depth == null ? null : +p.injection_depth),
+      pos: idx
     });
   });
   if(!prompts.length) return {ok: false, err: "empty"};
@@ -79,30 +99,88 @@ function parseFile(json){
   return {ok: true, preset: preset};
 }
 
-/* ST 宏展开。charName/userName 为空则用占位; 未知宏一律剥离, 不让字面宏污染 prompt。 */
-function expandMacros(text, charName, userName){
+/* 新变量作用域(单次组装内有效) */
+function newScope(){ return {vars: {}}; }
+
+function _num(x){ var n = Number(String(x).trim()); return isNaN(n) ? null : n; }
+
+/* ST 宏求值: 按文本顺序单遍扫描, 变量宏在 ctx.scope 内即时生效。
+ * ctx: {charName, userName, lastUserMessage, scope} */
+function evalMacros(text, ctx){
   var t = String(text == null ? "" : text);
-  var cn = charName || "角色", un = userName || "你";
-  t = t.replace(/\{\{\s*char\s*\}\}/gi, cn).replace(/\{\{\s*user\s*\}\}/gi, un);
-  /* 时间类给真值 */
+  ctx = ctx || {};
+  var scope = ctx.scope || newScope();
+  var cn = ctx.charName || "角色", un = ctx.userName || "你";
   var now = new Date();
   function pad(n){ return (n < 10 ? "0" : "") + n; }
-  t = t.replace(/\{\{\s*time\s*\}\}/gi, pad(now.getHours()) + ":" + pad(now.getMinutes()))
-       .replace(/\{\{\s*date\s*\}\}/gi, now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate()))
-       .replace(/\{\{\s*weekday\s*\}\}/gi, "周" + "日一二三四五六".charAt(now.getDay()));
-  /* {{pick::a,b,c}} 随机取一个 */
-  t = t.replace(/\{\{\s*pick\s*::([\s\S]*?)\}\}/gi, function(m, inner){
-    var opts = inner.split(/,(?![^{]*\}\})/).map(function(s){ return s.trim(); }).filter(Boolean);
-    return opts.length ? opts[Math.floor(Math.random() * opts.length)] : "";
+  t = t.replace(/\{\{([\s\S]*?)\}\}/g, function(m, inner){
+    var parts = String(inner).split("::");
+    var name = parts[0].trim().toLowerCase();
+    var args = parts.slice(1);
+    var rest = args.join("::");
+    switch(name){
+      case "char": return cn;
+      case "user": return un;
+      case "time": return pad(now.getHours()) + ":" + pad(now.getMinutes());
+      case "date": return now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate());
+      case "weekday": return "周" + "日一二三四五六".charAt(now.getDay());
+      case "trim": case "trimtokens": return "";
+      case "newline": return "\n";
+      case "pick": case "random": {
+        var opts = rest.split(",").map(function(s){ return s.trim(); }).filter(Boolean);
+        return opts.length ? opts[Math.floor(Math.random() * opts.length)] : "";
+      }
+      case "setvar": {
+        var vn = (args[0] || "").trim();
+        if(vn) scope.vars[vn] = args.slice(1).join("::");
+        return "";
+      }
+      case "getvar": {
+        var gv = scope.vars[rest.trim()];
+        return gv == null ? "" : String(gv);
+      }
+      case "addvar": {
+        var an = (args[0] || "").trim();
+        var av = args.slice(1).join("::");
+        if(an){
+          var cur = scope.vars[an]; if(cur == null) cur = "";
+          var n1 = _num(cur), n2 = _num(av);
+          scope.vars[an] = (n1 !== null && n2 !== null && String(cur).trim() !== "") ? String(n1 + n2) : String(cur) + av;
+        }
+        return "";
+      }
+      case "incvar": case "decvar": {
+        var kn = rest.trim();
+        if(kn){
+          var cv = _num(scope.vars[kn]); if(cv === null) cv = 0;
+          scope.vars[kn] = String(cv + (name === "incvar" ? 1 : -1));
+        }
+        return "";
+      }
+      case "setglobalvar": {
+        var sgn = (args[0] || "").trim();
+        if(sgn){ var g = _getGlobals(); g[sgn] = args.slice(1).join("::"); _setGlobals(g); }
+        return "";
+      }
+      case "getglobalvar": {
+        var ggv = _getGlobals()[rest.trim()];
+        return ggv == null ? "" : String(ggv);
+      }
+      case "lastusermessage": {
+        var lum = ctx.lastUserMessage;
+        return lum == null ? "" : String(lum);
+      }
+      default:
+        /* {{// 注释}} 与未知宏: 剥离, 不让字面宏污染 prompt */
+        return "";
+    }
   });
-  /* ST 状态机类宏: 剥离 */
-  t = t.replace(/\{\{\s*(trim|trimtokens|newline)\s*\}\}/gi, "")
-       .replace(/\{\{\s*setvar\s*::[\s\S]*?\}\}/gi, "")
-       .replace(/\{\{\s*(getvar|addvar|incvar|decvar)\s*::[\s\S]*?\}\}/gi, "")
-       .replace(/\{\{\s*\/\/[\s\S]*?\}\}/gi, "");
-  /* 剩余未知宏剥离 */
-  t = t.replace(/\{\{[\s\S]*?\}\}/g, "");
   return t.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/* 单文本宏展开(无跨条目变量, 兼容旧调用) */
+function expandMacros(text, charName, userName){
+  return evalMacros(text, {charName: charName, userName: userName, scope: newScope()});
 }
 
 function _markerKey(p){
@@ -112,15 +190,26 @@ function _markerKey(p){
   return null;
 }
 
-/* 按预设顺序组装 messages。
+function _lastUserMessage(parts){
+  if(parts.lastUserMessage != null) return parts.lastUserMessage;
+  var h = parts.history || [];
+  for(var i = h.length - 1; i >= 0; i--)
+    if(h[i] && h[i].role !== "assistant" && h[i].content) return h[i].content;
+  return "";
+}
+
+/* 按预设顺序组装 messages。disabled 条目跳过; 变量宏在单次组装内按顺序求值。
  * parts: {persona, charDesc, charPers, scenario, examples, loreBefore, lore,
- *         history:[{role,content}], charName, userName}
+ *         history:[{role,content}], charName, userName, lastUserMessage?}
  * 返回 [{role, content}]，history 在 chatHistory marker 处展开。
  */
 function assemble(preset, parts){
   var msgs = [];
-  var cn = parts.charName, un = parts.userName;
-  preset.prompts.forEach(function(p){
+  var scope = newScope();
+  var ctx = {charName: parts.charName, userName: parts.userName,
+             lastUserMessage: _lastUserMessage(parts), scope: scope};
+  (preset.prompts || []).forEach(function(p){
+    if(!p || p.enabled === false) return;
     if(p.marker){
       var key = _markerKey(p);
       if(key === "history"){
@@ -133,7 +222,7 @@ function assemble(preset, parts){
       if(text) msgs.push({role: "system", content: text});
       return;
     }
-    var c = expandMacros(p.content, cn, un);
+    var c = evalMacros(p.content, ctx);
     if(c) msgs.push({role: p.role, content: c});
   });
   return msgs;
@@ -143,14 +232,18 @@ function assemble(preset, parts){
 function sysTokens(preset, parts){
   var est = (typeof RP_PROMPT !== "undefined" && RP_PROMPT.estTokens) ? RP_PROMPT.estTokens
     : function(s){ return Math.ceil(String(s || "").length / 2); };
+  var scope = newScope();
+  var ctx = {charName: parts.charName, userName: parts.userName,
+             lastUserMessage: _lastUserMessage(parts), scope: scope};
   var t = 0;
-  preset.prompts.forEach(function(p){
+  (preset.prompts || []).forEach(function(p){
+    if(!p || p.enabled === false) return;
     if(p.marker){
       var key = _markerKey(p);
       if(!key || key === "history") return;
       t += est(String(parts[key] || ""));
     }else{
-      t += est(expandMacros(p.content, parts.charName, parts.userName));
+      t += est(evalMacros(p.content, ctx));
     }
   });
   return t;
@@ -158,8 +251,8 @@ function sysTokens(preset, parts){
 
 window.RP_PRESET = {
   list: list, get: get, save: save, remove: remove,
-  parseFile: parseFile, expandMacros: expandMacros,
-  assemble: assemble, sysTokens: sysTokens,
-  LS_KEY: LS_KEY
+  parseFile: parseFile, expandMacros: expandMacros, evalMacros: evalMacros,
+  newScope: newScope, assemble: assemble, sysTokens: sysTokens,
+  LS_KEY: LS_KEY, GLOBALS_KEY: GLOBALS_KEY
 };
 })();
