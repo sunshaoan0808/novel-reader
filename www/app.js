@@ -3505,6 +3505,8 @@ view.innerHTML = `<button class="back" onclick="__backAction()">${icon("back")} 
 <textarea id="p_extra" rows="3" placeholder="希望 AI 记住的偏好、你们的关系设定……" oninput="tokCount(['p_name','p_called','p_desc','p_extra'],'p_tok')">${esc(p.extra||"")}</textarea></div>
 <div class="tokline" id="p_tok"></div>
 <div class="btnrow"><button class="btn" onclick="savePersonaUI(${isOverride?`'${scope}'`:"null"},'${from}')">保存</button>
+<button class="btn ghost" onclick="importStPersona()">导入 ST 人设</button>
+<button class="btn ghost" onclick="exportStPersonaUI()">导出 ST 人设</button>
 ${isOverride && RP_PERSONA.getOverride(scope) ? `<button class="btn ghost" onclick="RP_PERSONA.saveOverride('${scope}',null);__backAction()">清除本次覆盖</button>` : ""}
 </div>
 <div class="hint">保存后，人设会以【玩家人设】段注入每轮 prompt，紧跟在角色身份说明之后。</div>
@@ -3519,6 +3521,37 @@ const p = {name: document.getElementById("p_name").value.trim(),
            extra: document.getElementById("p_extra").value.trim()};
 if(scope) RP_PERSONA.saveOverride(scope, p); else RP_PERSONA.saveGlobal(p);
 __backAction();
+};
+/* ST 人设导入: 解析后填入表单(不自动保存), 点保存生效; 批量文件取第一个并提示 */
+window.importStPersona = ()=>{
+const inp = document.createElement("input");
+inp.type = "file"; inp.accept = ".json,application/json";
+inp.onchange = ()=>{
+const f = inp.files[0]; if(!f) return;
+const rd = new FileReader();
+rd.onload = ()=>{
+try{
+const arr = RP_PERSONA.stPersonaParse(JSON.parse(rd.result));
+const p0 = arr[0];
+document.getElementById("p_name").value = p0.name;
+document.getElementById("p_called").value = p0.called;
+document.getElementById("p_desc").value = p0.desc;
+document.getElementById("p_extra").value = p0.extra;
+tokCount(["p_name","p_called","p_desc","p_extra"], "p_tok");
+rpToast(arr.length > 1 ? `共 ${arr.length} 个人设，已填入「${p0.name}」，点保存生效` : `已填入人设「${p0.name}」，点保存生效`);
+}catch(e){ alert("解析失败: " + e.message); }
+};
+rd.readAsText(f);
+};
+inp.click();
+};
+/* ST 人设导出: 读当前表单, {name, description, title, called, avatar} */
+window.exportStPersonaUI = ()=>{
+const g = (id)=>{ const el = document.getElementById(id); return el ? el.value.trim() : ""; };
+const p = {name: g("p_name"), called: g("p_called"), desc: g("p_desc"), extra: g("p_extra")};
+if(!p.name && !p.desc && !p.extra && !p.called){ rpToast("人设为空，先填写再导出"); return; }
+downloadJson("persona_st.json", RP_PERSONA.stPersonaExport(p));
+rpToast("已导出 ST 人设");
 };
 /* ============ 角色卡 PNG 导出 + 分享 ============ */
 window.exportCard = async (id)=>{

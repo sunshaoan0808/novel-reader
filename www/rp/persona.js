@@ -31,5 +31,50 @@ function renderText(p){
 }
 return {getGlobal: getGlobal, saveGlobal: saveGlobal,
         getOverride: getOverride, saveOverride: saveOverride,
-        resolve: resolve, renderText: renderText};
+        resolve: resolve, renderText: renderText,
+        stPersonaParse: stPersonaParse, stPersonaExport: stPersonaExport};
 })();
+/* ============ ST 人设互转 ============
+ * ST 单个人设 JSON (第三方生成器/ST 导入接受的格式):
+ *   {name, description, avatar}
+ * ST 原生批量 (settings.json 的 power_user.personas / persona_descriptions,
+ *   backup-manager 等备份工具导出的 personas.json):
+ *   {personas: {头像文件名: 显示名}, persona_descriptions: {头像文件名: {description, title}}}
+ * 本机字段: name(自称) / called(AI 对玩家的称呼) / desc(自我描述) / extra(补充)。
+ * ST 的 title 是编辑器备注(不注入 prompt), 映射到 extra; called/avatar 本机无对应,
+ * 导出时原样带回以保证本机往返不丢, ST 导入时忽略未知字段。
+ */
+function stPersonaParse(obj){
+if(!obj || typeof obj !== "object") throw new Error("不是有效的 JSON 对象");
+var out = [];
+/* 批量形状 */
+if(obj.personas && typeof obj.personas === "object"){
+var descs = (obj.persona_descriptions && typeof obj.persona_descriptions === "object") ? obj.persona_descriptions : {};
+Object.keys(obj.personas).forEach(function(file){
+var d = descs[file] || {};
+var stem = String(file).replace(/\.[^.]+$/, "");
+out.push({name: String(obj.personas[file] || stem || ""),
+          desc: String(d.description || ""),
+          extra: String(d.title || ""),
+          called: ""});
+});
+if(!out.length) throw new Error("personas 为空");
+return out;
+}
+/* 单个形状 (含本机导出形状) */
+if(typeof obj.name === "string" || typeof obj.description === "string"){
+return [{name: String(obj.name || ""),
+         desc: String(obj.description || ""),
+         extra: String(obj.title || obj.extra || ""),
+         called: String(obj.called || "")}];
+}
+throw new Error("无法识别的人设格式");
+}
+function stPersonaExport(p){
+p = p || {};
+return {name: String(p.name || ""),
+        description: String(p.desc || ""),
+        title: String(p.extra || ""),
+        called: String(p.called || ""),
+        avatar: ""};
+}
