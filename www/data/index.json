@@ -50,7 +50,7 @@
   ],
   "n_chunks": 220,
   "n_profiles": 10,
-  "has_plot": false,
+  "has_plot": true,
   "scope": null
  }
 ]
