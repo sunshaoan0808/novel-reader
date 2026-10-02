@@ -28,27 +28,46 @@ function buildTavernCard(c){
   try{ ext = Object.assign({}, ((c && c.raw && c.raw.extensions) || {})); }catch(e){}
   if(c && c.exampleDialogue) ext.example_dialogue = c.exampleDialogue;
   else delete ext.example_dialogue;
-  return {
+  /* P0 卡兼容: 导入卡再导出时, 原卡字段 roundtrip 不丢 */
+  var mesEx;
+  if(c && Array.isArray(c.exampleBlocks) && c.exampleBlocks.length){
+    mesEx = c.exampleBlocks.map(function(b){
+      return "<START>\n{{user}}: " + (b.user || "...") + "\n{{char}}: " + (b.char || "");
+    }).join("\n");
+  }else{
+    mesEx = lines.slice(1).map(function(q){
+      return "<START>\n{{user}}: ...\n{{char}}: " + q;
+    }).join("\n");
+  }
+  var sysOut = (c && c.systemPrompt) ? c.systemPrompt : sys.join("\n");
+  var creatorNotesOut = (c && c.creatorNotes) ? c.creatorNotes
+    : (nonEmpty(f.taboo_topics) ? ("taboos: " + str(f.taboo_topics)) : "");
+  var dp = (c && c.depthPrompt && c.depthPrompt.prompt) ? {
+    prompt: c.depthPrompt.prompt, role: c.depthPrompt.role || "system", depth: c.depthPrompt.depth || 0
+  } : undefined;
+  var out = {
     spec: "chara_card_v2", spec_version: "2.0",
     data: {
       name: (c && c.name) || "未命名",
       description: desc,
       personality: pers.join("\n"),
-      scenario: "",
+      scenario: (c && c.scenario) || "",
       first_mes: ((c && c.greeting) || lines[0] || ""),
-      mes_example: lines.slice(1).map(function(q){
-        return "<START>\n{{user}}: ...\n{{char}}: " + q;
-      }).join("\n"),
-      creator_notes: nonEmpty(f.taboo_topics) ? ("taboos: " + str(f.taboo_topics)) : "",
-      system_prompt: sys.join("\n"),
-      post_history_instructions: "",
+      mes_example: mesEx,
+      creator_notes: creatorNotesOut,
+      system_prompt: sysOut,
+      post_history_instructions: (c && c.postHistoryInstructions) || "",
       alternate_greetings: (c && c.altGreetings) || [],
       tags: [((c && c.novel) || "自定义")],
-      creator: "novel-reader",
-      character_version: "1.0",
+      creator: (c && c.creator) || "novel-reader",
+      character_version: (c && c.characterVersion) || "1.0",
       extensions: ext
     }
   };
+  /* v3 字段 roundtrip (ST v2 导入器会忽略未知字段, v3 可读回) */
+  if(dp) out.data.depth_prompt = dp;
+  if(c && c.groupOnlyGreetings && c.groupOnlyGreetings.length) out.data.group_only_greetings = c.groupOnlyGreetings;
+  return out;
 }
 
 /* unicode 安全的 base64 */

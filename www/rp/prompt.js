@@ -100,29 +100,40 @@ function itemsOf(card, name){
   return out;
 }
 
-/* P0-4: few-shot 对话示例, 从 typical_lines 生成; P1-2: 卡片自带 example_dialogue 追加拼入 */
+/* P0-4: few-shot 对话示例。优先用卡片 mes_example 的真实多轮结构 (exampleBlocks);
+ * 旧卡(只有 typical_lines)退化为"台词示例", 不再配三个写死的假问题 (问答错位是实测确认的 bug)。 */
 function buildExamples(card, name, budgetTokens){
-  var greet = String((card && card.greeting) || "").trim();
-  var lines = itemsOf(card, "typical_lines").filter(function(l){
-    /* 开场白原文/超长场景文本不是"台词", 不适合做 few-shot(兼容已导入的旧卡) */
-    return l && l !== greet && l.length <= 400;
-  }).slice(0, 3);
-  var extra = String((card && card.exampleDialogue) || "").trim();
-  if(!lines.length && !extra) return "";
-  var openers = [
-    "在园子里迎面碰见你，你会说什么？",
-    "有人惹你不痛快了，你会说什么？",
-    "夜深了，你独自一人时喃喃说什么？",
-  ];
   var parts = ["【对话示例（学她的语气，不要复读句子）】"];
   var used = estTokens(parts[0]);
-  for(var i = 0; i < lines.length; i++){
-    var blk = "用户：" + openers[i % openers.length] + "\n" + name + "：" + lines[i].slice(0, 120);
-    var t = estTokens(blk);
-    if(used + t > budgetTokens) break;
-    parts.push(blk);
+  function pushBlk(text){
+    var t = estTokens(text);
+    if(used + t > budgetTokens) return false;
+    parts.push(text);
     used += t;
+    return true;
   }
+  var blocks = (card && card.exampleBlocks) || [];
+  var i;
+  for(i = 0; i < blocks.length && parts.length < 5; i++){
+    var b = blocks[i] || {};
+    var blk = (b.user ? "用户：" + String(b.user).slice(0, 200) + "\n" : "") +
+              name + "：" + String(b.char || "").slice(0, 300);
+    if(!pushBlk(blk)) break;
+  }
+  if(parts.length === 1){
+    /* 旧卡回退: typical_lines 是孤立台词, 不虚构用户问句 */
+    var greet = String((card && card.greeting) || "").trim();
+    var lines = itemsOf(card, "typical_lines").filter(function(l){
+      return l && l !== greet && l.length <= 400;
+    }).slice(0, 3);
+    if(lines.length){
+      var tl = name + "的台词示例：\n" + lines.map(function(l, ix){
+        return (ix + 1) + ". " + l.slice(0, 120);
+      }).join("\n");
+      pushBlk(tl);
+    }
+  }
+  var extra = String((card && card.exampleDialogue) || "").trim();
   if(extra){
     var xt = estTokens(extra);
     if(used + xt <= budgetTokens) parts.push("【卡片自带对话示例】\n" + extra.slice(0, 800));
@@ -249,16 +260,16 @@ var NARRATOR_INSTR = "【叙事者模式】你同时承担叙事与扮演双重�
 /* P1-1 预设: 分段顺序/开关/预算比例可配置 (Risu 式预设, 不做 ST 拖拽) */
 var PRESETS = {
   classic: {name: "经典序", desc: "完整人设，适合长上下文",
-    order: {identity: 5, persona: 6, core: 10, arc: 15, memory: 20, speech: 30, examples: 40, background: 50, relations: 60, lore: 70},
+    order: {identity: 5, persona: 6, sysprompt: 7, core: 10, arc: 15, memory: 20, speech: 30, examples: 40, background: 50, relations: 60, lore: 70},
     loreRatio: 0.2},
   lite: {name: "精简序", desc: "去背景/示例，省 token，适合小上下文",
-    order: {identity: 5, persona: 6, core: 10, arc: 15, memory: 15, speech: 20, relations: 30, lore: 40},
+    order: {identity: 5, persona: 6, sysprompt: 7, core: 10, arc: 15, memory: 15, speech: 20, relations: 30, lore: 40},
     loreRatio: 0.12},
   immers: {name: "沉浸序", desc: "说话方式优先，代入感最强",
-    order: {identity: 5, persona: 6, speech: 10, examples: 15, core: 20, arc: 22, memory: 25, background: 40, relations: 50, lore: 60},
+    order: {identity: 5, persona: 6, sysprompt: 7, speech: 10, examples: 15, core: 20, arc: 22, memory: 25, background: 40, relations: 50, lore: 60},
     loreRatio: 0.15},
   narr: {name: "叙事者", desc: "双线叙事+角色主动推进剧情，适合跑剧情",
-    order: {identity: 5, persona: 6, narrator: 8, core: 10, speech: 15, arc: 18, memory: 20, examples: 30, relations: 40, background: 50, lore: 60},
+    order: {identity: 5, persona: 6, sysprompt: 7, narrator: 8, core: 10, speech: 15, arc: 18, memory: 20, examples: 30, relations: 40, background: 50, lore: 60},
     loreRatio: 0.15},
 };
 
@@ -296,6 +307,11 @@ function buildMessages(card, ctx, budget){
 
   add("identity", "你是" + name + "，《" + (ctx.novel || "") + "》中的人物。");
   add("persona", ctx.persona ? "【玩家人设】\n" + ctx.persona : "");
+  /* P0 卡兼容: 卡片 system_prompt / creator_notes 进 system (以前被静默丢弃) */
+  var sysPromptSeg = "";
+  if(card.systemPrompt) sysPromptSeg += String(card.systemPrompt).trim();
+  if(card.creatorNotes) sysPromptSeg += (sysPromptSeg ? "\n" : "") + "【作者注】\n" + String(card.creatorNotes).trim();
+  add("sysprompt", sysPromptSeg);
   add("narrator", NARRATOR_INSTR);
   add("core", "【核心人设】\n" + renderFields(card, LAYERS.identity.concat(LAYERS.core))
     + lorePlacedText(loreRes, "core"));
@@ -403,7 +419,17 @@ function buildMessages(card, ctx, budget){
   messages = [{role: "system", content: sysText}];
   for(var k = 0; k < hist.length; k++) messages.push(hist[k]);
   post = postInstructions(name, ctx.pov, ctx.person);
+  /* P0 卡兼容: 卡片 post_history_instructions 拼到 post-history 位置 (ST 语义: 历史之后、生成之前) */
+  if(card.postHistoryInstructions) post += "\n" + String(card.postHistoryInstructions).trim();
+  post = subMacros(post, name, ctx.personaName);
   messages.push({role: "system", content: post});
+  /* P0 卡兼容 v3: depth_prompt 按 depth 插到历史中 (ST 语义: 距末尾 depth 条消息处) */
+  if(card.depthPrompt && card.depthPrompt.prompt){
+    var dd = Math.max(0, Math.min(hist.length, card.depthPrompt.depth || 0));
+    var at = 1 + hist.length - dd;
+    messages.splice(at, 0, {role: card.depthPrompt.role || "system",
+      content: subMacros(card.depthPrompt.prompt, name, ctx.personaName)});
+  }
   }
 
   return {

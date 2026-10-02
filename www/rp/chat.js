@@ -316,8 +316,11 @@ async function greeting(runId, name, cfg, novel){
    * 以前导入卡的 first_mes 只塞进 typical_lines(纯数组还被 val 吞掉), 有 key 时又被模型重写,
    * 导致卡片原开场白永远出不来。 */
   if(card){
+    /* ST 语义: first_mes 是固定开场, alternate_greetings 需用户手动选择才用。
+     * 以前从池里随机抽, 每次开场不一样, 用户困惑 (实测确认)。 */
+    var g0 = card.greeting && String(card.greeting).trim();
+    if(g0) return g0;
     var pool = [];
-    if(card.greeting && String(card.greeting).trim()) pool.push(String(card.greeting).trim());
     (card.altGreetings || []).forEach(function(g){
       g = String(g == null ? "" : g).trim();
       if(g && pool.indexOf(g) < 0) pool.push(g);

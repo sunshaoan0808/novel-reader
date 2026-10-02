@@ -62,22 +62,22 @@ const run = (ctx, code) => vm.runInContext(code, ctx);
 
   /* 2) 聊天开场白: 无 key 也用卡片原开场白, 不再是"打量着你" */
   let g = await run(ctx, "RP.greeting('imported','小红',{},'测试世界')");
-  t("无 key 聊天开场白=卡片原 first_mes", g === "嗨！我是小红，今天想聊点什么？" || g === "备选开场B");
+  t("无 key 聊天开场白=卡片原 first_mes(固定)", g === "嗨！我是小红，今天想聊点什么？");
 
-  /* 3) 聊天开场白: 有 key 也不调模型重写, 落在卡片候选池里 */
+  /* 3) 聊天开场白: 有 key 也不调模型重写, 固定 first_mes */
   run(ctx, "RP_NET.complete = async () => { globalThis.__called = (globalThis.__called||0)+1; return '[MODEL]'; };");
   g = await run(ctx, "RP.greeting('imported','小红',{key:'k',base:'b',model:'m'},'测试世界')");
-  t("有 key 聊天开场白仍=卡片原 first_mes(不调模型)", g === "嗨！我是小红，今天想聊点什么？" || g === "备选开场B");
+  t("有 key 聊天开场白仍=卡片原 first_mes(不调模型)", g === "嗨！我是小红，今天想聊点什么？");
   t("有 key 时没调用模型生成开场白", run(ctx, "globalThis.__called||0") === 0);
 
-  /* 4) 多开场白: first_mes + alternate_greetings 都在候选池 */
+  /* 4) ST 语义: first_mes 固定, 40 次抽取全是同一条, 备选只在手动选择时用 */
   const seen = {};
   for(let i = 0; i < 40; i++){
     const gg = await run(ctx, "RP.greeting('imported','小红',{key:'k',base:'b',model:'m'},'测试世界')");
     seen[gg] = (seen[gg] || 0) + 1;
   }
-  t("候选池含原开场白", !!seen["嗨！我是小红，今天想聊点什么？"]);
-  t("候选池含备选开场白", !!seen["备选开场B"]);
+  t("开场白固定=first_mes", seen["嗨！我是小红，今天想聊点什么？"] === 40);
+  t("备选开场白不自动混入", !seen["备选开场B"]);
   t("候选池不含模型现编", !seen["[MODEL]"]);
 
   /* 5) 无 first_mes 的卡: alternate_greetings 随机, 行为不变 */

@@ -70,7 +70,7 @@ function parseCardJson(text){
   throw new Error("JSON 里没有角色卡字段");
 }
 
-/* 从 mes_example 提取 {{char}}: 台词行 */
+/* 从 mes_example 提取 {{char}}: 台词行 (短引用, 供【说话方式】用) */
 function exampleLines(mesExample, charName){
   var out = [];
   String(mesExample || "").split(/<START>/i).forEach(function(blk){
@@ -81,6 +81,25 @@ function exampleLines(mesExample, charName){
     });
   });
   return out;
+}
+
+function escRe(s){ return String(s == null ? "" : s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+/* mes_example 多轮结构保留: 每个 <START> 块 -> {user, char}, few-shot 用真实对话, 不再配假 opener */
+function exampleBlocks(mesExample, charName){
+  var blocks = [];
+  String(mesExample || "").split(/<START>/i).forEach(function(blk){
+    var users = [], chars = [];
+    blk.split("\n").forEach(function(line){
+      var um = line.match(/^\s*\{\{\s*user\s*\}\}\s*:\s*(.+)$/i);
+      if(um && um[1].trim()){ users.push(um[1].trim()); return; }
+      var cm = line.match(/^\s*\{\{\s*char\s*\}\}\s*:\s*(.+)$/i) ||
+               (charName && line.match(new RegExp("^\\s*" + escRe(charName) + "\\s*[:：]\\s*(.+)$", "i")));
+      if(cm && cm[1].trim()) chars.push(cm[1].trim());
+    });
+    if(chars.length) blocks.push({user: users.join("\n"), char: chars.join("\n")});
+  });
+  return blocks;
 }
 
 /* Tavern 卡 -> 内部卡片 */
@@ -101,17 +120,47 @@ function normalizeTavern(d){
   var sysNote = [];
   if(d.system_prompt) sysNote.push(String(d.system_prompt).trim());
   if(d.creator_notes) sysNote.push("作者注：" + String(d.creator_notes).trim());
+  /* P0 卡兼容: system_prompt / post_history_instructions / creator_notes 升为一等字段,
+   * 进 prompt 组装 (以前只进 sysNote, 全仓库无人渲染, 被静默丢弃) */
+  var systemPrompt = String(d.system_prompt == null ? "" : d.system_prompt).trim();
+  var postHistoryInstructions = String(d.post_history_instructions == null ? "" : d.post_history_instructions).trim();
+  var creatorNotes = String(d.creator_notes == null ? "" : d.creator_notes).trim();
+  /* v3: depth_prompt / group_only_greetings */
+  var dp = (d.depth_prompt && typeof d.depth_prompt === "object") ? d.depth_prompt : null;
+  var depthPrompt = dp && String(dp.prompt == null ? "" : dp.prompt).trim()
+    ? {prompt: String(dp.prompt).trim(), role: dp.role === "user" || dp.role === "assistant" ? dp.role : "system",
+       depth: Math.max(0, parseInt(dp.depth, 10) || 0)} : null;
+  var groupOnlyGreetings = Array.isArray(d.group_only_greetings)
+    ? d.group_only_greetings.map(function(g){ return String(g == null ? "" : g).trim(); }).filter(function(g){ return g; }) : [];
   var worldbook = [];
   var book = d.character_book || {};
-  (book.entries || []).forEach(function(e, i){
-    if(!e || !e.content) return;
-    worldbook.push({
-      title: e.name || ("卡片世界书 " + (i + 1)),
-      trigger_keywords: e.keys || e.keywords || [],
-      content: String(e.content),
-      priority: 55, enabled: e.enabled !== false,
+  var rawEntries = book.entries || [];
+  /* P0 卡兼容: 卡片世界书走 RP_LOREBOOK.importST, secondary_keys/selectiveLogic/
+   * constant/position/probability/depth 等 ST 字段完整透传 (以前只留了 4 个字段) */
+  var importOk = false;
+  if(rawEntries.length && typeof RP_LOREBOOK !== "undefined" && RP_LOREBOOK.importST){
+    try {
+      var wb = RP_LOREBOOK.importST({entries: rawEntries});
+      if(wb && wb.length){ worldbook = wb; importOk = true; }
+    } catch(e){}
+  }
+  if(!importOk){
+    rawEntries.forEach(function(e, i){
+      if(!e || !e.content) return;
+      worldbook.push({
+        title: e.name || ("卡片世界书 " + (i + 1)),
+        trigger_keywords: e.keys || e.keywords || [],
+        content: String(e.content),
+        priority: 55, enabled: e.enabled !== false,
+      });
     });
-  });
+  }
+  var bookMeta = {
+    name: String(book.name || "").trim(),
+    scan_depth: book.scan_depth != null ? +book.scan_depth : null,
+    token_budget: book.token_budget != null ? +book.token_budget : null,
+    recursive_scanning: !!book.recursive_scanning,
+  };
   var tags = d.tags || [];
   /* 开场白 first_mes 单独保留: 聊天/穿越开场优先用卡片原开场白, 不再只塞进 typical_lines */
   var greeting = String(d.first_mes == null ? "" : d.first_mes).trim();
@@ -129,7 +178,16 @@ function normalizeTavern(d){
     greeting: greeting,
     altGreetings: altGreetings,
     exampleDialogue: exampleDialogue,
+    exampleBlocks: exampleBlocks(d.mes_example, name),
     scenario: String(d.scenario || "").trim(),
+    systemPrompt: systemPrompt,
+    postHistoryInstructions: postHistoryInstructions,
+    creatorNotes: creatorNotes,
+    depthPrompt: depthPrompt,
+    groupOnlyGreetings: groupOnlyGreetings,
+    characterVersion: String(d.character_version == null ? "" : d.character_version).trim(),
+    creator: String(d.creator == null ? "" : d.creator).trim(),
+    bookMeta: bookMeta,
     sysNote: sysNote.join("\n"),
     worldbook: worldbook,
     raw: d,
@@ -154,12 +212,12 @@ function save(list){
 }
 function find(name){
   var l = list();
-  for(var i = 0; i < l.length; i++) if(l[i].name === name){ ensureGreeting(l[i]); return l[i]; }
+  for(var i = 0; i < l.length; i++) if(l[i].name === name){ ensureCompat(l[i]); return l[i]; }
   return null;
 }
 function findById(id){
   var l = list();
-  for(var i = 0; i < l.length; i++) if(l[i].id === id){ ensureGreeting(l[i]); return l[i]; }
+  for(var i = 0; i < l.length; i++) if(l[i].id === id){ ensureCompat(l[i]); return l[i]; }
   return null;
 }
 /* 旧卡兼容(v36): 56797f7 之前导入的卡没有独立 greeting 字段, first_mes 只进了
@@ -184,6 +242,23 @@ function ensureGreeting(card){
   if(card && !String(card.greeting == null ? "" : card.greeting).trim()){
     var g = greetingOf(card);
     if(g) card.greeting = g;
+  }
+  return card;
+}
+/* 旧卡兼容: 本次升级前导入的卡没有 exampleBlocks/systemPrompt 等一等字段,
+ * 读时从 raw 回填, 不写回存储 */
+function ensureCompat(card){
+  if(!card) return card;
+  ensureGreeting(card);
+  if(!Array.isArray(card.exampleBlocks)){
+    var raw = (card.raw && typeof card.raw === "object") ? card.raw : {};
+    card.exampleBlocks = exampleBlocks(raw.mes_example, card.name);
+  }
+  if(card.systemPrompt == null){
+    var raw2 = (card.raw && typeof card.raw === "object") ? card.raw : {};
+    card.systemPrompt = String(raw2.system_prompt == null ? "" : raw2.system_prompt).trim();
+    card.postHistoryInstructions = String(raw2.post_history_instructions == null ? "" : raw2.post_history_instructions).trim();
+    card.creatorNotes = String(raw2.creator_notes == null ? "" : raw2.creator_notes).trim();
   }
   return card;
 }
@@ -217,7 +292,8 @@ async function fromFile(file){
 
 return {
   extractChara: extractChara, parseCardJson: parseCardJson,
-  normalizeTavern: normalizeTavern, exampleLines: exampleLines, greetingOf: greetingOf,
+  normalizeTavern: normalizeTavern, exampleLines: exampleLines, exampleBlocks: exampleBlocks,
+  greetingOf: greetingOf, ensureCompat: ensureCompat,
   list: list, find: find, findById: findById, add: add, del: del, update: update,
   fromFile: fromFile,
 };

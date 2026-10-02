@@ -4957,6 +4957,11 @@ return `<div class="field"><label>${esc(RP_PROMPT.LABELS[k])} <span class="dim">
 }).join("");
 const alt = (card.altGreetings||[]).join("\n");
 const exd = card.exampleDialogue||"";
+/* P0 卡兼容: 导入卡的 ST 一等字段可视可改 (system_prompt/post_history_instructions/creator_notes/scenario) */
+const sysp = card.systemPrompt||"";
+const phi = card.postHistoryInstructions||"";
+const cnote = card.creatorNotes||"";
+const scen = card.scenario||"";
 view.innerHTML = `
 <div class="hint">修改后点「保存」写回, prompt 注入、开场白、导出都用新内容。<span id="ce_tok" class="dim"></span></div>
 <div class="setcard"><div class="secttl">角色模板 · 一键填充</div>
@@ -4964,10 +4969,18 @@ view.innerHTML = `
 <div class="hint">填充会覆盖当前表单内容（清空重写），请先确认。</div></div>
 <div class="setcard">
 <div class="field"><label>名字</label><input id="ce_name" value="${esc(card.name)}"></div>
-<div class="field"><label>多开场白 <span class="dim">alternate_greetings · 每行一条, 开聊时随机挑</span></label>
+<div class="field"><label>多开场白 <span class="dim">alternate_greetings · 每行一条, 开聊固定用首条(first_mes)</span></label>
 <textarea id="ce_alt" rows="3" oninput="tokCount('ce_alt','ce_tok')">${esc(alt)}</textarea></div>
 <div class="field"><label>示例对话 <span class="dim">extensions.example_dialogue · 进 prompt 的 few-shot</span></label>
 <textarea id="ce_exd" rows="4" oninput="tokCount('ce_exd','ce_tok')">${esc(exd)}</textarea></div>
+<div class="field"><label>系统提示词 <span class="dim">system_prompt · 进 system 开头</span></label>
+<textarea id="ce_sysp" rows="4" oninput="tokCount('ce_sysp','ce_tok')">${esc(sysp)}</textarea></div>
+<div class="field"><label>历史后指令 <span class="dim">post_history_instructions · 历史之后、生成之前</span></label>
+<textarea id="ce_phi" rows="3" oninput="tokCount('ce_phi','ce_tok')">${esc(phi)}</textarea></div>
+<div class="field"><label>作者注 <span class="dim">creator_notes · 进 system</span></label>
+<textarea id="ce_cnote" rows="2" oninput="tokCount('ce_cnote','ce_tok')">${esc(cnote)}</textarea></div>
+<div class="field"><label>场景设定 <span class="dim">scenario · 进【背景】段</span></label>
+<textarea id="ce_scen" rows="3" oninput="tokCount('ce_scen','ce_tok')">${esc(scen)}</textarea></div>
 </div>
 <div class="setcard"><div class="secttl">角色字段</div>${rows}</div>
 <div class="btnrow"><button class="btn" onclick="saveCardEdit('${src}','${id}')">${icon("save")} 保存</button>
@@ -4998,16 +5011,22 @@ if(v) f[k] = v;
 });
 const alt = get("ce_alt").value.split("\n").map(s=>s.trim()).filter(Boolean).slice(0,8);
 const exd = get("ce_exd").value.trim();
+const sysp = get("ce_sysp").value.trim();
+const phi = get("ce_phi").value.trim();
+const cnote = get("ce_cnote").value.trim();
+const scen = get("ce_scen").value.trim();
 if(src==="custom"){
 const list = RP_WRITER.getCustomChars()||[];
 const i = list.findIndex(c=>c.id===id);
 if(i<0){ alert("卡片不存在"); return; }
-list[i] = Object.assign({}, list[i], {name, fields:f, altGreetings:alt, exampleDialogue:exd});
+list[i] = Object.assign({}, list[i], {name, fields:f, altGreetings:alt, exampleDialogue:exd,
+systemPrompt:sysp, postHistoryInstructions:phi, creatorNotes:cnote, scenario:scen});
 RP_WRITER.saveCustomChars(list);
 }else{
 const c = RP_CARDIMPORT.findById(id);
 if(!c){ alert("卡片不存在"); return; }
-RP_CARDIMPORT.update(Object.assign({}, c, {name, fields:f, altGreetings:alt, exampleDialogue:exd}));
+RP_CARDIMPORT.update(Object.assign({}, c, {name, fields:f, altGreetings:alt, exampleDialogue:exd,
+systemPrompt:sysp, postHistoryInstructions:phi, creatorNotes:cnote, scenario:scen}));
 }
 alert("已保存");
 if(src==="custom") showWriter(); else showTraverse();
