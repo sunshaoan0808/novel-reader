@@ -155,6 +155,12 @@ function applyRegex(text, rules, depth){
   return out;
 }
 
+/* S 级补全: 穿越的正则键名。魂穿用被附身角色名, 肉身/异世界用世界名 */
+function travRegexName(trav){
+  if(!trav) return "穿越";
+  if(trav.mode === "soul" && trav.charName) return trav.charName;
+  return trav.worldName || "穿越";
+}
 /* P0-4: 消息唯一 id (摘要水位 msg_id 制)。只新增字段, 不改现有结构。 */
 var __msgSeq = 0;
 function nextMsgId(){
@@ -804,6 +810,13 @@ async function sendTraverse(travId, text, opts){
 
   var budget = opts.budget || {};
   if(!budget.maxContext && cfg.maxContext) budget.maxContext = cfg.maxContext;
+  /* S 级补全: 穿越同样走 ST 预设组装 (设置页绑定的预设) */
+  try{ if(!budget.stPreset && typeof resolveStPreset === "function") budget.stPreset = resolveStPreset(); }catch(e){}
+  /* S-6 按卡温度: 魂穿卡片世界时用卡片温度 */
+  try{
+    var __tc = (typeof RP_TRAVERSE.travCard === "function") ? RP_TRAVERSE.travCard(trav) : null;
+    opts.temperature = cardTempOf(__tc, opts.temperature);
+  }catch(e){}
   var worldRunId = trav.worldKind === "book" ? trav.worldId : "";
   var b = RP_TRAVERSE.buildMessages(trav, {
     history: mapHistory(h),
@@ -860,6 +873,9 @@ async function sendTraverse(travId, text, opts){
     RP_TRAVERSE.saveState(travId, RP_TRAVERSE.mergeState(st, parsed.patch));
   }
   reply = parsed.clean || reply;
+
+  /* S 级补全: 穿越回复同样过正则 (与单聊/群聊一致) */
+  try{ reply = applyRegex(reply, getRegex("trav", travRegexName(trav))); }catch(e){}
 
   /* 世界模拟：解析 AI 的 ⟦时间/天气/地点⟧ 标记并从正文剥离 */
   try{

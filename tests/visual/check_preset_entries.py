@@ -85,12 +85,22 @@ async def main():
             await asyncio.sleep(0.5)
             after = await c.ev("document.querySelector('.pswitch').className")
             if before == after: fails.append("开关点击无状态变化")
-            # 进详情页截图
+            # 进详情页截图：条目0是普通条目 -> 编辑器；找一个定位标记 -> 只读视图
             await c.ev("stPresetEntryDetail(" + json.dumps(pid) + ",0)")
             await asyncio.sleep(0.5)
             await c.shot("/tmp/preset_entry_detail.png")
-            det_sw = await c.ev("document.querySelectorAll('.spdetail').length")
-            if det_sw != 1: fails.append("详情页内容块缺失")
+            ed_ok = await c.ev("!!document.getElementById('pe_name') && !!document.getElementById('pe_content')")
+            if not ed_ok: fails.append("普通条目编辑器缺失")
+            midx = await c.ev("(function(){var p=RP_PRESET.get(%s);for(var i=0;i<p.prompts.length;i++)if(p.prompts[i].marker)return i;return -1;})()" % json.dumps(pid))
+            if midx >= 0:
+                await c.ev("stPresetEntryDetail(" + json.dumps(pid) + "," + str(midx) + ")")
+                await asyncio.sleep(0.5)
+                # 定位标记页：只读说明 + 开关，无内容编辑器
+                has_hint = await c.ev("document.body.innerHTML.indexOf('定位标记是预设的占位符')")
+                has_editor = await c.ev("!!document.getElementById('pe_content')")
+                if has_hint < 0 or has_editor: fails.append("定位标记详情页异常")
+                sw2 = await c.ev("document.documentElement.scrollWidth")
+                if sw2 > 361: fails.append(f"标记详情页横向溢出 scrollWidth={sw2}")
             print("FAILS:", fails if fails else "none")
             return 1 if fails else 0
     finally:

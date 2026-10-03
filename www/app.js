@@ -633,7 +633,16 @@ regexBack.to = backTo || "chat";
 const names = name ? [name] : [];
 renderRegexList(runId, names[0]||"");
 };
+/* S 级补全: 穿越抽屉的正则入口。魂穿按被附身角色名, 肉身/异世界按世界名存规则 */
+window.travRegexEditor = ()=>{
+const trav = (typeof RP_TRAVERSE !== "undefined") ? RP_TRAVERSE.get(CHAT.travId) : null;
+if(!trav){ rpToast("穿越会话不存在"); return; }
+const name = (typeof travRegexName === "function") ? travRegexName(trav)
+  : ((trav.mode === "soul" && trav.charName) ? trav.charName : (trav.worldName || "穿越"));
+regexEditor("trav", name, "trav");
+};
 function regexCharSel(runId, cur){
+if(regexBack.to === "trav") return ""; /* 穿越: 角色固定, 不显示角色选择 */
 const ms = (CHAT.mode==="group") ? CHAT.members : (CHAT.name ? [CHAT.name] : []);
 if(!ms.length) return "";
 return `<div class="field"><label>角色</label><select id="rx_char" onchange="renderRegexList('${runId}',this.value)">`
@@ -4656,9 +4665,11 @@ let b = `<span class="badge">${e.marker ? "定位标记" : esc(e.role)}</span>`;
 const id = String(e.identifier || "");
 /* UUID 式 identifier 无信息量, 只在详情页展示 */
 if(id && (e.marker || !/^[0-9a-f-]{8,}$/i.test(id))) b += `<span class="badge">${esc(id)}</span>`;
+if(!e.marker && e.injection_position === "chat") b += `<span class="badge">聊天注入·深度${e.injection_depth || 0}</span>`;
 if(e.enabled === false) b += `<span class="badge">停用</span>`;
 return b;
 }
+/* v38b: ST 任意组合。条目列表页: 新增 + 上移/下移排序 + 逐条开关 */
 function renderStPresetEntries(pid){
 __backAction = ()=>{ setNav("settings"); };
 const p = RP_PRESET.get(pid);
@@ -4666,7 +4677,8 @@ if(!p){ setNav("settings"); return; }
 const total = p.prompts.length, on = p.prompts.filter(e=>e.enabled!==false).length;
 let html = `<button class="back" onclick="setNav('settings')">${icon("back")} 返回设置</button>
 <h2 style="margin:6px 0">${esc(p.name)}</h2>
-<div class="hint">${total} 条目，${on} 启用 · 点行查看详情，右侧开关逐条启用/停用（停用条目不参与 prompt 组装）</div>`;
+<div class="hint">${total} 条目，${on} 启用 · 点行编辑，右侧开关逐条启用/停用（停用条目不参与 prompt 组装）；↑↓ 调整组装顺序</div>
+<div class="btnrow"><button class="btn" onclick="stPresetAddEntry('${pid}')">${icon("plus")} 新增自定义条目</button></div>`;
 let lastGroup = "\0";
 p.prompts.forEach((e, i)=>{
 const g = e.group || "";
@@ -4677,8 +4689,11 @@ const preview = String(e.content || "").replace(/\s+/g, " ").slice(0, 60);
 html += `<div class="card" style="padding:12px 14px" onclick="stPresetEntryDetail('${pid}',${i})"><div class="row"><div style="flex:1;min-width:0">`
 + `<div class="spname">${esc(e.name)}${stPresetEntryBadges(e)}</div>`
 + (preview ? `<div class="meta">${esc(preview)}…</div>` : `<div class="meta">（空内容）</div>`)
-+ `</div><button class="pswitch${en ? " on" : ""}" aria-label="启用开关" onclick="event.stopPropagation();stPresetToggleEntry('${pid}',${i})"></button>`
-+ `</div></div>`;
++ `</div><div class="sbtncol">`
++ `<button class="sbtn" aria-label="上移" onclick="event.stopPropagation();stPresetMoveEntry('${pid}',${i},-1)">↑</button>`
++ `<button class="sbtn" aria-label="下移" onclick="event.stopPropagation();stPresetMoveEntry('${pid}',${i},1)">↓</button>`
++ `<button class="pswitch${en ? " on" : ""}" aria-label="启用开关" onclick="event.stopPropagation();stPresetToggleEntry('${pid}',${i})"></button>`
++ `</div></div></div>`;
 });
 view.innerHTML = html;
 window.scrollTo(0, 0);
@@ -4691,18 +4706,57 @@ RP_PRESET.save(p);
 renderStPresetSel();
 renderStPresetEntries(pid);
 };
-/* 条目详情页: 全文内容 + 开关 */
+window.stPresetMoveEntry = (pid, i, delta)=>{
+if(typeof RP_PRESET.moveEntry !== "function") return;
+RP_PRESET.moveEntry(pid, i, delta);
+renderStPresetEntries(pid);
+};
+/* 新增自定义条目: 先建空条目, 直接进编辑页 */
+window.stPresetAddEntry = (pid)=>{
+const p = RP_PRESET.addEntry(pid, {name: "自定义条目", role: "system", content: "", group: "自定义"});
+if(!p) return;
+renderStPresetSel();
+stPresetEntryDetail(pid, p.prompts.length - 1);
+};
+/* 条目详情页: 定位标记只读 + 开关; 普通条目可编辑全部字段 */
 window.stPresetEntryDetail = (pid, i)=>{
 const p = RP_PRESET.get(pid), e = p && p.prompts[i];
 if(!e) return;
 __backAction = ()=>renderStPresetEntries(pid);
 const en = e.enabled !== false;
+if(e.marker){
 view.innerHTML = `<button class="back" onclick="renderStPresetEntries('${pid}')">${icon("back")} 返回条目</button>
 <div class="card"><div class="row"><div style="flex:1;min-width:0">
 <div class="spname">${esc(e.name)}</div>
-<div class="meta">${e.marker ? "定位标记" : "普通条目"} · role=${esc(e.role)}${e.identifier ? " · " + esc(e.identifier) : ""}${e.group ? " · 分组:" + esc(e.group) : ""} · 顺序 #${(e.pos == null ? i : e.pos) + 1}</div>
-</div><button class="pswitch${en ? " on" : ""}" aria-label="启用开关" onclick="stPresetToggleEntryDetail('${pid}',${i})"></button></div>
-<div class="spdetail">${esc(e.content) || "（空内容）"}</div></div>`;
+<div class="meta">定位标记 · ${e.identifier ? esc(e.identifier) + " · " : ""}${e.group ? "分组:" + esc(e.group) + " · " : ""}顺序 #${(e.pos == null ? i : e.pos) + 1}</div>
+<div class="hint">定位标记是预设的占位符，组装时替换为 App 侧对应内容（人设/角色/场景/示例/世界书/历史），不可编辑内容，只能开关。</div>
+</div><button class="pswitch${en ? " on" : ""}" aria-label="启用开关" onclick="stPresetToggleEntryDetail('${pid}',${i})"></button></div></div>`;
+window.scrollTo(0, 0);
+return;
+}
+const isChat = e.injection_position === "chat";
+view.innerHTML = `<button class="back" onclick="renderStPresetEntries('${pid}')">${icon("back")} 返回条目</button>
+<div class="card">
+<div class="row"><div style="flex:1;min-width:0"><div class="spname">编辑条目</div>
+<div class="meta">顺序 #${(e.pos == null ? i : e.pos) + 1}${e.group ? " · 分组:" + esc(e.group) : ""}</div></div>
+<button class="pswitch${en ? " on" : ""}" aria-label="启用开关" onclick="stPresetToggleEntryDetail('${pid}',${i})"></button></div>
+<div class="field"><label>名称</label><input id="pe_name" value="${esc(e.name)}" maxlength="60"></div>
+<div class="field"><label>角色</label><select id="pe_role">
+<option value="system"${e.role==="system"?" selected":""}>system（系统指令）</option>
+<option value="user"${e.role==="user"?" selected":""}>user（用户消息）</option>
+<option value="assistant"${e.role==="assistant"?" selected":""}>assistant（助手消息）</option>
+</select></div>
+<div class="field"><label>注入位置</label><select id="pe_pos" onchange="document.getElementById('pe_depthrow').style.display=this.value==='chat'?'':'none'">
+<option value=""${isChat?"":" selected"}>主提示（按顺序组装）</option>
+<option value="chat"${isChat?" selected":""}>聊天中注入（插进历史消息）</option>
+</select></div>
+<div class="field" id="pe_depthrow" style="display:${isChat?"":"none"}"><label>注入深度（插在历史末尾 N 条消息之前，0=紧贴末尾）</label>
+<input id="pe_depth" type="number" min="0" max="99" value="${e.injection_depth || 0}"></div>
+<div class="field"><label>内容（支持 {{char}}/{{user}}/{{time}} 等变量宏）</label>
+<textarea id="pe_content" rows="8">${esc(e.content)}</textarea></div>
+<div class="btnrow"><button class="btn" onclick="stPresetSaveEntry('${pid}',${i})">保存</button>
+<button class="btn danger" onclick="stPresetDelEntry('${pid}',${i})">删除条目</button></div>
+</div>`;
 window.scrollTo(0, 0);
 };
 window.stPresetToggleEntryDetail = (pid, i)=>{
@@ -4712,6 +4766,24 @@ p.prompts[i].enabled = p.prompts[i].enabled === false ? true : false;
 RP_PRESET.save(p);
 renderStPresetSel();
 stPresetEntryDetail(pid, i);
+};
+window.stPresetSaveEntry = (pid, i)=>{
+const name = document.getElementById("pe_name").value.trim();
+const role = document.getElementById("pe_role").value;
+const pos = document.getElementById("pe_pos").value;
+const depth = Math.max(0, Math.min(99, parseInt(document.getElementById("pe_depth").value) || 0));
+const content = document.getElementById("pe_content").value;
+RP_PRESET.updateEntry(pid, i, {name: name || undefined, role, content, injection_position: pos, injection_depth: depth});
+renderStPresetSel();
+renderStPresetEntries(pid);
+rpToast("已保存");
+};
+window.stPresetDelEntry = (pid, i)=>{
+const p = RP_PRESET.get(pid), e = p && p.prompts[i];
+if(!e || !confirm(`删除条目「${e.name}」？`)) return;
+RP_PRESET.deleteEntry(pid, i);
+renderStPresetSel();
+renderStPresetEntries(pid);
 };
 function stPresetToCfg(d, rc){
 if(!d || typeof d.temperature === "undefined") return null;
@@ -5625,6 +5697,7 @@ async function showTraverseChat(cfg){
   <button class="ditem" onclick="toggleDrawer(false);travWsEditor()">${icon("scroll")} 世界状态</button>
   <button class="ditem" onclick="toggleDrawer(false);travIdentityView()">${icon("user")} 我的身份</button>
   <button class="ditem" onclick="toggleDrawer(false);travPartyView()">${icon("users")} 队伍</button>
+  <button class="ditem" onclick="toggleDrawer(false);travRegexEditor()">🔤 正则替换</button>
   <button class="ditem" onclick="toggleDrawer(false);wallpaperEditor()">🖼️ 聊天壁纸</button>
   <button class="ditem" onclick="toggleDrawer(false);showSystem()">${icon("settings")} prompt 预览</button>
   <button class="ditem" onclick="toggleDrawer(false);exportChat()">${icon("download")} 复制聊天记录</button>

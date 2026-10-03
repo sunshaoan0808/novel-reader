@@ -10,7 +10,10 @@
  *   (局部) + setglobalvar/getglobalvar (全局, localStorage 持久化)。
  *   另支持 MoM 实测出现的全部宏: trim/newline/pick/random/user/char/
  *   time/date/weekday/lastUserMessage/注释。未知宏剥离。
- * - v1 范围保留: injection_position=chat 的深度注入暂不支持(实测 MoM 预设中没有)。
+ * - v2 范围保留: injection_position=chat 的深度注入暂不支持(实测 MoM 预设中没有)。
+ * - v3 (2026-10-03): ST 任意组合。assemble() 支持 injection_position=chat 按
+ *   injection_depth 注入历史(0=紧贴末尾); 新增条目增删改排 API
+ *   (addEntry/updateEntry/moveEntry/deleteEntry), 自定义条目走同一套组装与宏求值。
  */
 (function(){
 "use strict";
@@ -202,19 +205,25 @@ function _lastUserMessage(parts){
  * parts: {persona, charDesc, charPers, scenario, examples, loreBefore, lore,
  *         history:[{role,content}], charName, userName, lastUserMessage?}
  * 返回 [{role, content}]，history 在 chatHistory marker 处展开。
+ * ST 任意组合: injection_position==="chat" 的条目按 injection_depth 注入历史中
+ * (depth=N 表示插在历史末尾 N 条消息之前, 0=紧贴末尾)。
  */
 function assemble(preset, parts){
   var msgs = [];
   var scope = newScope();
   var ctx = {charName: parts.charName, userName: parts.userName,
              lastUserMessage: _lastUserMessage(parts), scope: scope};
+  var chatInj = [];   // 聊天深度注入条目, 按预设顺序稍后处理
+  var histStart = -1, histMsgIdx = []; // 历史块起点 + 纯聊天消息在 msgs 中的下标
   (preset.prompts || []).forEach(function(p){
     if(!p || p.enabled === false) return;
+    if(!p.marker && p.injection_position === "chat"){ chatInj.push(p); return; }
     if(p.marker){
       var key = _markerKey(p);
       if(key === "history"){
+        histStart = msgs.length;
         (parts.history || []).forEach(function(m){
-          if(m && m.content) msgs.push({role: m.role === "assistant" ? "assistant" : "user", content: m.content});
+          if(m && m.content){ histMsgIdx.push(msgs.length); msgs.push({role: m.role === "assistant" ? "assistant" : "user", content: m.content}); }
         });
         return;
       }
@@ -224,6 +233,20 @@ function assemble(preset, parts){
     }
     var c = evalMacros(p.content, ctx);
     if(c) msgs.push({role: p.role, content: c});
+  });
+  /* 聊天深度注入: depth 按纯聊天消息计数(已注入的条目不计入), 按预设顺序逐个插入 */
+  chatInj.forEach(function(p){
+    var c = evalMacros(p.content, ctx);
+    if(!c) return;
+    var depth = (p.injection_depth == null || !isFinite(+p.injection_depth)) ? 0
+      : Math.max(0, Math.floor(+p.injection_depth));
+    if(histStart < 0){ msgs.push({role: p.role, content: c}); return; }
+    var n = histMsgIdx.length, at;
+    if(depth <= 0) at = n ? histMsgIdx[n - 1] + 1 : histStart; // 0=紧贴历史末尾
+    else if(depth >= n) at = histStart;
+    else at = histMsgIdx[n - depth];
+    msgs.splice(at, 0, {role: p.role, content: c});
+    for(var i = 0; i < histMsgIdx.length; i++) if(histMsgIdx[i] >= at) histMsgIdx[i]++;
   });
   return msgs;
 }
@@ -249,10 +272,68 @@ function sysTokens(preset, parts){
   return t;
 }
 
+/* ---- ST 任意组合: 条目增删改排 (Prompt Manager) ---- */
+/* 规范化一条自定义/导入条目 */
+function normEntry(e, idx){
+  e = e || {};
+  var role = (e.role === "user" || e.role === "assistant") ? e.role : "system";
+  var ip = (e.injection_position === "chat") ? "chat" : "";
+  var idp = (e.injection_depth == null || !isFinite(+e.injection_depth)) ? 0
+    : Math.max(0, Math.floor(+e.injection_depth));
+  return {
+    name: String(e.name || ("条目" + (idx + 1))).slice(0, 60),
+    role: role,
+    content: String(e.content == null ? "" : e.content),
+    marker: !!e.marker,
+    identifier: String(e.identifier || ""),
+    enabled: e.enabled !== false,
+    group: String(e.group || e.entryGrouping || "自定义"),
+    injection_position: ip,
+    injection_depth: ip === "chat" ? idp : null,
+    pos: idx
+  };
+}
+function _rePos(p){
+  (p.prompts || []).forEach(function(e, k){ if(e) e.pos = k; });
+}
+function addEntry(pid, entry){
+  var p = get(pid); if(!p) return null;
+  p.prompts = p.prompts || [];
+  p.prompts.push(normEntry(entry, p.prompts.length));
+  save(p); return p;
+}
+function updateEntry(pid, i, fields){
+  var p = get(pid), e = p && p.prompts[i]; if(!e) return null;
+  fields = fields || {};
+  if(fields.name != null) e.name = String(fields.name).slice(0, 60) || e.name;
+  if(fields.role === "user" || fields.role === "assistant" || fields.role === "system") e.role = fields.role;
+  if(fields.content != null) e.content = String(fields.content);
+  if(fields.enabled != null) e.enabled = !!fields.enabled;
+  if(fields.injection_position === "chat" || fields.injection_position === ""){
+    e.injection_position = fields.injection_position;
+    e.injection_depth = fields.injection_position === "chat"
+      ? Math.max(0, Math.floor(+fields.injection_depth || 0)) : null;
+  }
+  save(p); return e;
+}
+function moveEntry(pid, i, delta){
+  var p = get(pid); if(!p || !p.prompts) return null;
+  var j = i + delta;
+  if(j < 0 || j >= p.prompts.length) return p;
+  var t = p.prompts[i]; p.prompts[i] = p.prompts[j]; p.prompts[j] = t;
+  _rePos(p); save(p); return p;
+}
+function deleteEntry(pid, i){
+  var p = get(pid); if(!p || !p.prompts || !p.prompts[i]) return null;
+  p.prompts.splice(i, 1); _rePos(p); save(p); return p;
+}
+
 window.RP_PRESET = {
   list: list, get: get, save: save, remove: remove,
   parseFile: parseFile, expandMacros: expandMacros, evalMacros: evalMacros,
   newScope: newScope, assemble: assemble, sysTokens: sysTokens,
+  addEntry: addEntry, updateEntry: updateEntry, moveEntry: moveEntry,
+  deleteEntry: deleteEntry, normEntry: normEntry,
   LS_KEY: LS_KEY, GLOBALS_KEY: GLOBALS_KEY
 };
 })();

@@ -223,18 +223,74 @@ if(typeof RP!== "undefined" && RP.findCard)
 return RP.findCard(trav.worldId, trav.charName);
 return null;
 }
+/* 角色卡全字段段 (对标单聊 buildMessages): 魂穿卡片世界时, 卡片不再只取 7 个字段做
+ * "人设参考", 而是 system_prompt / 全层人设 / 行为标签 / 文风 / 说话方式 /
+ * 对话示例 / 人物背景 全量注入。{{char}}/{{user}} 宏在段内即时替换。 */
+function cardFullSegs(card){
+var segs = [];
+if(!card || typeof RP_PROMPT === "undefined") return segs;
+var P = RP_PROMPT, cn = card.name || "";
+function sub(t){ return (t && P.subMacros) ? P.subMacros(t, cn, "") : t; }
+var sysp = "";
+if(card.systemPrompt) sysp += String(card.systemPrompt).trim();
+if(card.creatorNotes) sysp += (sysp ? "\n" : "") + "【作者注】\n" + String(card.creatorNotes).trim();
+if(sysp) segs.push({text: sub(sysp), pri: 4});
+var core = P.renderFields(card, P.LAYERS.identity.concat(P.LAYERS.core));
+if(core) segs.push({text: sub("【核心人设】\n" + core), pri: 5.5});
+var tagList = (card.tags || []).map(function(x){ return String(x == null ? "" : x).trim(); })
+  .filter(Boolean).slice(0, 12);
+if(tagList.length) segs.push({text: "【行为标签】" + tagList.join("、"), pri: 6});
+var fl = P.flairInstr(card.flair);
+if(fl) segs.push({text: fl, pri: 6.5});
+var sp = P.renderFields(card, P.LAYERS.speech);
+if(sp) segs.push({text: sub("【说话方式】\n" + sp), pri: 7});
+var ex = P.buildExamples(card, cn, 600);
+if(ex) segs.push({text: sub(ex), pri: 65});
+var bgf = P.renderFields(card, P.LAYERS.background);
+if(bgf) segs.push({text: sub("【人物背景】\n" + bgf), pri: 66});
+return segs;
+}
+
+/* ST 预设组装用 parts: 与 RP_PRESET.assemble 的 parts 形状一致。
+ * 魂穿卡片世界 -> 卡片全字段; 书籍/肉身 -> 世界圣经 + 玩家身份。 */
+function travParts(trav, bible, loreRes){
+var parts = {persona: "", charDesc: "", charPers: "", scenario: "",
+  examples: "", loreBefore: "", lore: "", history: [],
+  charName: trav.charName || bible.name || "角色", userName: "你"};
+var P = (typeof RP_PROMPT !== "undefined") ? RP_PROMPT : null;
+var card = soulCard(trav);
+if(trav.mode === "soul" && card && P){
+var cn = card.name || trav.charName;
+parts.charName = cn;
+function sub(t){ return (t && P.subMacros) ? P.subMacros(t, cn, "") : t; }
+var core = P.renderFields(card, P.LAYERS.identity.concat(P.LAYERS.core));
+var desc = ["你是" + cn + "。", bible.bg, core ? "【核心人设】\n" + core : ""]
+  .filter(Boolean).join("\n\n");
+var sysp = card.systemPrompt ? String(card.systemPrompt).trim() : "";
+if(card.creatorNotes) sysp += (sysp ? "\n" : "") + "【作者注】\n" + String(card.creatorNotes).trim();
+if(sysp) desc += "\n\n" + sysp;
+parts.charDesc = sub(desc);
+var tagList = (card.tags || []).map(function(x){ return String(x == null ? "" : x).trim(); })
+  .filter(Boolean).slice(0, 12);
+var pers = [P.flairInstr(card.flair),
+  tagList.length ? "【行为标签】" + tagList.join("、") : "",
+  P.renderFields(card, P.LAYERS.speech) ? "【说话方式】\n" + P.renderFields(card, P.LAYERS.speech) : ""]
+  .filter(Boolean).join("\n\n");
+parts.charPers = sub(pers);
+parts.scenario = sub(card.scenario ? "【背景】\n世界设定：" + String(card.scenario).trim() : bible.bg);
+parts.examples = sub(P.buildExamples(card, cn, 600));
+}else{
+parts.charDesc = [bible.bg, identityBlock(trav)].filter(Boolean).join("\n\n");
+parts.scenario = bible.bg;
+}
+parts.lore = (loreRes && loreRes.text) || "";
+return parts;
+}
+
 function identityBlock(trav){
 if(trav.mode === "soul"){
-var card = soulCard(trav) || {name: trav.charName, fields: {}};
-var f = card.fields || {};
-var ref = "";
-if(typeof RP_PROMPT!== "undefined"){
-ref = RP_PROMPT.renderFields(card, ["core_identity", "gender", "age_stage",
-"core_traits", "speech_style", "signature_phrases", "taboo_topics"]);
-if(ref && typeof RP_PROMPT.subMacros === "function") ref = RP_PROMPT.subMacros(ref, card.name, "");
-}
+/* 魂穿: 人设字段由 cardFullSegs 全量注入, 这里只保留身份/守则/处境框架, 不再重复渲染字段 */
 return "「你的身份」你是" + trav.charName + "，玩家本人正在扮演 TA。\n" +
-(ref? "人设参考：\n" + ref + "\n": "") +
 "守则：你能做的只有" + trav.charName + "能做的，你知道的只有" + trav.charName +
 "知道的；言行举止必须符合 TA 的性格、身份与时代，绝不跳出角色。\n" +
 "「当前处境」" + (trav.anchorTitle || "故事开端");
@@ -290,6 +346,9 @@ var P = (typeof RP_PROMPT!== "undefined")? RP_PROMPT: null;
 var est = P? P.estTokens: function(s){ return String(s || "").length;};
 var maxCtx = budget.maxContext || 8192;
 var avail = Math.max(1024, maxCtx - (budget.response || 512) - (budget.priming || 200));
+/* ST 预设: budget.stPreset 为解析后的预设对象时走预设顺序组装 (与单聊同一套) */
+var stP = (budget && budget.stPreset && Array.isArray(budget.stPreset.prompts) &&
+  typeof RP_PRESET!== "undefined") ? budget.stPreset : null;
 
 var bible = buildWorldBible(trav.worldKind, trav.worldId);
 var st = getState(trav.id);
@@ -310,14 +369,59 @@ var k = (e && (e.title || "") + "￨" + (e.content || e.rules || "")).slice(0, 2
 if(!seen[k]){ seen[k] = 1; wb2.push(e); }
 });
 wb = wb2;
-if(P && wb.length){
-var loreRes = P.buildLore(wb, recentText, Math.min(900, Math.floor(avail * 0.15)));
-add(loreRes.text? "「世界书」\n" + loreRes.text: "", 70);
-}
+var loreRes = (P && wb.length) ? P.buildLore(wb, recentText, Math.min(900, Math.floor(avail * 0.15))) : null;
+if(loreRes && loreRes.text) add("「世界书」\n" + loreRes.text, 70);
 var stTxt = "「当前世界状态」" + stateLine(st) +
 (st.progress? "\n剧情进度：" + st.progress: "") +
 (st.items.length? "\n随身物品：" + st.items.join("、"): "");
 add(stTxt, 8);
+/* 角色卡全字段: 魂穿卡片世界时全量注入 (system_prompt/人设/标签/文风/示例/背景) */
+var tcard = soulCard(trav);
+cardFullSegs(tcard).forEach(function(sg){ segs.push(sg); });
+
+/* 历史截取 (经典与预设两条路径共用) */
+function takeHistory(src, left){
+var hist = [], hUsed = 0, hDropped = 0;
+for(var j = src.length - 1; j >= 0; j--){
+var m = src[j], mt = est(m.content) + 6;
+if(hUsed + mt > left){ hDropped = j + 1; break;}
+hist.unshift({role: m.role, content: m.content});
+hUsed += mt;
+}
+return {hist: hist, hUsed: hUsed, hDropped: hDropped};
+}
+function travPost(){
+var post = postInstructions(trav);
+/* P0 卡兼容: 卡片 post_history_instructions 拼到 post-history 位置 (ST 语义) */
+if(tcard && tcard.postHistoryInstructions) post += "\n" + String(tcard.postHistoryInstructions).trim();
+return post;
+}
+
+if(stP){
+/* ---- ST 预设组装 ---- */
+var parts = travParts(trav, bible, loreRes);
+var pList = stP.prompts.slice();
+var pUsed = RP_PRESET.sysTokens({prompts: pList}, parts);
+var guard = 0;
+while(pUsed > avail && guard++ < 200){
+var di = -1;
+for(var qi = 0; qi < pList.length; qi++)
+if(!pList[qi].marker && pList[qi].role === "system" && pList[qi].injection_position !== "chat"){ di = qi; break; }
+if(di < 0) break;
+pList.splice(di, 1);
+pUsed = RP_PRESET.sysTokens({prompts: pList}, parts);
+}
+var hr = takeHistory(ctx.history || [], avail - pUsed);
+parts.history = hr.hist;
+var pmsgs = RP_PRESET.assemble({prompts: pList}, parts);
+pmsgs.push({role: "system", content: travPost()});
+return {
+messages: pmsgs,
+stats: {maxCtx: maxCtx, avail: avail, sysTokens: pUsed, histTokens: hr.hUsed,
+histKept: hr.hist.length, histDropped: hr.hDropped, preset: "穿越", stPreset: stP.name},
+preview: pmsgs.map(function(mm){ return "[" + mm.role + "]\n" + mm.content; }).join("\n\n"),
+};
+}
 
 segs.sort(function(a, b){ return a.pri - b.pri;});
 var sysParts = [], used = 0;
@@ -326,23 +430,16 @@ var t = est(sg.text);
 if(used + t > avail) return;
 sysParts.push(sg.text); used += t;
 });
-var left = avail - used, hist = [], hUsed = 0, hDropped = 0;
-var src = ctx.history || [];
-for(var j = src.length - 1; j >= 0; j--){
-var m = src[j], mt = est(m.content) + 6;
-if(hUsed + mt > left){ hDropped = j + 1; break;}
-hist.unshift({role: m.role, content: m.content});
-hUsed += mt;
-}
-var post = postInstructions(trav);
+var hr2 = takeHistory(ctx.history || [], avail - used);
+var post2 = travPost();
 var messages = [{role: "system", content: sysParts.join("\n\n")}];
-for(var k = 0; k < hist.length; k++) messages.push(hist[k]);
-messages.push({role: "system", content: post});
+for(var k = 0; k < hr2.hist.length; k++) messages.push(hr2.hist[k]);
+messages.push({role: "system", content: post2});
 return {
 messages: messages,
-stats: {maxCtx: maxCtx, avail: avail, sysTokens: used, histTokens: hUsed,
-histKept: hist.length, histDropped: hDropped, preset: "穿越"},
-preview: sysParts.join("\n\n") + "\n\n" + post,
+stats: {maxCtx: maxCtx, avail: avail, sysTokens: used, histTokens: hr2.hUsed,
+histKept: hr2.hist.length, histDropped: hr2.hDropped, preset: "穿越"},
+preview: sysParts.join("\n\n") + "\n\n" + post2,
 };
 }
 
@@ -398,6 +495,7 @@ parseWsBlock: parseWsBlock, mergeState: mergeState, stateLine: stateLine,
 anchorsFor: anchorsFor,
 identityBlock: identityBlock, castBriefs: castBriefs, postInstructions: postInstructions,
 buildMessages: buildMessages, identityOneLiner: identityOneLiner,
+travCard: function(trav){ return soulCard(trav); },
 genOpening: genOpening, offlineOpening: offlineOpening,
 };
 })();
