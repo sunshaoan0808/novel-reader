@@ -1456,6 +1456,15 @@ log.onscroll = ()=>{ if(!ticking){ ticking = true; raf(onScroll); } };
 ensureToBottom(); /* M3: 注入回到底部按钮（单聊/群聊/穿越共用） */
 if(typeof document !== "undefined" && document.body && document.body.classList)
 document.body.classList.remove("immersive"); /* 新开聊天页先清掉旧状态 */
+/* 2026-10-03: 移除 immersive 后场景条/顶栏恢复高度, 聊天区收缩会留下一段"静默离底
+   距离"(无 scroll 事件, 实测 32→148)。若之前在底部附近, 直接重吸附到底部消除它;
+   否则残留的 dist 会让后续的方向判定错乱(小幅上滑被当成下滑, 进页即误隐藏)。
+   读 scrollHeight 会强制同步布局, 基线取的是落定后的真值。 */
+void log.offsetHeight;
+if(lastDist < 200){
+  log.scrollTop = Math.max(0, log.scrollHeight - log.clientHeight);
+}
+lastDist = distNow();
 }
 window.exportChat = ()=>{
 const h = getHist(chatHistKey());
@@ -2272,20 +2281,23 @@ let extra = "";
 const rateBtns = m.role==="assistant"
 ? `<button class="${m.rating===1?"on":""}" onclick="event.stopPropagation();rateMsg(${idx},1)">${icon("thumb-up",15)}</button>`
 + `<button class="${m.rating===-1?"on":""}" onclick="event.stopPropagation();rateMsg(${idx},-1)">${icon("thumb-down",15)}</button>` : "";
+/* S-4 召回指示器：本条 AI 回复注入了记忆/世界书时，气泡工具条出现 🧠 角标 */
+const memBtn = (m.role==="assistant" && ((m.memHits&&m.memHits.length)||(m.loreHits&&m.loreHits.length)))
+? `<button onclick="event.stopPropagation();toggleMemHits(${idx})" title="这次想起了什么">🧠</button>` : "";
 if(m.role==="assistant" && idx===lastAI){
 if(m.candidates && m.candidates.length>1){
 extra += `<div class="swipe" onclick="event.stopPropagation()"><button onclick="swipeMsg(${idx},-1)">‹</button>`
 + `<span>${(m.ci||0)+1}/${m.candidates.length}</span>`
 + `<button onclick="swipeMsg(${idx},1)">›</button></div>`;
 }
-extra += `<div class="msgtools">` + rateBtns
+extra += `<div class="msgtools">` + rateBtns + memBtn
 + voiceBubbleHTML(idx, m)
 + `<button onclick="event.stopPropagation();editMsg(${idx})">编辑</button>`
 + `<button onclick="event.stopPropagation();copyMsg(${idx})">复制</button>`
 + `<button onclick="event.stopPropagation();regenMsg()">↻ 重生</button>`
 + `<button onclick="event.stopPropagation();delMsg(${idx})">删除</button></div>`;
 } else {
-extra = `<div class="msgtools">` + rateBtns
+extra = `<div class="msgtools">` + rateBtns + memBtn
 + (m.role==="assistant"?voiceBubbleHTML(idx,m):"")
 + `<button onclick="event.stopPropagation();editMsg(${idx})">编辑</button>`
 + `<button onclick="event.stopPropagation();copyMsg(${idx})">复制</button>`
@@ -2328,6 +2340,20 @@ TW.key = key;
 }
 }catch(e){}
 }
+/* S-4 召回指示器 (对标 Kindroid 紫色脑图标): 点 🧠 展开"这次想起了什么" */
+window.toggleMemHits = (idx)=>{
+const h = getHist(chatHistKey()); const m = h[idx]; if(!m) return;
+const box = document.getElementById("smsg-"+idx); if(!box) return;
+const old = box.querySelector(".mmhits");
+if(old){ old.remove(); return; }
+const rows = [];
+(m.memHits||[]).forEach(x=>rows.push(`<div>🧠 ${esc(x.label)}${x.items?` <span class="dim">×${x.items}</span>`:""} <span class="dim">· 记忆</span></div>`));
+(m.loreHits||[]).forEach(t=>rows.push(`<div>📖 ${esc(t)} <span class="dim">· 世界书</span></div>`));
+if(!rows.length) return;
+const p = document.createElement("div"); p.className = "mmhits";
+p.innerHTML = `<div class="mmhits-ttl">这次想起了</div>` + rows.join("");
+box.querySelector(".msgcol").appendChild(p);
+};
 /* ============ 上下文用量常驻条 + 世界书触发可视化 (对标 Talkie/Janitor) ============ */
 function renderCtxBar(){
 const bar = document.getElementById("ctxbar");
@@ -2706,6 +2732,7 @@ maxTokens: conciseOn ? Math.min(rcfg.respTokens, 300) : rcfg.respTokens,
 concise: conciseOn,
 optCards: !!rcfg.optCards, optCount: rcfg.optCount, optMood: rcfg.optMood,
 plotOutline: activePlotOutline(), scenario: scenarioInstr(), oocOn: rcfg.ooc,
+sceneText: getSceneText(), /* S-7 高权重场景 */
 userMtype: CHAT.narrMode ? "narr" : (CHAT.asSpeaker ? "npc" : "player"),
 userSpeaker: CHAT.asSpeaker || null,
 pov: CHAT.pov || "player", person: CHAT.person || "second",
@@ -2814,10 +2841,19 @@ return s ? s.instr : "";
 function renderScenChips(){
 const el = $("#scenbar");
 if(!el) return;
-el.innerHTML = SCENARIOS.map(s=>
+/* 输入框聚焦时不重建, 避免打字被打断 */
+const ae = document.activeElement;
+if(ae && ae.id === "scenetext" && el.contains(ae)) return;
+el.innerHTML = `<div class="scenrow">` + SCENARIOS.map(s=>
 `<button class="scenchip ${CHAT.scenario===s.id?"on":""}" onclick="toggleScenario('${s.id}')">${s.icon}${s.name}</button>`).join("")
-+ (CHAT.scenario ? `<button class="scenchip off" onclick="toggleScenario('')">✕</button>` : "");
++ (CHAT.scenario ? `<button class="scenchip off" onclick="toggleScenario('')">✕</button>` : "")
++ `</div>`
++ `<input id="scenetext" class="scenetext" maxlength="160" placeholder="当前场景：地点/着装/活动…（高权重，160字内）" value="${esc(getSceneText())}" oninput="setSceneText(this.value)" title="高权重场景，160字内，identity段后置顶注入">`;
 }
+/* S-7 高权重场景 (对标 Kindroid current_scene): 160 字符内, 按聊天存 */
+function sceneKey(){ try{ return "nd_scene_" + chatHistKey(); }catch(e){ return "nd_scene_misc"; } }
+function getSceneText(){ try{ return localStorage.getItem(sceneKey()) || ""; }catch(e){ return ""; } }
+function setSceneText(v){ try{ localStorage.setItem(sceneKey(), String(v == null ? "" : v).slice(0, 160)); }catch(e){} }
 window.toggleScenario = (id)=>{
 if(!id || CHAT.scenario===id){ CHAT.scenario = null; renderScenChips(); return; }
 CHAT.scenario = id;
@@ -3438,7 +3474,7 @@ if(ta && c) c.textContent = ta.value.length + "/" + max;
 };
 window.ironlawCount = ()=>{
 const ta = document.getElementById("ironlaw_box"), c = document.getElementById("ironlaw_cnt");
-if(ta && c) c.textContent = ta.value.length + "/400";
+if(ta && c) c.textContent = ta.value.length + "/2000";
 };
 window.saveIronLawUI = ()=>{
 const ta = document.getElementById("ironlaw_box");
@@ -3446,7 +3482,7 @@ const v = ta ? ta.value : "";
 const card = RP.findCard(DETAIL.runId, DETAIL.name) || {};
 const r = RP_MEM.saveIronLaw(DETAIL.runId, DETAIL.name, card.id || null, v);
 ironlawCount();
-alert(r.truncated ? "已保存（超 400 字部分已截断）" : "铁律记忆已保存，对话时会永远最先注入");
+alert(r.truncated ? "已保存（超 2000 字部分已截断）" : "铁律记忆已保存，对话时会永远最先注入");
 };
 /* Tier2 #15: 单聊选项 (concise 简洁回复开关), 按聊天存 */
 const chatOptKey = (runId, name)=> `nd_chatopt_${runId}_${name}`;
@@ -3483,14 +3519,36 @@ ov.querySelector("#cfcheck_ok").onclick = ()=>done(!!ov.querySelector("#cfcheck_
 });
 };
 
+/* S-11: 双复选框确认框 (开新聊天: 带走记忆 + 同时清除长期记忆) */
+window.confirmCheck2 = (title, bodyHtml, labels, okLabel)=>{
+return new Promise((resolve)=>{
+const ov = document.createElement("div");
+ov.className = "cfcheck";
+ov.innerHTML = `<div class="cfbox"><div class="cfttl">${esc(title)}</div><div class="cfbody">${bodyHtml}</div>`
++ labels.map((l,i)=>`<label class="cfrow"><input type="checkbox" class="cfcheck2_box" data-i="${i}"${i===0?" checked":""}> ${esc(l)}</label>`).join("")
++ `<div class="cfbtns"><button class="btn ghost" id="cfcheck2_cancel">取消</button>`
++ `<button class="btn" id="cfcheck2_ok">${esc(okLabel||"确定")}</button></div></div>`;
+document.body.appendChild(ov);
+const done = (v)=>{ ov.remove(); resolve(v); };
+ov.querySelector("#cfcheck2_cancel").onclick = ()=>done(null);
+ov.onclick = (e)=>{ if(e.target === ov) done(null); };
+ov.querySelector("#cfcheck2_ok").onclick = ()=>{
+const boxes = ov.querySelectorAll(".cfcheck2_box");
+done(Array.prototype.map.call(boxes, b=>!!b.checked));
+};
+});
+};
+
 /* Tier2 #9: 开新聊天 — 同一角色开新会话, 可选带走 Pin 与记忆。
  * 先自动备份当前聊天为存档, 再清空历史+记忆(可选恢复记忆快照), 空历史触发开场白。 */
 window.newChatSameRole = async ()=>{
 if(CHAT.mode !== "single") return;
-const ok = await confirmCheck("开新聊天",
+/* S-11 (对标 Kindroid chat_break wipe_cascaded): 开新聊天可选同时清除长期记忆 */
+const r = await confirmCheck2("开新聊天",
 `和 <b>${esc(CHAT.name)}</b> 开启一段新的聊天？<br>当前聊天会自动备份为一条存档。`,
-"带走 Pin 与记忆", "开新聊天");
-if(ok === null) return;
+["带走 Pin 与记忆", "同时清除长期记忆"], "开新聊天");
+if(r === null) return;
+const ok = r[0], wipeMem = r[1];
 const k = chatHistKey();
 const def = new Date().toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
 const ss = getSaves();
@@ -3503,14 +3561,14 @@ ss.push(slot);
 try{ localStorage.setItem(savesKey(), JSON.stringify(ss)); }
 catch(e){ alert("自动备份失败，请先手动新建存档"); return; }
 let memSnap = null;
-if(ok){
+if(ok && !wipeMem){
 const st = RP_MEM.get(CHAT.runId, CHAT.name) || {};
 memSnap = {pinned: ((st.short||[]).filter(m=>m&&m.pin)),
 profile3: st.profile3, event3: st.event3, record3: st.record3, mood: st.mood, migrated3: st.migrated3};
 }
 saveHist(k, []);
 RP_MEM.clear(CHAT.runId, CHAT.name);
-if(ok && memSnap){
+if(ok && !wipeMem && memSnap){
 const st2 = RP_MEM.get(CHAT.runId, CHAT.name) || {};
 st2.short = (memSnap.pinned||[]).slice();
 st2.profile3 = memSnap.profile3; st2.event3 = memSnap.event3; st2.record3 = memSnap.record3;
@@ -3574,10 +3632,17 @@ if(ts && Date.now() - ts > REWIND_DAYS * 86400 * 1000)
 return {ok:false, code:"age", days:REWIND_DAYS};
 return {ok:true};
 }
+/* S-12 回溯点吸附 (对标 Kindroid rewind_messages): 单聊按"轮"回溯, 吸附到最近一条用户消息 */
+function snapRewindIdx(h, idx){
+let j = idx;
+while(j > 0 && h[j] && h[j].role !== "user") j--;
+return (h[j] && h[j].role === "user") ? j : idx;
+}
 window.rewindMsg = (idx)=>{
 const k = chatHistKey();
 const h = getHist(k);
 const m = h[idx]; if(!m) return;
+if(CHAT.mode === "single") idx = snapRewindIdx(h, idx);
 const chk = rewindCheck(h, idx);
 if(!chk.ok){
 if(chk.code === "count")
@@ -3753,9 +3818,9 @@ const _chatsum = RP_MEM.getChatSummary(runId, nm);
 /* Tier2 #15: 简洁回复开关 (Janitor "Snappier, more concise replies.") */
 const _copt = getChatOpt(runId, nm);
 body = `<div class="card"><div class="name" style="font-size:14px">铁律记忆 · 永远最先注入${RP_AIFILL.btn("ironlaw_box","对"+nm+"的铁律","3~5条硬性要求，一条一行，如：绝不在人前提起穿越者的身份；对黛玉永远温柔","角色扮演：约束 AI 扮演 "+nm+" 时必须遵守的铁律")}</div>`
-+ `<div class="meta">对${esc(nm)}的硬性要求（如绝不做的事、必须遵守的设定），400 字以内，每次对话必带</div>`
-+ `<div class="field" style="margin:8px 0 0"><textarea id="ironlaw_box" rows="4" maxlength="400" placeholder="如：绝不在人前提起穿越者的身份；对黛玉永远温柔…" oninput="ironlawCount()">${esc(_iron)}</textarea></div>`
-+ `<div class="btnrow"><span class="kv" id="ironlaw_cnt">${_iron.length}/400</span><span style="flex:1"></span><button class="btn" onclick="saveIronLawUI()">保存铁律</button></div></div>`
++ `<div class="meta">不用等它自己学会的重要事实：对${esc(nm)}的硬性要求（如绝不做的事、必须遵守的设定），2000 字以内，每次对话必带，立即可用</div>`
++ `<div class="field" style="margin:8px 0 0"><textarea id="ironlaw_box" rows="4" maxlength="2000" placeholder="如：绝不在人前提起穿越者的身份；对黛玉永远温柔…" oninput="ironlawCount()">${esc(_iron)}</textarea></div>`
++ `<div class="btnrow"><span class="kv" id="ironlaw_cnt">${_iron.length}/2000</span><span style="flex:1"></span><button class="btn" onclick="saveIronLawUI()">保存铁律</button></div></div>`
 + `<div class="card"><div class="name" style="font-size:14px">本聊摘要 · 手写长期记忆${RP_AIFILL.btn("chatsum_box","和"+nm+"的聊天摘要","2~3句话概括你和这个角色的当前关系与共同经历", "角色 "+nm+"；最近对话：\n"+RP_AIFILL._recentChatCtx(8,"nd_chat_"+runId+"_"+nm))}</div>`
 + `<div class="meta">一句话概括这段聊天（1000 字以内），每次对话会最先注入，作为长期记忆</div>`
 + `<div class="field" style="margin:8px 0 0"><textarea id="chatsum_box" rows="3" maxlength="1000" placeholder="如：我们是青梅竹马，正在一起调查家族旧事…" oninput="chatsumCount()">${esc(_chatsum)}</textarea></div>`
@@ -4962,6 +5027,11 @@ const sysp = card.systemPrompt||"";
 const phi = card.postHistoryInstructions||"";
 const cnote = card.creatorNotes||"";
 const scen = card.scenario||"";
+/* S-5/S-6/S-9: 文风档/温度/行为标签 */
+const flairOpts = `<option value="">默认（跟全局）</option>` + Object.keys(RP_PROMPT.FLAIR).map(k=>
+`<option value="${k}"${card.flair===k?" selected":""}>${esc(RP_PROMPT.FLAIR[k].name)} · ${esc(RP_PROMPT.FLAIR[k].desc)}</option>`).join("");
+const temp = (card.temperature != null && isFinite(+card.temperature)) ? +card.temperature : "";
+const tagsIn = (card.tags||[]).join(",");
 view.innerHTML = `
 <div class="hint">修改后点「保存」写回, prompt 注入、开场白、导出都用新内容。<span id="ce_tok" class="dim"></span></div>
 <div class="setcard"><div class="secttl">角色模板 · 一键填充</div>
@@ -4981,6 +5051,12 @@ view.innerHTML = `
 <textarea id="ce_cnote" rows="2" oninput="tokCount('ce_cnote','ce_tok')">${esc(cnote)}</textarea></div>
 <div class="field"><label>场景设定 <span class="dim">scenario · 进【背景】段</span></label>
 <textarea id="ce_scen" rows="3" oninput="tokCount('ce_scen','ce_tok')">${esc(scen)}</textarea></div>
+<div class="field"><label>文风档 <span class="dim">flair · 角色级文风，覆盖全局预设</span></label>
+<select id="ce_flair">${flairOpts}</select></div>
+<div class="field"><label>温度 <span class="dim">temperature · 0.6~1.8，空=用全局</span></label>
+<input id="ce_temp" type="number" min="0.6" max="1.8" step="0.05" value="${esc(temp)}" placeholder="如 0.95"></div>
+<div class="field"><label>行为标签 <span class="dim">tags · 逗号分隔，如 傲娇,毒舌 · 进 system</span></label>
+<input id="ce_tags" value="${esc(tagsIn)}"></div>
 </div>
 <div class="setcard"><div class="secttl">角色字段</div>${rows}</div>
 <div class="btnrow"><button class="btn" onclick="saveCardEdit('${src}','${id}')">${icon("save")} 保存</button>
@@ -5015,18 +5091,24 @@ const sysp = get("ce_sysp").value.trim();
 const phi = get("ce_phi").value.trim();
 const cnote = get("ce_cnote").value.trim();
 const scen = get("ce_scen").value.trim();
+const flair = get("ce_flair").value.trim();
+const tempRaw = get("ce_temp").value.trim();
+const temp = tempRaw === "" ? null : Math.max(0.6, Math.min(1.8, +tempRaw || 0.9));
+const tags = get("ce_tags").value.split(/[,，、]/).map(s=>s.trim()).filter(Boolean).slice(0,12);
 if(src==="custom"){
 const list = RP_WRITER.getCustomChars()||[];
 const i = list.findIndex(c=>c.id===id);
 if(i<0){ alert("卡片不存在"); return; }
 list[i] = Object.assign({}, list[i], {name, fields:f, altGreetings:alt, exampleDialogue:exd,
-systemPrompt:sysp, postHistoryInstructions:phi, creatorNotes:cnote, scenario:scen});
+systemPrompt:sysp, postHistoryInstructions:phi, creatorNotes:cnote, scenario:scen,
+flair:flair||"", temperature:temp, tags:tags});
 RP_WRITER.saveCustomChars(list);
 }else{
 const c = RP_CARDIMPORT.findById(id);
 if(!c){ alert("卡片不存在"); return; }
 RP_CARDIMPORT.update(Object.assign({}, c, {name, fields:f, altGreetings:alt, exampleDialogue:exd,
-systemPrompt:sysp, postHistoryInstructions:phi, creatorNotes:cnote, scenario:scen}));
+systemPrompt:sysp, postHistoryInstructions:phi, creatorNotes:cnote, scenario:scen,
+flair:flair||"", temperature:temp, tags:tags}));
 }
 alert("已保存");
 if(src==="custom") showWriter(); else showTraverse();

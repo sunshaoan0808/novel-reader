@@ -1,6 +1,6 @@
 const fs = require("fs"), vm = require("vm");
 const WWW = fs.existsSync("assets/www") ? "assets/www" : "www";
-// P0 记忆缺口回归测试: 三池预算 / 铁律400字 / msg_id 水位 / Inspector 数据一致性
+// P0 记忆缺口回归测试: 三池预算 / 铁律2000字(S-8, 对标 Nomi Shared Notes) / msg_id 水位 / Inspector 数据一致性
 const store = {};
 const localStorage = {
 getItem: (k)=> (k in store ? store[k] : null),
@@ -54,11 +54,11 @@ localStorage.setItem("nd_rp_cfg_v1", JSON.stringify({memPoolRatio: "abc"}));
 t("ratio bad falls back", RP_MEM.memPoolRatio().recent === 50);
 localStorage.removeItem("nd_rp_cfg_v1");
 
-/* ---------- P0-2: 铁律 400 字 ---------- */
-const long500 = "律".repeat(500);
+/* ---------- P0-2: 铁律 2000 字 (S-8) ---------- */
+const long500 = "律".repeat(2500); // S-8: 2000 上限
 const sr = RP_MEM.saveIronLaw("r1", "阿绫", null, long500);
-t("ironlaw truncates to 400", sr.saved.length === 400 && sr.truncated === true);
-t("ironlaw read back 400", RP_MEM.getIronLaw("r1", "阿绫", null).length === 400);
+t("ironlaw truncates to 2000", sr.saved.length === 2000 && sr.truncated === true);
+t("ironlaw read back 2000", RP_MEM.getIronLaw("r1", "阿绫", null).length === 2000);
 const sr2 = RP_MEM.saveIronLaw("r1", "阿绫", null, "短律");
 t("ironlaw short not truncated", sr2.truncated === false && sr2.saved === "短律");
 t("ironKey fallback", RP_MEM.ironKey("r1", "阿绫", null) === "nd_ironlaw_r1_阿绫");

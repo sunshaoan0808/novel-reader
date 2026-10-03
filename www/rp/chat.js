@@ -342,6 +342,13 @@ async function greeting(runId, name, cfg, novel){
   } catch(e){ return "（" + name + "打量着你，没有说话）"; }
 }
 
+/* S-6 按卡温度 (对标 Kindroid user_set_temperature 0.6–1.8): 卡片温度覆盖全局 */
+function cardTempOf(card, fallback){
+  if(card && card.temperature != null && isFinite(+card.temperature))
+    return Math.max(0.1, Math.min(2, +card.temperature));
+  return fallback;
+}
+
 /* 发送一轮。opts: {cfg, history, onPush, onToken, onSystem, budget, signal,
  *                 temperature, oocOn, cardName} */
 async function send(runId, name, text, opts){
@@ -355,6 +362,8 @@ async function send(runId, name, text, opts){
     run = {novel: _cc.novel || "自定义", worldbook: _wr.worldbook || [], relations: []};
   }
   var card = findCard(runId, name) || {name: name, fields: {}};
+  /* S-6 按卡温度: 卡片温度覆盖全局 */
+  opts.temperature = cardTempOf(card, opts.temperature);
 
   h.push(tagUserMsg(newMsg("user", text), opts));
   if(opts.onPush) opts.onPush();
@@ -398,6 +407,7 @@ async function send(runId, name, text, opts){
     history: mapHistory(h),
     persona: RP_PERSONA.renderText(RP_PERSONA.resolve(runId)),
     personaName: (function(){ try{ var p = RP_PERSONA.resolve(runId); return (p && p.name) || ""; }catch(e){ return ""; } })(),
+    sceneText: opts.sceneText || "", /* S-7 高权重场景 */
     pov: opts.pov, person: opts.person,
     concise: !!opts.concise, /* Tier2 #15 简洁回复开关 */
   }, budget);
@@ -486,7 +496,11 @@ async function send(runId, name, text, opts){
       if(ppaR) reply = ppaR.text;
     }
   }catch(e){ ppaR = null; }
-  h.push(newMsg("assistant", reply));
+  /* S-4 召回指示器: 把本次注入的记忆段标签/世界书命中挂在消息上, 气泡 🧠 角标用 */
+  var am = newMsg("assistant", reply);
+  if(b.stats.memHits && b.stats.memHits.length) am.memHits = b.stats.memHits;
+  if(b.stats.loreHits && b.stats.loreHits.length) am.loreHits = b.stats.loreHits;
+  h.push(am);
   if(ppaR){
     b.stats.ppa = {ran: true, changed: ppaR.changed, mode: ppaR.mode}; // P0-5: 诊断用
     try{ RP_PPA.recordAlign(wsId, h.length, ppaR.changed); }catch(e){}
@@ -506,6 +520,8 @@ async function regenerate(runId, name, opts){
   if(!last) return {history: h};
   var run = (window.__DATA__.runs || {})[runId] || {};
   var card = findCard(runId, name) || {name: name, fields: {}};
+  /* S-6 按卡温度: regenerate 同样覆盖 */
+  opts.temperature = cardTempOf(card, opts.temperature);
   var mem = RP_MEM.get(runId, name);
   var upto = h.indexOf(last);
   var lastUserText = "";
@@ -645,6 +661,7 @@ async function genOneSpeaker(runId, run, members, speaker, text, h, opts, budget
     history: mapHistory(h),
     persona: RP_PERSONA.renderText(RP_PERSONA.resolve(runId)),
     personaName: (function(){ try{ var p = RP_PERSONA.resolve(runId); return (p && p.name) || ""; }catch(e){ return ""; } })(),
+    sceneText: opts.sceneText || "", /* S-7 高权重场景(群聊同样生效) */
     pov: opts.pov, person: opts.person,
     concise: !!opts.concise, /* Tier2 #15 简洁回复开关 */
   }, budget);

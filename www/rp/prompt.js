@@ -260,18 +260,37 @@ var NARRATOR_INSTR = "【叙事者模式】你同时承担叙事与扮演双重�
 /* P1-1 预设: 分段顺序/开关/预算比例可配置 (Risu 式预设, 不做 ST 拖拽) */
 var PRESETS = {
   classic: {name: "经典序", desc: "完整人设，适合长上下文",
-    order: {identity: 5, persona: 6, sysprompt: 7, core: 10, arc: 15, memory: 20, speech: 30, examples: 40, background: 50, relations: 60, lore: 70},
+    order: {identity: 5, scene: 5.5, persona: 6, sysprompt: 7, tags: 8, core: 10, arc: 15, memory: 20, speech: 30, flair: 35, examples: 40, background: 50, relations: 60, lore: 70},
     loreRatio: 0.2},
   lite: {name: "精简序", desc: "去背景/示例，省 token，适合小上下文",
-    order: {identity: 5, persona: 6, sysprompt: 7, core: 10, arc: 15, memory: 15, speech: 20, relations: 30, lore: 40},
+    order: {identity: 5, scene: 5.5, persona: 6, sysprompt: 7, tags: 8, core: 10, arc: 15, memory: 15, speech: 20, flair: 35, relations: 30, lore: 40},
     loreRatio: 0.12},
   immers: {name: "沉浸序", desc: "说话方式优先，代入感最强",
-    order: {identity: 5, persona: 6, sysprompt: 7, speech: 10, examples: 15, core: 20, arc: 22, memory: 25, background: 40, relations: 50, lore: 60},
+    order: {identity: 5, scene: 5.5, persona: 6, sysprompt: 7, tags: 8, speech: 10, flair: 35, examples: 15, core: 20, arc: 22, memory: 25, background: 40, relations: 50, lore: 60},
     loreRatio: 0.15},
   narr: {name: "叙事者", desc: "双线叙事+角色主动推进剧情，适合跑剧情",
-    order: {identity: 5, persona: 6, sysprompt: 7, narrator: 8, core: 10, speech: 15, arc: 18, memory: 20, examples: 30, relations: 40, background: 50, lore: 60},
+    order: {identity: 5, scene: 5.5, persona: 6, sysprompt: 7, tags: 8, narrator: 8, core: 10, speech: 15, flair: 35, arc: 18, memory: 20, examples: 30, relations: 40, background: 50, lore: 60},
     loreRatio: 0.15},
 };
+
+/* S-5 按卡文风档 (对标 Kindroid llm_flair): companion / roleplay / narrative / classic / minimal。
+ * 角色级选项, 不是全局预设。 */
+var FLAIR = {
+  companion: {name: "陪伴", desc: "像亲密朋友聊天",
+    instr: "【文风·陪伴】像亲密朋友聊天：温暖、主动关心，生活气息浓；多倾听多回应，不过度戏剧化，不写大段独白。"},
+  roleplay: {name: "扮演", desc: "强代入角色扮演",
+    instr: "【文风·扮演】强代入角色扮演：神态、动作、语气都贴紧角色，允许适度的舞台化描写，让角色活起来。"},
+  narrative: {name: "叙事", desc: "小说笔法",
+    instr: "【文风·叙事】小说笔法：环境、心理、暗线并重，节奏舒缓，描写占比高，对话点到为止。"},
+  classic: {name: "经典", desc: "默认均衡",
+    instr: "【文风·经典】默认均衡：对话与叙事自然交织，不刻意偏向任何一端。"},
+  minimal: {name: "极简", desc: "短句克制",
+    instr: "【文风·极简】短句为主，克制留白：不解释、不铺垫、不总结，让对话自己往前走。"},
+};
+function flairInstr(f){
+  var k = String(f || "").trim().toLowerCase();
+  return (FLAIR[k] && FLAIR[k].instr) || "";
+}
 
 /* 借鉴清单 Tier2 #15: 简洁回复开关 (Janitor "Snappier, more concise replies. Leave off for longer responses.")。
  * ctx.concise 为真时 system 追加本指令; max_tokens 由调用方调低。 */
@@ -306,12 +325,20 @@ function buildMessages(card, ctx, budget){
   var loreHitDetails = loreRes.hitDetails || null;
 
   add("identity", "你是" + name + "，《" + (ctx.novel || "") + "》中的人物。");
+  /* S-7 高权重场景: 160 字符内，identity 段之后置顶注入 */
+  var sceneSeg = String(ctx.sceneText || "").trim().slice(0, 160);
+  add("scene", sceneSeg ? "【当前场景（高权重）】\n" + sceneSeg : "");
   add("persona", ctx.persona ? "【玩家人设】\n" + ctx.persona : "");
   /* P0 卡兼容: 卡片 system_prompt / creator_notes 进 system (以前被静默丢弃) */
   var sysPromptSeg = "";
   if(card.systemPrompt) sysPromptSeg += String(card.systemPrompt).trim();
   if(card.creatorNotes) sysPromptSeg += (sysPromptSeg ? "\n" : "") + "【作者注】\n" + String(card.creatorNotes).trim();
   add("sysprompt", sysPromptSeg);
+  /* S-9 行为标签 (对标 PolyBuzz #tsundere): 轻量行为调参, 比写整段 prompt 门槛低 */
+  var tagList = (card.tags || []).map(function(t){ return String(t == null ? "" : t).trim(); }).filter(Boolean).slice(0, 12);
+  add("tags", tagList.length ? "【行为标签】" + tagList.join("、") : "");
+  /* S-5 按卡文风档 */
+  add("flair", flairInstr(card.flair));
   add("narrator", NARRATOR_INSTR);
   add("core", "【核心人设】\n" + renderFields(card, LAYERS.identity.concat(LAYERS.core))
     + lorePlacedText(loreRes, "core"));
@@ -437,6 +464,7 @@ function buildMessages(card, ctx, budget){
     stats: {maxCtx: maxCtx, avail: avail, sysTokens: used, histTokens: hUsed,
             histKept: hist.length, histDropped: hDropped, droppedSegs: dropped,
             segTokens: segTokens, memPools: memRes ? memRes.pools : null,
+            memHits: memRes ? memRes.hits : null, /* S-4 召回指示器: 本次注入的记忆段标签 */
             loreHits: loreHitTitles, loreHitDetails: loreHitDetails, preset: preset.name, concise: !!ctx.concise,
             stPreset: stName, stDropped: stDropped},
     preview: sysText + "\n\n" + post,
@@ -448,5 +476,6 @@ return {
   estTokens: estTokens, renderFields: renderFields, LAYERS: LAYERS, matchLore: matchLore,
   buildLore: buildLore, LABELS: LABELS, buildExamples: buildExamples,
   CONCISE_INSTR: CONCISE_INSTR, subMacros: subMacros,
+  FLAIR: FLAIR, flairInstr: flairInstr,
 };
 })();

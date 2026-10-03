@@ -136,8 +136,11 @@ async def case_hidebars(c):
     """慢滑立刻沉浸（离底>8px）：顶栏收起+底栏移出+场景条收起+世界条收起+顶罩减弱；
        慢滑/顶部停留不闪烁；未滑到底保持隐藏；只有滑到底（离底<6px）才退出沉浸式。
        显隐是即时的（2026-10-01 起无 CSS 过渡），setHidden 内同步补偿 scrollTop。
-       注：headless 下 rAF 慢（scroll 事件延迟可达 500ms+），一律轮询等待不用固定 sleep。"""
+       注：headless 下 rAF 慢（scroll 事件延迟可达 500ms+），一律轮询等待不用固定 sleep。
+       注2：关打字机——种子用 Date.now() 时间戳，每次重进 TW.key 都对不上会重播打字机，
+       异步改气泡高度干扰离底距离判定；打字机由 case_jitter 单独覆盖。"""
     await c.ev(SEED_JS)  # 用例隔离：jitter 用例会留下隐藏状态，重布种子+重进聊天页拿干净状态机
+    await c.ev("try{RP_TYPEWRITER.setEnabled(false);}catch(e){}")
     await c.ev(SHOW_CHAT, await_promise=True)
     await asyncio.sleep(1.0)
     js = '''(async()=>{
@@ -202,8 +205,10 @@ async def case_hidebars(c):
         await new Promise(function(r){ setTimeout(r, 150); });
       }
       out.noFlickerTop = out.flick.every(function(v){ return v; });
-      /* 5) 未滑到底保持隐藏 */
-      log.scrollTop = maxST - 300;
+      /* 5) 未滑到底保持隐藏：用当前(隐藏态)的 max 算 300px，不能用步骤初记的 maxST——
+         隐藏后正文长高，max 会变小，旧 maxST-300 可能直接触底（2026-10-03 场景条加高后暴露） */
+      var curMax5 = log.scrollHeight - log.clientHeight;
+      log.scrollTop = curMax5 - 300;
       await new Promise(function(r){ setTimeout(r, 400); });
       out.stillHidden = imm() && bar.classList.contains("hidebar");
       /* 6) 滑到底（用进入时记的 maxST，比当前真值大，浏览器钳制到真底，dist=0）-> 退出 */
@@ -225,6 +230,7 @@ async def case_hidebars(c):
           and r["noFlickerTop"] and r["stillHidden"]
           and r["shown"] and r["shownGeo"] and r["scenBack"] and r["simBack"]
           and not r["preHidden"])
+    await c.ev("try{RP_TYPEWRITER.setEnabled(true);}catch(e){}")
     return ok, r
 
 

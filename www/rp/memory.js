@@ -312,8 +312,8 @@ return {mood: mood, short: prev.short || [], long: prev.long || "",
 profile3: p3, event3: e3, record3: r3, migrated3: true, updatedAt: Date.now()};
 }
 
-/* P0-2: 铁律记忆 (400 字常驻框): 按角色卡维度 nd_ironlaw_<cardId>, cardId 取不到则 runId_name */
-var IRONLAW_MAX = 400;
+/* P0-2: 铁律记忆 (S-8: 400 -> 2000 字常驻框, 对标 Nomi Shared Notes): 按角色卡维度 nd_ironlaw_<cardId>, cardId 取不到则 runId_name */
+var IRONLAW_MAX = 2000;
 function ironKey(runId, name, cardId){
 return "nd_ironlaw_" + (cardId || ((runId || "") + "_" + (name || "")));
 }
@@ -539,10 +539,14 @@ similar: {tokens: 0, items: 0, dropped: 0},
 
 /* ---- 分池段收集 (#12 记忆窗口按 important > recent > similar 优先级裁条数) ---- */
 var secLists = {important: {secs: [], n: 0}, recent: {secs: [], n: 0}, similar: {secs: [], n: 0}};
+/* S-4 召回指示器: 记录每段命中的标签(取【】标题), 供气泡 🧠 角标展示"这次想起了什么" */
+var hitLabels = [];
 function pushSec(pool, text, items){
 if(!text) return;
 secLists[pool].secs.push({text: text, items: items || 0});
 secLists[pool].n += (items || 0);
+var hm = String(text).match(/【([^】]{1,12})】/);
+if(hm) hitLabels.push({pool: pool, label: hm[1], items: items || 0});
 }
 
 /* ---- important 池: 本聊摘要 > 铁律 > 永久记忆 > 置顶(新→旧) > 画像库 > 心境; 永不整段丢弃 ---- */
@@ -704,7 +708,7 @@ var secs = [];
 ["important", "recent", "similar"].forEach(function(pk){
 secLists[pk].secs.forEach(function(s){ secs.push(s.text); });
 });
-return {text: secs.join("\n"), pools: pools};
+return {text: secs.join("\n"), pools: pools, hits: hitLabels};
 }
 
 /* 状态渲染成 prompt 段 (置顶记忆优先, 永不遗忘) [遗留路径: prompt.js 无 RP_MEM.renderBudgeted 时的兜底] */

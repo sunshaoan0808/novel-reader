@@ -376,6 +376,12 @@ body.chatmode.bars-light .typing{ color:#6b5c42; }
 }
 .msg.me .msgtools{ justify-content:flex-end; }
 
+/* S-4 召回指示器：气泡 🧠 角标展开的"这次想起了"面板 */
+.mmhits{ margin-top:6px; padding:8px 10px; border:1px dashed var(--line); border-radius:10px;
+  font-size:12px; color:var(--ink-dim); background:rgba(212,162,78,.06); max-width:100%; }
+.mmhits-ttl{ font-weight:700; color:var(--ink); margin-bottom:4px; font-size:12px; }
+.mmhits div{ margin:2px 0; line-height:1.5; word-break:break-word; }
+
 /* ===== P1-6: 成就 toast + 成就页 ===== */
 .achv-toast{
   position:fixed; left:50%; bottom:96px; transform:translateX(-50%) translateY(16px);
@@ -615,6 +621,7 @@ color:var(--ink-dim); border-radius:999px; padding:5px 12px; font-size:12.5px; c
 min-height:40px; display:inline-flex; align-items:center;}
 .scenchip.on{background:rgba(212,162,78,.22); border-color:var(--gold-deep); color:var(--gold);}
 .scenchip.off{padding:5px 9px;}
+
 
 /* ===== v26: 叙事视角/人称 chips (抽屉) ===== */
 .povsec{padding:2px 14px 8px;}
@@ -1046,3 +1053,15 @@ border-radius:20px;cursor:pointer;vertical-align:1px;white-space:nowrap}
 /* 聊天输入栏里的 AI 代笔按钮：小方块，和 narrbtn 同尺寸 */
 .chatbar .aifillbtn.chatfill{flex:0 0 auto;align-self:center;margin-left:0;padding:8px 10px;
 font-size:14px;line-height:1;border-radius:10px}
+
+/* S-7 高权重场景输入框: scenbar 改两行布局——chips 横滑一行, 输入框独占第二行.
+ * min-height 预留高度: 避免 scenbar 从空到 98px 的晚布局把 chatlog 顶缩、
+ * 离底距离被撑大导致沉浸式误隐藏 (2026-10-03 视觉回归抓包). immersive 时 min-height 归零. */
+.scenbar{ flex-direction:column; align-items:stretch; overflow:visible; max-height:none; gap:6px; min-height:94px; }
+body.chatmode.immersive #scenbar{ min-height:0; }
+.scenrow{ display:flex; gap:8px; overflow-x:auto; scrollbar-width:none; }
+.scenrow::-webkit-scrollbar{ display:none; }
+.scenetext{ width:100%; box-sizing:border-box; min-height:40px; background:rgba(0,0,0,.22);
+  border:1px solid var(--line); color:var(--ink-dim); border-radius:999px;
+  padding:5px 12px; font-size:12px; outline:none; }
+.scenetext::placeholder{ color:var(--ink-dim); opacity:.65; }

@@ -99,9 +99,13 @@ t("v3 depth_prompt 按 depth=2 插入历史中", seq.indexOf("system:depth3") > 
 t("v3 post_history 进尾部 system", m3[m3.length - 1].content.includes("post3"));
 t("v3 creator_notes 进 system", m3[0].content.includes("cn3"));
 
-/* selectiveLogic=1 (NOT ALL): 只有主键命中时纳入, 主+次全中时排除 */
-const onlyP = ctx.RP_LOREBOOK.match(c3.worldbook, "提到 k1 的事", 0).length;
-const both = ctx.RP_LOREBOOK.match(c3.worldbook, "提到 k1 和 sk1 的事", 0).length;
+/* selectiveLogic=1 (NOT ALL): 只有主键命中时纳入, 主+次全中时排除。
+ * 注: 用 probability=100 的独立条目测, 避免 probability<100 的随机 roll 导致 flaky */
+const v3b = {data: {name: "V3b", character_book: {entries: [
+  {name: "e2", keys: ["k1"], secondary_keys: ["sk1"], selectiveLogic: 1, content: "c1", probability: 100, enabled: true}]}}};
+const c3b = CI.normalizeTavern(CI.parseCardJson(JSON.stringify(v3b)));
+const onlyP = ctx.RP_LOREBOOK.match(c3b.worldbook, "提到 k1 的事", 0).length;
+const both = ctx.RP_LOREBOOK.match(c3b.worldbook, "提到 k1 和 sk1 的事", 0).length;
 t("selectiveLogic NOT_ALL 语义正确", onlyP === 1 && both === 0);
 
 /* ---- 导出 roundtrip ---- */
