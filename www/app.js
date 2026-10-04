@@ -221,6 +221,7 @@ view.innerHTML = `<button class="back" onclick="setTab('chars')">${icon("back")}
 ${cimg?`<img class="charhero" src="${esc(cimg)}" alt="${esc(p.name)}画像" onerror="this.remove()">`:""}
 <div class="btnrow" style="margin-bottom:10px"><button class="btn ghost" onclick='genPortrait(${JSON.stringify(RUN.run_id)},${JSON.stringify(p.name)})'>${icon("palette")} 生成立绘</button></div>
 <div class="card md">${md(p.md)}</div>
+${charForetell(p.name)}
 <div style="height:76px"></div>
 <div class="actionbar"><button class="btn" style="flex:1" onclick='chatWith(${JSON.stringify(RUN.run_id)},${JSON.stringify(p.name)})'>和 ${esc(p.name)} 聊天</button></div>`;
 window.scrollTo(0,0);
@@ -260,6 +261,58 @@ ${badges?`<div class="rel-badges">${badges}</div>`:""}
 }).join("") || `<div class="empty">暂无关系数据</div>`;
 }
 
+/* ============ P0 红学三项展示 (run 侧已蒸馏, App 只做展示, 不进 prompt) ============ */
+function methodologyCard(){
+const mo = RUN.methodology;
+if(!mo) return "";
+const layers = (mo.layers||[]).map(l=>`<div class="st">· ${esc(l)}</div>`).join("");
+const unc = (mo.uncovered||[]).map(u=>`<span class="badge">${esc(u)}</span>`).join("");
+return `<div class="card"><div class="name">版本与方法论</div>
+<div class="kv"><span>文本边界</span></div><div class="st">${esc(mo.boundary||"")}</div>
+<div class="kv"><span>学派站位</span></div><div class="st">${esc(mo.school||"")}</div>
+<div class="kv"><span>三层隔离</span></div>${layers}
+<div class="kv"><span>有意不做</span></div><div class="wb-keys">${unc}</div>
+<div class="meta">后四十回相关内容一律标注版本边界，不采信情节。</div></div>`;
+}
+function foretellHtml(){
+const ft = RUN.foretell;
+if(!ft || !ft.items || !ft.items.length) return "";
+const items = ft.items.map(it=>{
+const links = (it.foreshadowing_links||[]).length;
+return `<div class="rel"><div class="pair">${esc(it.title||"")}</div>
+<div class="wb-keys"><span class="badge">${esc(it.type||"")}</span><span class="badge">${esc(it.collection||"")}</span>${links?`<span class="badge">应验链接 ${links}</span>`:""}</div>
+<div class="st">${esc(it.text||"").replace(/\n/g,"<br>")}</div>
+${it.note?`<div class="meta">${esc(it.note)}</div>`:""}</div>`;
+}).join("");
+return `<h2 class="sec">判词·红楼梦曲 · ${ft.items.length}</h2>`
++ `<div class="meta">曹雪芹原文内置预告（L1 文本实证），判词原文以第五回为准；应验链接指向伏笔条目。</div>` + items;
+}
+function zhipiHtml(){
+const zp = RUN.zhipi;
+if(!zp || !zp.items || !zp.items.length) return "";
+const items = zp.items.map(it=>{
+const beyond = !!it.reveals_beyond_scope;
+return `<div class="rel"><div class="st">“${esc(it.text||"")}”</div>
+<div class="wb-keys"><span class="badge">${esc(it.edition||"")}</span><span class="badge">${esc(it.chapter_ref||"")}</span>${beyond?`<span class="badge">版本边界</span>`:""}</div>
+${(!beyond && it.relates_to)?`<div class="meta">关联：${esc(it.relates_to)}</div>`:""}
+${beyond?`<div class="meta">透露八十回后情节，仅收录批语原文，不采信情节。</div>`:""}
+${it.note?`<div class="meta">${esc(it.note)}</div>`:""}</div>`;
+}).join("");
+return `<h2 class="sec">脂批 · ${zp.items.length}</h2>`
++ `<div class="meta">清代脂批原文（公有领域），仅引用，不代表立场；不做身份考证。</div>` + items;
+}
+/* 人物详情页关联判词 */
+function charForetell(name){
+const ft = RUN.foretell;
+if(!ft || !ft.items) return "";
+const mine = ft.items.filter(it=>(it.characters||[]).indexOf(name)>=0);
+if(!mine.length) return "";
+return `<h2 class="sec">判词·红楼梦曲</h2>` + mine.map(it=>
+`<div class="card"><div class="name">${esc(it.title||"")}</div>`
++ `<div class="wb-keys"><span class="badge">${esc(it.type||"")}</span><span class="badge">${esc(it.collection||"")}</span></div>`
++ `<div class="st">${esc(it.text||"").replace(/\n/g,"<br>")}</div></div>`).join("");
+}
+
 function showMore(){
 const wb = RUN.worldbook;
 let wbHtml = "";
@@ -289,7 +342,8 @@ const cfHtml = `<h2 class="sec">冲突点 · ${RUN.conflicts.length}</h2>` +
 <div class="sec-item"><div class="t">${esc(c.title||c.desc||"")}</div>
 <div class="r">${esc(c.chunk_range||c.evidence||"")}</div></div>`).join("") ||
 `<div class="empty">暂无冲突点</div>`);
-view.innerHTML = wbHtml + arcHtml + fsHtml + cfHtml;
+/* P0 红学三项: 方法论声明置顶, 判词曲紧随伏笔(应验链接), 脂批殿后 */
+view.innerHTML = methodologyCard() + wbHtml + arcHtml + fsHtml + foretellHtml() + cfHtml + zhipiHtml();
 }
 
 
