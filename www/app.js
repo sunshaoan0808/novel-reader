@@ -5087,9 +5087,12 @@ titleEl.textContent = "编辑角色卡";
 subEl.textContent = esc(card.name) + (src==="custom"?" · 自创卡":" · 导入卡");
 document.body.classList.remove("chatmode");
 const f = card.fields || {};
+const aiFilled = (card.aiFilled && typeof card.aiFilled === "object") ? card.aiFilled : {};
 const rows = Object.keys(RP_PROMPT.LABELS).map(k=>{
 const v = f[k]==null?"":String(f[k]);
-return `<div class="field"><label>${esc(RP_PROMPT.LABELS[k])} <span class="dim">${esc(k)}</span></label>`
+/* 功能一: AI 补完的字段打来源标注 */
+const aiBadge = aiFilled[k] ? ` <span class="badge">AI 补完</span>` : "";
+return `<div class="field"><label>${esc(RP_PROMPT.LABELS[k])}${aiBadge} <span class="dim">${esc(k)}</span></label>`
 + `<textarea id="cef_${k}" rows="2" oninput="tokCount('cef_${k}','ce_tok')">${esc(v)}</textarea></div>`;
 }).join("");
 const alt = (card.altGreetings||[]).join("\n");
@@ -5178,9 +5181,12 @@ RP_WRITER.saveCustomChars(list);
 }else{
 const c = RP_CARDIMPORT.findById(id);
 if(!c){ alert("卡片不存在"); return; }
+/* 功能一: 保留 AI 补完来源标注(字段被清空则去掉标注) */
+const keepAi = {};
+Object.keys((c.aiFilled||{})).forEach(k=>{ if(f[k] && String(f[k]).trim()) keepAi[k] = true; });
 RP_CARDIMPORT.update(Object.assign({}, c, {name, fields:f, altGreetings:alt, exampleDialogue:exd,
 systemPrompt:sysp, postHistoryInstructions:phi, creatorNotes:cnote, scenario:scen,
-flair:flair||"", temperature:temp, tags:tags}));
+flair:flair||"", temperature:temp, tags:tags, aiFilled:keepAi}));
 }
 alert("已保存");
 if(src==="custom") showWriter(); else showTraverse();
@@ -5391,11 +5397,14 @@ function showTraverse(){
     </div>`).join("")}</div>
   <h2 class="sec">酒馆角色卡</h2>
   <div class="card"><div class="kv">把 SillyTavern 角色卡（PNG/JSON）导进来，也能穿进 TA 的世界</div>
-  <div class="btnrow" style="margin-top:8px"><button class="btn" onclick="travImport()">${icon("upload")} 导入角色卡</button></div>
+  <div class="btnrow" style="margin-top:8px"><button class="btn" onclick="travImport()">${icon("upload")} 导入角色卡</button>
+  <button class="btn ghost" onclick="travVisionPick()">🖼️ 看图写卡</button></div>
+  <div class="hint">看图写卡：选一张没有内嵌卡片数据的图片，AI 识别图中人物并写成角色卡（一图多人会自动拆成多张）。需要 vision 模型。</div>
   <div id="impList" style="margin-top:8px">${importedListHTML()}</div></div>
   <h2 class="sec">最近穿越</h2>
   <div>${recents.length ? recents.map(travRecentHTML).join("") : `<div class="empty">还没有穿越过，从上面选一种模式开始吧</div>`}</div>
-  <input type="file" id="travFile" accept=".png,.json" style="display:none" onchange="travImportFile(this)">`;
+  <input type="file" id="travFile" accept=".png,.json" style="display:none" onchange="travImportFile(this)">
+  <input type="file" id="travVisionFile" accept="image/*" style="display:none" onchange="travVisionFile(this)">`;
   window.scrollTo(0,0);
 }
 function importedListHTML(){
@@ -5434,13 +5443,199 @@ window.travImportFile = async (inp)=>{
     if(!confirm(`导入角色卡「${card.name}」？\n${(card.scenario||card.fields.core_identity||"").slice(0,80)}`)) return;
     RP_CARDIMPORT.add(card);
     achvUnlock("card_1");
+    /* 功能一: AI 补完缺失层。关键层缺 2 个以上才提示, 用户确认才调模型 */
+    const miss = (typeof RP_CARDIMPORT.missingGapfillKeys === "function")
+      ? RP_CARDIMPORT.missingGapfillKeys(card) : [];
+    if(miss.length >= 2){ cardGapfillPrompt(card.id, miss, []); return; }
     alert(`已导入「${card.name}」：魂穿目标和卡片世界里都能选到`);
     showTraverse();
   }catch(e){ alert("导入失败："+e.message); }
 };
+/* ---- 功能一: 角色卡 AI 补完缺失层 ---- */
+const GAPFILL_LABEL = {ooc_redline: "绝不做的事", soul_goal: "自觉目标", hidden_desire: "隐秘欲望", inner_need: "深层需求"};
+/* 导入成功页: 提示缺失层, 用户确认才调模型。queue: 看图写卡批量导入时的待补完队列 */
+window.cardGapfillPrompt = (cardId, keys, queue)=>{
+  const card = RP_CARDIMPORT.findById(cardId);
+  if(!card){ cardGapfillNext(queue); return; }
+  window._gapfillQueue = queue || [];
+  __backAction = ()=>{ showTraverse(); };
+  document.body.classList.remove("chatmode");
+  titleEl.innerHTML = "✨ AI 补完"; subEl.textContent = card.name;
+  const names = keys.map(k=>GAPFILL_LABEL[k]||k).join("、");
+  view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
+  <div class="card"><div class="kv">已导入「${esc(card.name)}」</div>
+  <div class="hint">检测到 ${keys.length} 个关键层缺失：${esc(names)}。可让 AI 基于卡片原文推断补全，只填缺失项，原卡一字不动，补完内容会标注「AI 补完」。</div></div>
+  <div class="btnrow"><button class="btn" onclick="cardGapfillGen('${cardId}')">✨ AI 补完缺失层</button>
+  <button class="btn ghost" onclick='cardGapfillNext(${JSON.stringify(queue||[])})'>跳过</button></div>
+  <div style="height:40px"></div>`;
+  window.scrollTo(0,0);
+};
+window.cardGapfillNext = (queue)=>{
+  queue = queue || [];
+  if(queue.length){
+    const nxt = queue.shift();
+    const c = RP_CARDIMPORT.findById(nxt);
+    const miss = c ? RP_CARDIMPORT.missingGapfillKeys(c) : [];
+    if(miss.length >= 2){ cardGapfillPrompt(nxt, miss, queue); return; }
+    cardGapfillNext(queue); return;
+  }
+  showTraverse();
+};
+window.cardGapfillGen = async (cardId)=>{
+  const cfg = getCfg();
+  if(!cfg.key||!cfg.base||!cfg.model){ alert("先去「设置」配好 API 地址/Key/模型"); return; }
+  const card = RP_CARDIMPORT.findById(cardId); if(!card) return;
+  const keys = RP_CARDIMPORT.missingGapfillKeys(card);
+  if(!keys.length){ alert("没有缺失层了"); return; }
+  view.innerHTML = `<div class="card"><div class="kv">AI 正在补完…</div><div class="hint">基于卡片原文推断 ${esc(keys.map(k=>GAPFILL_LABEL[k]||k).join("、"))}</div></div>`;
+  try{
+    const raw = await RP_NET.complete({base:cfg.base,key:cfg.key,model:cfg.model},
+      [{role:"user", content: RP_CARDIMPORT.gapfillPrompt(card, keys)}], 0.7);
+    const out = RP_CARDIMPORT.parseGapfillJson(raw, keys);
+    if(!out || !Object.keys(out).length){ alert("AI 没有返回可用补完，可稍后在编辑页手动填写"); cardGapfillPrompt(cardId, keys, window._gapfillQueue||[]); return; }
+    window._gapfillDraft = {cardId, fields: out};
+    cardGapfillView();
+  }catch(e){ alert("补完失败："+e.message); cardGapfillPrompt(cardId, keys, window._gapfillQueue||[]); }
+};
+function cardGapfillView(){
+  const d = window._gapfillDraft; if(!d) return;
+  const card = RP_CARDIMPORT.findById(d.cardId); if(!card) return;
+  __backAction = ()=>cardGapfillPrompt(d.cardId, Object.keys(d.fields), []);
+  titleEl.innerHTML = "✨ AI 补完"; subEl.textContent = card.name;
+  const rows = Object.keys(d.fields).map(k=>
+    `<div class="field"><label>${esc(GAPFILL_LABEL[k]||k)} <span class="badge">AI 补完</span></label>`+
+    `<textarea id="gf_${k}" rows="3">${esc(d.fields[k])}</textarea></div>`).join("");
+  view.innerHTML = `<button class="back" onclick="cardGapfillPrompt('${d.cardId}',Object.keys(window._gapfillDraft.fields),[])">${icon("back")} 返回</button>
+  <div class="card"><div class="kv">补完结果（可编辑，确认后写入卡片）</div>${rows}
+  <div class="btnrow" style="margin-top:8px"><button class="btn" style="flex:1" onclick="cardGapfillSave()">确认写入</button></div></div>
+  <div class="hint">来源标注：卡片原文保持原样；上方字段为 AI 推断补完，编辑页会打「AI 补完」标记，可随时修改。</div>
+  <div style="height:40px"></div>`;
+  window.scrollTo(0,0);
+}
+window.cardGapfillSave = ()=>{
+  const d = window._gapfillDraft; if(!d) return;
+  const card = RP_CARDIMPORT.findById(d.cardId); if(!card) return;
+  card.fields = card.fields || {}; card.aiFilled = card.aiFilled || {};
+  Object.keys(d.fields).forEach(k=>{
+    const el = document.getElementById("gf_"+k);
+    const v = el ? el.value.trim() : d.fields[k];
+    if(v){ card.fields[k] = v; card.aiFilled[k] = true; }
+  });
+  RP_CARDIMPORT.update(card);
+  window._gapfillDraft = null;
+  rpToast("已写入卡片");
+  cardGapfillNext(window._gapfillQueue || []);
+};
 window.travDelImport = (id)=>{
   if(!confirm("删除这张导入的角色卡？")) return;
   RP_CARDIMPORT.del(id); showTraverse();
+};
+
+/* ---- 功能二-1/2: 看图写卡（一图多人自动拆卡） ----
+ * 纯图片(无内嵌 chara 数据) -> vision 模型识别 -> 一人一张卡 -> 勾选导入。
+ * 模型是否支持 vision 按 RP_MODELTAGS 能力标签判断, 不硬编码模型名。 */
+window.travVisionPick = ()=>{ const f=$("#travVisionFile"); if(f){ f.value=""; f.click(); } };
+window.travVisionFile = async (inp)=>{
+  const file = inp.files && inp.files[0]; if(!file) return;
+  try{
+    const dataUrl = await new Promise((res, rej)=>{
+      const rd = new FileReader(); rd.onload = ()=>res(rd.result); rd.onerror = rej;
+      rd.readAsDataURL(file);
+    });
+    /* PNG 先试内嵌卡片数据: 有则走普通导入, 没有才走 vision */
+    if((file.type||"").indexOf("png") >= 0 || /\.png$/i.test(file.name||"")){
+      try{
+        const buf = await (await fetch(dataUrl)).arrayBuffer();
+        const jsonText = RP_CARDIMPORT.extractChara(buf);
+        const card = RP_CARDIMPORT.normalizeTavern(RP_CARDIMPORT.parseCardJson(jsonText));
+        if(!confirm(`导入角色卡「${card.name}」？\n${(card.scenario||card.fields.core_identity||"").slice(0,80)}`)) return;
+        RP_CARDIMPORT.add(card); achvUnlock("card_1");
+        const miss = RP_CARDIMPORT.missingGapfillKeys(card);
+        if(miss.length >= 2){ cardGapfillPrompt(card.id, miss, []); return; }
+        alert(`已导入「${card.name}」`); showTraverse(); return;
+      }catch(e){ /* 无内嵌数据, 继续 vision 流程 */ }
+    }
+    travVisionSetup(dataUrl);
+  }catch(e){ alert("读取图片失败："+e.message); }
+};
+window.travVisionSetup = (dataUrl)=>{
+  const cfg = getCfg();
+  if(!cfg.key||!cfg.base){ alert("先去「设置」配好 API 地址/Key"); return; }
+  window._visionDataUrl = dataUrl;
+  __backAction = ()=>{ showTraverse(); };
+  document.body.classList.remove("chatmode");
+  titleEl.textContent = "看图写卡"; subEl.textContent = "AI 识别图中人物";
+  const tags = (typeof RP_MODELTAGS !== "undefined" && RP_MODELTAGS.get) ? RP_MODELTAGS.get(cfg.model||"") : [];
+  const hasVision = tags.indexOf("视觉") >= 0;
+  view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
+  <div class="card"><div class="kv">待识别图片</div>
+  <img src="${dataUrl}" style="max-width:100%;max-height:220px;border-radius:8px;display:block;margin:8px auto"></div>
+  <div class="card"><div class="kv">识别模型</div>
+  <div class="field"><label>当前模型：${esc(cfg.model||"（未设置）")} ${tags.map(t=>`<span class="badge">${esc(t)}</span>`).join("")}</label>
+  ${hasVision ? `<div class="hint">当前模型已标记视觉能力，可直接识别。</div>`
+    : `<div class="hint" style="color:var(--gold)">当前模型未标记「视觉」能力，看图写卡需要 vision 模型。请在下方指定（不硬编码，以你的网关实际支持为准）：</div>
+      <input id="vv_model" placeholder="输入 vision 模型名，如 gpt-4o" value="${esc(cfg.model||"")}">`}
+  </div></div>
+  <div class="btnrow"><button class="btn" onclick="travVisionGen()">🔍 开始识别</button></div>
+  <div class="hint">识别后一人一张卡，可勾选要导入的；图片不会上传到别处，只发给你的模型网关。</div>
+  <div style="height:40px"></div>`;
+  window.scrollTo(0,0);
+};
+window.travVisionGen = async ()=>{
+  const cfg = getCfg();
+  const dataUrl = window._visionDataUrl; if(!dataUrl) return;
+  const vModelEl = document.getElementById("vv_model");
+  const vModel = vModelEl ? vModelEl.value.trim() : "";
+  const model = vModel || cfg.model;
+  if(!model){ alert("请指定 vision 模型"); return; }
+  view.innerHTML = `<div class="card"><div class="kv">AI 正在看图…</div><div class="hint">识别图中人物并写卡，稍候</div></div>`;
+  try{
+    const raw = await RP_NET.visionComplete({base:cfg.base,key:cfg.key,model:model},
+      dataUrl, RP_CARDIMPORT.visionCardPrompt(), null, {maxTokens: 4000});
+    const chars = RP_CARDIMPORT.parseVisionCards(raw);
+    if(!chars || !chars.length){ alert("AI 没有识别出人物，换张图或换个 vision 模型试试"); travVisionSetup(dataUrl); return; }
+    window._visionChars = chars;
+    travVisionSelect();
+  }catch(e){ alert("识别失败："+e.message); travVisionSetup(dataUrl); }
+};
+function travVisionSelect(){
+  const chars = window._visionChars || [];
+  __backAction = ()=>travVisionSetup(window._visionDataUrl);
+  titleEl.textContent = "看图写卡"; subEl.textContent = `识别出 ${chars.length} 个人物`;
+  view.innerHTML = `<button class="back" onclick="travVisionSetup(window._visionDataUrl)">${icon("back")} 重新识别</button>
+  <div class="hint">勾选要导入的角色卡（默认全选），一人一张</div>
+  ${chars.map((c,i)=>`<div class="card"><label class="row" style="align-items:flex-start;cursor:pointer">
+    <input type="checkbox" id="vc_${i}" checked style="width:22px;height:22px;margin-top:4px;flex:none">
+    <div style="flex:1;min-width:0;margin-left:8px"><div class="name">${esc(c.name||("人物"+(i+1)))}</div>
+    <div class="meta">${esc(String(c.appearance||"").slice(0,60))}</div>
+    <div class="meta">${esc(String(c.personality||"").slice(0,80))}</div></div></label></div>`).join("")}
+  <div class="btnrow"><button class="btn" onclick="travVisionImport()">导入选中</button></div>
+  <div style="height:40px"></div>`;
+  window.scrollTo(0,0);
+}
+window.travVisionImport = ()=>{
+  const chars = window._visionChars || [];
+  const queue = [];
+  let n = 0;
+  chars.forEach((c,i)=>{
+    const el = document.getElementById("vc_"+i);
+    if(!el || !el.checked) return;
+    const card = RP_CARDIMPORT.fromVisionChar(c);
+    RP_CARDIMPORT.add(card); n++;
+    if(RP_CARDIMPORT.missingGapfillKeys(card).length >= 2) queue.push(card.id);
+  });
+  window._visionChars = null; window._visionDataUrl = null;
+  achvUnlock("card_1");
+  if(!n){ alert("没有选中任何人物"); return; }
+  /* 批量导入后: 有缺失层的卡走 AI 补完队列 */
+  if(queue.length){
+    const first = queue.shift();
+    const c = RP_CARDIMPORT.findById(first);
+    cardGapfillPrompt(first, RP_CARDIMPORT.missingGapfillKeys(c), queue);
+    return;
+  }
+  alert(`已导入 ${n} 张角色卡`);
+  showTraverse();
 };
 
 /* ---- 魂穿：选目标 -> 选锚点 -> 开局 ---- */

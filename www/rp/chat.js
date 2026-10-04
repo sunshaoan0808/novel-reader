@@ -43,6 +43,44 @@ async function listModels(cfg){
   return adapterFor().listModels(cfg);
 }
 
+/* ---- 截断自动续写 ----
+ * finish_reason=length 是确定截断; 某些渠道不返回 finish_reason, 此时用启发式:
+ * 正文够长(>200字)且结尾不是完整句子(无句末标点)视为截断。content_filter 等
+ * 其他原因不续写。续写最多一次, 由调用方透传 extra._noContinue 关闭。 */
+function looksTruncated(text, finishReason){
+  if(finishReason === "length") return true;
+  if(finishReason && finishReason !== "stop") return false;
+  var t = String(text || "").trim();
+  if(!finishReason && t.length > 200 && !/[。！？.!?…」』"'）\]$]/.test(t)) return true;
+  return false;
+}
+/* 拼接续写: 去掉续写开头与原文结尾的重叠(最多 24 字), 避免复读 */
+function stitchOverlap(a, b){
+  a = String(a || ""); b = String(b || "");
+  var max = Math.min(24, a.length, b.length);
+  for(var n = max; n > 0; n--){
+    if(a.slice(a.length - n) === b.slice(0, n)) return a + b.slice(n);
+  }
+  return a + b;
+}
+var CONTINUE_PROMPT = "你的上一条回复被截断了, 请从截断处继续写完, 不要重复已经写过的内容, 不要解释。";
+async function continueOnce(cfg, messages, partial, temperature, extra){
+  var ex = extra || {};
+  var ms = messages.concat([
+    {role: "assistant", content: partial},
+    {role: "user", content: CONTINUE_PROMPT},
+  ]);
+  var q = adapterFor().buildRequest(
+    {base: cfg.base, key: cfg.key, model: cfg.model}, ms,
+    {temperature: temperature, stream: false, topP: ex.topP, maxTokens: ex.maxTokens || 1024});
+  var r = await fetch(q.url, {method: "POST", headers: q.headers,
+                              body: JSON.stringify(q.body)});
+  if(!r.ok) throw new Error("接口返回 " + r.status);
+  var d = await r.json();
+  var m = d.choices && d.choices[0] && d.choices[0].message;
+  return ((m && m.content) || "").trim();
+}
+
 /* 非流式（摘要/问候/测试用） */
 async function complete(cfg, messages, temperature, modelOverride, extra){
   var c = {base: cfg.base, key: cfg.key, model: modelOverride || cfg.model};
@@ -53,8 +91,52 @@ async function complete(cfg, messages, temperature, modelOverride, extra){
                               body: JSON.stringify(q.body)});
   if(!r.ok) throw new Error("接口返回 " + r.status);
   var d = await r.json();
-  var m = d.choices && d.choices[0] && d.choices[0].message;
-  return ((m && m.content) || "(空回复)").trim();
+  var ch = d.choices && d.choices[0];
+  var m = ch && ch.message;
+  var text = ((m && m.content) || "(空回复)").trim();
+  /* 截断自动续写一次 */
+  if(!ex._noContinue && looksTruncated(text, ch && ch.finish_reason)){
+    try{
+      var more = await continueOnce(c, messages, text, temperature,
+        {topP: ex.topP, maxTokens: ex.maxTokens});
+      if(more) text = stitchOverlap(text, more);
+    }catch(e){/* 续写失败就用原文 */}
+  }
+  return text;
+}
+
+/* vision: OpenAI 兼容图文消息 (看图写卡用)。模型是否真支持 vision 由调用方按
+ * RP_MODELTAGS 能力标签判断, 这里只负责把图发出去。 */
+async function visionComplete(cfg, imageDataUrl, prompt, modelOverride, extra){
+  var c = {base: cfg.base, key: cfg.key, model: modelOverride || cfg.model};
+  var ex = extra || {};
+  var base = (c.base || "").replace(/\/+$/, "");
+  var body = {
+    model: c.model,
+    messages: [{role: "user", content: [
+      {type: "text", text: prompt},
+      {type: "image_url", image_url: {url: imageDataUrl}},
+    ]}],
+    temperature: ex.temperature != null ? ex.temperature : 0.7,
+    max_tokens: ex.maxTokens || 4000,
+  };
+  var r = await fetch(base + "/chat/completions", {method: "POST",
+    headers: {"Content-Type": "application/json", "Authorization": "Bearer " + c.key},
+    body: JSON.stringify(body)});
+  if(!r.ok) throw new Error("接口返回 " + r.status);
+  var d = await r.json();
+  var ch = d.choices && d.choices[0];
+  var m = ch && ch.message;
+  var text = ((m && m.content) || "").trim();
+  if(!ex._noContinue && looksTruncated(text, ch && ch.finish_reason)){
+    try{
+      var more = await continueOnce(c,
+        [{role: "user", content: prompt + "\n(附图略, 上文是对该图的角色卡 JSON)"}],
+        text, 0.7, {maxTokens: 4000});
+      if(more) text = stitchOverlap(text, more);
+    }catch(e){}
+  }
+  return text;
 }
 
 /* 流式：onToken(tok)，支持 AbortSignal；返回全文 */
@@ -92,7 +174,7 @@ async function stream(cfg, messages, opts, onToken){
   if(!r.ok) throw new Error("接口返回 " + r.status);
   var reader = r.body.getReader();
   var dec = new TextDecoder();
-  var buf = "", full = "";
+  var buf = "", full = "", finishReason = null;
   for(;;){
     var rd = await reader.read();
     if(rd.done) break;
@@ -106,16 +188,31 @@ async function stream(cfg, messages, opts, onToken){
       if(payload === "[DONE]") continue;
       try {
         var j = JSON.parse(payload);
-        var tok = j.choices && j.choices[0] && j.choices[0].delta
-                  && j.choices[0].delta.content || "";
+        var ch0 = j.choices && j.choices[0];
+        if(ch0 && ch0.finish_reason) finishReason = ch0.finish_reason;
+        var tok = ch0 && ch0.delta && ch0.delta.content || "";
         if(tok){ full += tok; if(onToken) onToken(tok); }
       } catch(e){}
     }
+  }
+  /* 流式截断自动续写一次(非流式补完, 续写部分同样走 onToken) */
+  if(looksTruncated(full, finishReason)){
+    try{
+      var more = await continueOnce(cfg, messages, full, opts.temperature,
+        {topP: opts.topP, maxTokens: opts.maxTokens});
+      if(more){
+        var stitched = stitchOverlap(full, more);
+        var appended = stitched.slice(full.length);
+        full = stitched;
+        if(appended && onToken) onToken(appended);
+      }
+    }catch(e){}
   }
   return full.trim() || "(空回复)";
 }
 
 return {listModels: listModels, generateImage: generateImage, tts: tts, complete: complete, stream: stream,
+        visionComplete: visionComplete,
         adapterFor: adapterFor};
 })();
 

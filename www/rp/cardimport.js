@@ -290,10 +290,122 @@ async function fromFile(file){
   return normalizeTavern(parseCardJson(jsonText));
 }
 
+/* ---- AI 补完缺失层 ----
+ * 只做"缺啥补啥": 检测关键层缺失 -> 用户确认 -> 模型推断 -> 可编辑预览 -> 写回。
+ * 原卡一字不动; 补进的字段记到 card.aiFilled, 编辑页打"AI 补完"标注。 */
+var GAPFILL_KEYS = ["ooc_redline", "soul_goal", "hidden_desire", "inner_need"];
+function missingGapfillKeys(card){
+  var f = (card && card.fields) || {}, out = [];
+  GAPFILL_KEYS.forEach(function(k){
+    var v = f[k];
+    if(v == null || String(v).trim() === "") out.push(k);
+  });
+  return out;
+}
+/* 补完 prompt: 只让模型填缺失键, 基于原卡 description/personality/scenario 推断 */
+function gapfillPrompt(card, keys){
+  var f = (card && card.fields) || {};
+  var src = [
+    "【身份】" + (f.core_identity || "（未写）"),
+    "【性格】" + (f.core_traits || "（未写）"),
+    "【世界设定】" + ((card && card.scenario) || "（未写）"),
+    card && card.systemPrompt ? "【系统提示词】" + card.systemPrompt : "",
+    f.appearance_feature ? "【外貌】" + f.appearance_feature : "",
+    f.values ? "【价值观】" + f.values : "",
+    f.moral_bottom_line ? "【道德底线】" + f.moral_bottom_line : "",
+  ].filter(Boolean).join("\n");
+  return "你是角色卡补完员。根据下面这张角色卡的原文, 推断并补全缺失的关键层, 只输出一个 JSON 对象。\n" +
+    "规则:\n" +
+    "1. 只填这几个键: " + keys.join(", ") + "。其他键一律不要输出。\n" +
+    "2. 每个值 1-2 句话, 简洁具体, 贴合角色的说话风格, 禁止八股词(非常/极其/深深地)。\n" +
+    "3. 必须能从原文推断出来; 原文没依据的就写贴合人设的合理推断, 但绝不能与原文矛盾。\n" +
+    "4. ooc_redline 写 2-3 条这个角色绝不会做的事(结合性格与底线)。\n" +
+    "只输出 JSON, 不要解释。\n\n" + src;
+}
+function parseGapfillJson(text, keys){
+  var t = String(text || "").replace(/```json|```/g, "");
+  var a = t.indexOf("{"), b = t.lastIndexOf("}");
+  if(a < 0 || b <= a) return null;
+  try{
+    var o = JSON.parse(t.slice(a, b + 1)), out = {};
+    (keys || []).forEach(function(k){
+      var v = o[k];
+      if(v != null && String(v).trim() !== "") out[k] = String(v).trim().slice(0, 300);
+    });
+    return out;
+  }catch(e){ return null; }
+}
+
+/* ---- 看图写卡 ----
+ * 纯图片(无内嵌 chara 数据) -> vision 模型识别 -> 一人一张卡。
+ * 模型是否支持 vision 由调用方按 RP_MODELTAGS 能力标签判断, 这里只组装 prompt/解析。 */
+function visionCardPrompt(){
+  return "你是角色卡画师。请看这张图, 识别图中所有主要人物, 为每人写一张 SillyTavern 风格角色卡, 只输出一个 JSON 对象, 格式如下:\n" +
+    '{"characters": [{"name": "人物名(能看出名字就写, 看不出就按特征起名如\'蓝发少女\')", ' +
+    '"appearance": "外貌特征", "description": "身份/气质描述", "personality": "性格推断", ' +
+    '"scenario": "所处场景与世界氛围", "first_mes": "一句符合人设的开场白", ' +
+    '"mes_example": "一段简短对话示例", ' +
+    '"worldbook": [{"title": "条目名", "content": "从画面能看出的世界信息"}]}]}\n' +
+    "规则:\n" +
+    "1. 只输出 JSON, 不要解释; 图中有几个人就写几张, 每人独立。\n" +
+    "2. personality/scenario 允许从画面合理推断, 但不要编造图中没有的剧情。\n" +
+    "3. worldbook 写 2-4 条, 只写画面能直接看出的世界信息。\n" +
+    "4. first_mes 用角色口吻, 20-60 字。";
+}
+function parseVisionCards(text){
+  var t = String(text || "").replace(/```json|```/g, "");
+  var a = t.indexOf("{"), b = t.lastIndexOf("}");
+  if(a < 0 || b <= a) return null;
+  try{
+    var o = JSON.parse(t.slice(a, b + 1));
+    var arr = o && o.characters;
+    if(!Array.isArray(arr) || !arr.length) return null;
+    return arr.filter(function(c){ return c && (c.name || c.description); });
+  }catch(e){ return null; }
+}
+/* vision 识别出的人物 -> 内部卡片(与 normalizeTavern 同形状) */
+function fromVisionChar(ch){
+  ch = ch || {};
+  var name = String(ch.name || "未命名").trim() || "未命名";
+  var wb = [];
+  (Array.isArray(ch.worldbook) ? ch.worldbook : []).forEach(function(e, i){
+    if(!e || !e.content) return;
+    wb.push({title: String(e.title || ("画面世界书 " + (i + 1))).slice(0, 40),
+      trigger_keywords: [], content: String(e.content).slice(0, 500),
+      priority: 55, enabled: true});
+  });
+  return {
+    id: "vis" + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36),
+    name: name,
+    novel: "看图写卡",
+    fields: {
+      core_identity: String(ch.description || "").trim(),
+      core_traits: String(ch.personality || "").trim(),
+      appearance_feature: String(ch.appearance || "").trim(),
+    },
+    greeting: String(ch.first_mes || "").trim(),
+    altGreetings: [],
+    exampleDialogue: String(ch.mes_example || "").trim(),
+    exampleBlocks: [],
+    scenario: String(ch.scenario || "").trim(),
+    systemPrompt: "", postHistoryInstructions: "", creatorNotes: "",
+    depthPrompt: null, groupOnlyGreetings: [],
+    characterVersion: "", creator: "看图写卡",
+    bookMeta: {name: "", scan_depth: null, token_budget: null, recursive_scanning: false},
+    sysNote: "", worldbook: wb, raw: {vision: true, source: ch},
+    aiFilled: {},
+    createdAt: Date.now(),
+  };
+}
+
 return {
   extractChara: extractChara, parseCardJson: parseCardJson,
   normalizeTavern: normalizeTavern, exampleLines: exampleLines, exampleBlocks: exampleBlocks,
   greetingOf: greetingOf, ensureCompat: ensureCompat,
+  GAPFILL_KEYS: GAPFILL_KEYS, missingGapfillKeys: missingGapfillKeys,
+  gapfillPrompt: gapfillPrompt, parseGapfillJson: parseGapfillJson,
+  visionCardPrompt: visionCardPrompt, parseVisionCards: parseVisionCards,
+  fromVisionChar: fromVisionChar,
   list: list, find: find, findById: findById, add: add, del: del, update: update,
   fromFile: fromFile,
 };

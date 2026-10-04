@@ -82,7 +82,7 @@ t("含身份", sys.indexOf("你是林黛玉") >= 0);
 t("含在场人物", sys.indexOf("贾宝玉") >= 0);
 t("魂穿不含玩家角色", sys.indexOf("「在场人物」") < 0 || sys.split("「在场人物」")[1].indexOf("林黛玉：") < 0);
 t("含记忆", sys.indexOf("记得葬花") >= 0);
-t("post不替玩家说话", post.indexOf("绝不替玩家说话") >= 0);
+t("post玩家行动铁律", post.indexOf("玩家行动铁律") >= 0 && post.indexOf("身体动作") >= 0 && post.indexOf("心理活动") >= 0);
 t("post有ws指令", post.indexOf("<ws>") >= 0);
 t("post有OOC提醒", post.indexOf("「OOC提醒」") >= 0);
 t("历史保留", b.messages.some(m=>m.role === "user" && m.content === "宝玉来了"));
