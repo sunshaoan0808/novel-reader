@@ -58,7 +58,8 @@ t("卡片有后四十回边界声明", mc.includes("一律标注版本边界"));
 
 /* ---- 判词区 ---- */
 const fh = run("__t_foretellHtml()");
-t("判词区29条", (fh.match(/class="pair"/g) || []).length === 29);
+t("判词区合并同文本(28卡)", (fh.match(/class="pair"/g) || []).length === 28);
+t("判词区黛玉宝钗合并一卡", fh.includes("林黛玉、薛宝钗判词"));
 t("判词区有类型badge", fh.includes(">判词<") && fh.includes(">曲<"));
 t("判词区有应验链接数", fh.includes("应验链接"));
 t("判词区有判词原文", fh.includes("可叹停机德"));

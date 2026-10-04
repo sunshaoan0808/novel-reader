@@ -282,12 +282,27 @@ function foretellHtml(){
 if((RUN||{}).run_id !== "honglou_full") return ""; /* P0 红学三项红楼专属 */
 const ft = RUN.foretell;
 if(!ft || !ft.items || !ft.items.length) return "";
-const items = ft.items.map(it=>{
+/* 同文本合并展示（如黛玉/宝钗合用一首判词）：只做展示层合并，数据不动 */
+const merged = []; const seen = {};
+ft.items.forEach(it=>{
+const k = (it.text||"").replace(/\s+/g,"");
+if(seen[k]){
+const m = seen[k];
+(it.characters||[]).forEach(c=>{ if(m.characters.indexOf(c)<0) m.characters.push(c); });
+m.merged = true;
+}else{
+const c = Object.assign({}, it, {characters:(it.characters||[]).slice(), merged:false});
+seen[k] = c; merged.push(c);
+}
+});
+const items = merged.map(it=>{
 const links = (it.foreshadowing_links||[]).length;
-return `<div class="rel"><div class="pair">${esc(it.title||"")}</div>
+const title = it.merged ? it.characters.join("、") + "判词" : (it.title||"");
+const note = it.merged ? "" : it.note;
+return `<div class="rel"><div class="pair">${esc(title)}</div>
 <div class="wb-keys"><span class="badge">${esc(it.type||"")}</span><span class="badge">${esc(it.collection||"")}</span>${links?`<span class="badge">应验链接 ${links}</span>`:""}</div>
 <div class="st">${esc(it.text||"").replace(/\n/g,"<br>")}</div>
-${it.note?`<div class="meta">${esc(it.note)}</div>`:""}</div>`;
+${note?`<div class="meta">${esc(note)}</div>`:""}</div>`;
 }).join("");
 return `<h2 class="sec">判词·红楼梦曲 · ${ft.items.length}</h2>`
 + `<div class="meta">曹雪芹原文内置预告（L1 文本实证），判词原文以第五回为准；应验链接指向伏笔条目。</div>` + items;
