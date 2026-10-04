@@ -263,6 +263,7 @@ ${badges?`<div class="rel-badges">${badges}</div>`:""}
 
 /* ============ P0 红学三项展示 (run 侧已蒸馏, App 只做展示, 不进 prompt) ============ */
 function methodologyCard(){
+if((RUN||{}).run_id !== "honglou_full") return ""; /* P0 红学三项红楼专属 */
 const mo = RUN.methodology;
 if(!mo) return "";
 const layers = (mo.layers||[]).map(l=>`<div class="st">· ${esc(l)}</div>`).join("");
@@ -275,6 +276,7 @@ return `<div class="card"><div class="name">版本与方法论</div>
 <div class="meta">后四十回相关内容一律标注版本边界，不采信情节。</div></div>`;
 }
 function foretellHtml(){
+if((RUN||{}).run_id !== "honglou_full") return ""; /* P0 红学三项红楼专属 */
 const ft = RUN.foretell;
 if(!ft || !ft.items || !ft.items.length) return "";
 const items = ft.items.map(it=>{
@@ -288,6 +290,7 @@ return `<h2 class="sec">判词·红楼梦曲 · ${ft.items.length}</h2>`
 + `<div class="meta">曹雪芹原文内置预告（L1 文本实证），判词原文以第五回为准；应验链接指向伏笔条目。</div>` + items;
 }
 function zhipiHtml(){
+if((RUN||{}).run_id !== "honglou_full") return ""; /* P0 红学三项红楼专属 */
 const zp = RUN.zhipi;
 if(!zp || !zp.items || !zp.items.length) return "";
 const items = zp.items.map(it=>{
@@ -303,6 +306,7 @@ return `<h2 class="sec">脂批 · ${zp.items.length}</h2>`
 }
 /* 人物详情页关联判词 */
 function charForetell(name){
+if((RUN||{}).run_id !== "honglou_full") return ""; /* P0 红学三项红楼专属 */
 const ft = RUN.foretell;
 if(!ft || !ft.items) return "";
 const mine = ft.items.filter(it=>(it.characters||[]).indexOf(name)>=0);
