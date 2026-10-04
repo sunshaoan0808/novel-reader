@@ -23,7 +23,7 @@ body{
 /* 顶栏 */
 #topbar{
   position:sticky; top:0; z-index:20; padding:14px 18px 12px;
-  background:rgba(18,16,13,.86); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  background:#12100d;
   border-bottom:1px solid var(--line-soft);
 }
 #title{font-family:var(--serif); font-size:21px; letter-spacing:.14em; color:var(--gold-soft); font-weight:700;}
@@ -208,7 +208,7 @@ body{
 .swipe span{font-size:11px; color:var(--ink-faint);}
 
 /* ===== 聊天沉浸模式 ===== */
-body.chatmode #topbar, body.chatmode #mainnav{ display:none; }
+body.chatmode #topbar, body.chatmode #mainnav, body.chatmode #tabs{ display:none; }
 body.chatmode #view{ padding:0; max-width:640px; display:flex; flex-direction:column; min-height:0; }
 body.chatmode #app{ height:100dvh; }
 body.chatmode #app{ background:var(--bg); }

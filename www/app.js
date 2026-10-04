@@ -268,12 +268,15 @@ const mo = RUN.methodology;
 if(!mo) return "";
 const layers = (mo.layers||[]).map(l=>`<div class="st">· ${esc(l)}</div>`).join("");
 const unc = (mo.uncovered||[]).map(u=>`<span class="badge">${esc(u)}</span>`).join("");
-return `<div class="card"><div class="name">版本与方法论</div>
-<div class="kv"><span>文本边界</span></div><div class="st">${esc(mo.boundary||"")}</div>
+const moFull = `<div class="kv"><span>文本边界</span></div><div class="st">${esc(mo.boundary||"")}</div>
 <div class="kv"><span>学派站位</span></div><div class="st">${esc(mo.school||"")}</div>
 <div class="kv"><span>三层隔离</span></div>${layers}
 <div class="kv"><span>有意不做</span></div><div class="wb-keys">${unc}</div>
-<div class="meta">后四十回相关内容一律标注版本边界，不采信情节。</div></div>`;
+<div class="meta">后四十回相关内容一律标注版本边界，不采信情节。</div>`;
+return `<div class="card"><div class="name">版本与方法论</div>
+<div class="st">前八十回通行本为界，不采程高后四十回；只做人物与情节蒸馏；L1 实证 / L2 引用 / L3 推测三层隔离。</div>
+<button class="foldtoggle" onclick="var d=this.nextElementSibling;var h=d.classList.toggle('hidden');this.textContent=h?'展开全文':'收起';return false;">展开全文</button>
+<div class="hidden">${moFull}</div></div>`;
 }
 function foretellHtml(){
 if((RUN||{}).run_id !== "honglou_full") return ""; /* P0 红学三项红楼专属 */
@@ -2691,7 +2694,7 @@ function chatbarInner(disabled){
 if(disabled) return `<input id="chat_in" disabled placeholder="生成中…"><button class="stopbtn" onclick="stopGen()" title="停止">${icon("stop",16)}</button>`;
 const ph = CHAT.mode==="group" ? "在群里说点什么…"
 : CHAT.mode==="traverse" ? `以${esc(travPlayerName())}的身份行动…`
-: `和 ${esc(CHAT.name||"TA")} 说点什么…`;
+: `和${esc(CHAT.name||"TA")}说点什么`;
 const spk = CHAT.mode==="group"
 ? `<select id="spksel" onchange="setAsSpeaker(this.value)" title="发言身份"><option value="">我</option>`
 + CHAT.members.map(n=>`<option value="${esc(n)}"${CHAT.asSpeaker===n?" selected":""}>${esc(n)}</option>`).join("") + `</select>` : "";
@@ -2729,7 +2732,7 @@ CHAT.narrMode = !CHAT.narrMode;
 const b = document.getElementById("narrbtn");
 if(b) b.classList.toggle("on", !!CHAT.narrMode);
 const inp = document.getElementById("chat_in");
-if(inp && !inp.disabled) inp.placeholder = CHAT.narrMode ? "📜 旁白：写场景/动作/心理描写…" : (CHAT.mode==="group" ? "在群里说点什么…" : `和 ${CHAT.name||"TA"} 说点什么…`);
+if(inp && !inp.disabled) inp.placeholder = CHAT.narrMode ? "📜 旁白：写场景/动作/心理描写…" : (CHAT.mode==="group" ? "在群里说点什么…" : `和${CHAT.name||"TA"}说点什么`);
 };
 window.setAsSpeaker = (v)=>{ CHAT.asSpeaker = v || null; };
 function setStreaming(on){
@@ -2915,7 +2918,7 @@ el.innerHTML = `<div class="scenrow">` + SCENARIOS.map(s=>
 `<button class="scenchip ${CHAT.scenario===s.id?"on":""}" onclick="toggleScenario('${s.id}')">${s.icon}${s.name}</button>`).join("")
 + (CHAT.scenario ? `<button class="scenchip off" onclick="toggleScenario('')">✕</button>` : "")
 + `</div>`
-+ `<input id="scenetext" class="scenetext" maxlength="160" placeholder="当前场景：地点/着装/活动…（高权重，160字内）" value="${esc(getSceneText())}" oninput="setSceneText(this.value)" title="高权重场景，160字内，identity段后置顶注入">`;
++ `<input id="scenetext" class="scenetext" maxlength="160" placeholder="当前场景：地点/着装/活动（160字内）" value="${esc(getSceneText())}" oninput="setSceneText(this.value)" title="场景描述（160字内），注入权重最高">`;
 }
 /* S-7 高权重场景 (对标 Kindroid current_scene): 160 字符内, 按聊天存 */
 function sceneKey(){ try{ return "nd_scene_" + chatHistKey(); }catch(e){ return "nd_scene_misc"; } }
