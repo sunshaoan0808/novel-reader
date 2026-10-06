@@ -1280,10 +1280,17 @@ const k = chatKey(CHAT.runId, CHAT.name);
 if(!getHist(k).length){
 /* 游玩统计：空历史进聊天 = 一次开局（纯本地，RP_STATS） */
 try{ if(typeof RP_STATS !== "undefined") RP_STATS.recordSession(CHAT.runId, CHAT.name); }catch(e){}
+/* 指定开场开聊：详情页点某开场进来时，首条 AI 消息直接用该开场，不再随机/生成 */
+const _po = window.__pendingOpening; window.__pendingOpening = null;
+const _ops = (typeof cardOpenings === "function") ? cardOpenings(CHAT.runId, CHAT.name) : [];
+if(_po != null && _ops[_po]){
+saveHist(k, [{mid:(typeof nextMsgId==="function"?nextMsgId():"m"+Date.now().toString(36)), role:"assistant", content:_ops[_po], ts:Date.now()}]); renderChat();
+}else{
 RP.greeting(CHAT.runId, CHAT.name, cfg, run.novel).then(g=>{
 if(getHist(k).length) return;
 saveHist(k, [{mid:(typeof nextMsgId==="function"?nextMsgId():"m"+Date.now().toString(36)), role:"assistant", content:g, ts:Date.now()}]); renderChat();
 });
+}
 }
 }
 
@@ -3886,24 +3893,141 @@ window.charDetail = (runId, name, back)=>{
 DETAIL = {runId:runId, name:name, tab:"info", back:(back||null)};
 renderDetail();
 };
-/* 游玩数据卡（角色详情页"资料" tab 顶部）：开局/轮数/token 估算/收藏/点赞，纯本地 */
-function playStatCardHTML(runId, nm){
-let st = null;
-try{ st = (typeof RP_STATS !== "undefined") ? RP_STATS.get(runId, nm) : null; }catch(e){}
-if(!st) return "";
-/* 从未开局且无收藏/点赞时不展示，避免新用户看到一串 0 */
-if(!st.s && !st.t && !st.fav && !st.like) return "";
-const avg = RP_STATS.avgTurns(st), tot = st.pi + st.po;
-return `<div class="card"><div class="name" style="font-size:14px">📊 游玩数据 <span class="kv" style="font-weight:normal">· 只存本机</span></div>`
-+ `<div class="kvline">开局 ${st.s} 次 · 共 ${st.t} 轮 · 平均 ${avg.toFixed(1)} 轮/局</div>`
-+ `<div class="kvline">累计消耗约 ${RP_STATS.fmt(tot)} tokens <span class="kv">(输入约${RP_STATS.fmt(st.pi)} / 输出约${RP_STATS.fmt(st.po)})</span></div>`
-+ `<div class="btnrow" style="margin-top:8px">`
-+ `<button class="btn" onclick="toggleFavUI()">${st.fav ? "⭐ 已收藏" : "☆ 收藏"}</button>`
-+ `<button class="btn" onclick="toggleLikeUI()">${st.like ? "👍 已点赞" : "👍 点赞"}</button>`
-+ `</div></div>`;
-}
+/* 游玩数据收藏/点赞开关（卡片详情落地页数据条用） */
 window.toggleFavUI = ()=>{ try{ RP_STATS.toggleFav(DETAIL.runId, DETAIL.name); }catch(e){} renderDetail(); };
 window.toggleLikeUI = ()=>{ try{ RP_STATS.toggleLike(DETAIL.runId, DETAIL.name); }catch(e){} renderDetail(); };
+/* ---- 卡片详情落地页（P0）：徽章/数据条/CTA/简介/规格/开场/玩法说明/标签/档案 ----
+ * 学电子姬AI 的 share 页结构，全部数据来自本地卡片 + 本地统计，不编造。 */
+function cardOpenings(runId, name){
+  let card = null;
+  try{ card = (typeof RP !== "undefined" && RP.findCard) ? RP.findCard(runId, name) : null; }catch(e){}
+  const out = [];
+  if(!card) return out;
+  const g0 = (card.greeting && String(card.greeting).trim()) || "";
+  if(g0) out.push(g0);
+  (card.altGreetings || []).forEach(g=>{ g = String(g == null ? "" : g).trim(); if(g && out.indexOf(g) < 0) out.push(g); });
+  return out.slice(0, 8);
+}
+function cardSettingChars(card){
+  let n = 0;
+  try{
+    const f = card.fields || {};
+    Object.keys(f).forEach(k=>{
+      const v = f[k];
+      if(typeof v === "string") n += v.length;
+      else if(Array.isArray(v)) v.forEach(x=>{ n += String(x).length; });
+    });
+  }catch(e){}
+  return n;
+}
+function cardBadges(runId, card, openings, settingChars, st){
+  const b = [];
+  const runs = (window.__DATA__ && window.__DATA__.runs) || {};
+  if(runs[runId]) b.push("官方");
+  if(runId === "custom") b.push("自创");
+  if(runId === "imported") b.push("导入");
+  if(openings.length > 1) b.push("多开场");
+  if(settingChars >= 3000) b.push("长篇设定");
+  if(st && st.s >= 5) b.push("常玩");
+  return b.slice(0, 4);
+}
+function cardTags(card){
+  const out = [];
+  const push = t=>{ t = String(t == null ? "" : t).trim(); if(t && out.indexOf(t) < 0 && out.length < 12) out.push(t); };
+  try{
+    if(card.novel) push(card.novel);
+    const rt = (card.fields && card.fields.role_tags) || "";
+    String(rt).split(/[；;、,，]/).forEach(push);
+    if(card.raw && Array.isArray(card.raw.tags)) card.raw.tags.forEach(push);
+  }catch(e){}
+  return out;
+}
+/* 用指定开场白开聊：清掉当前历史，进聊天时首条 AI 消息用该开场 */
+window.chatWithOpening = (runId, name, idx)=>{
+  try{
+    saveHist(chatKey(runId, name), []);
+    window.__pendingOpening = idx;
+  }catch(e){ window.__pendingOpening = idx; }
+  chatWith(runId, name);
+};
+function cardLandingHTML(runId, nm, card, run){
+  const q = nm.replace(/'/g, "\\'");
+  const openings = cardOpenings(runId, nm);
+  const settingChars = cardSettingChars(card);
+  let st = null;
+  try{ st = (typeof RP_STATS !== "undefined") ? RP_STATS.get(runId, nm) : null; }catch(e){}
+  /* RP_STATS 缺失时的展示兜底（脚本加载顺序异常也不崩） */
+  const SF = (typeof RP_STATS !== "undefined" && RP_STATS.fmt) ? RP_STATS.fmt : (n=>String(Math.round(n || 0)));
+  const avgOf = (s)=>{ try{ return RP_STATS.avgTurns(s); }catch(e){ return 0; } };
+  const badges = cardBadges(runId, card, openings, settingChars, st);
+  let memN = 0;
+  try{ const mst = (typeof RP_MEM !== "undefined") ? RP_MEM.get(runId, nm) : null; memN = (mst && mst.short ? mst.short.length : 0); }catch(e){}
+  const novel = run.novel || card.novel || "";
+  const brief = String((card.fields || {}).core_identity || "").split("\n")[0] || "";
+  const tags = cardTags(card);
+  let h = "";
+  /* 1. 封面头：头像 + 名字 + 出处 + 徽章 */
+  h += `<div class="card" style="text-align:center;padding:22px 14px 16px">`
+    + `<div class="avatar" style="width:76px;height:76px;font-size:32px;margin:0 auto">${esc((nm || "?")[0])}</div>`
+    + `<div class="name" style="font-size:20px;margin-top:10px">${esc(nm)}</div>`
+    + (novel ? `<div class="kv" style="margin-top:3px">${esc(novel)}</div>` : "")
+    + (badges.length ? `<div style="margin-top:10px">` + badges.map(b=>`<span class="tagchip">${esc(b)}</span>`).join("") + `</div>` : "")
+    + `</div>`;
+  /* 2. 数据条（有数据才显示） */
+  if(st && (st.s || st.t || st.fav || st.like)){
+    const avg = avgOf(st), tot = st.pi + st.po;
+    h += `<div class="card"><div class="kv" style="text-align:center">开局 ${st.s} 次 · 共 ${st.t} 轮 · 平均 ${avg.toFixed(1)} 轮/局</div>`
+      + `<div class="kv" style="text-align:center;margin-top:4px">累计消耗约 ${SF(tot)} tokens <span style="opacity:.7">(输入约${SF(st.pi)} / 输出约${SF(st.po)})</span></div>`
+      + `<div class="btnrow" style="margin:10px 0 2px">`
+      + `<button class="btn" onclick="toggleFavUI()">${st.fav ? "⭐ 已收藏" : "☆ 收藏"}</button>`
+      + `<button class="btn" onclick="toggleLikeUI()">${st.like ? "👍 已点赞" : "👍 点赞"}</button>`
+      + `</div></div>`;
+  }
+  /* 3. CTA */
+  h += `<button class="btn landcta" onclick="chatWith('${runId}','${q}')">▶ 立即开始游玩</button>`;
+  /* 4. 简介 */
+  if(brief) h += `<h2 class="sec">简介</h2><div class="card"><div style="font-size:13.5px;line-height:1.7">${esc(brief)}</div></div>`;
+  /* 5. 规格网格 */
+  const avgW = (st && st.s) ? (st.t / st.s).toFixed(0) + "轮/局" : "—";
+  h += `<h2 class="sec">规格</h2><div class="specgrid">`
+    + `<div class="spec"><div class="v">${openings.length ? openings.length + "个" : "AI生成"}</div><div class="k">开场</div></div>`
+    + `<div class="spec"><div class="v">${settingChars ? "约" + SF(settingChars) + "字" : "—"}</div><div class="k">设定</div></div>`
+    + `<div class="spec"><div class="v">${memN}条</div><div class="k">记忆</div></div>`
+    + `<div class="spec"><div class="v">${avgW}</div><div class="k">平均轮数</div></div>`
+    + `</div>`;
+  /* 6. 开场列表 */
+  if(openings.length){
+    h += `<h2 class="sec">开场 · ${openings.length} 个</h2>`;
+    h += openings.map((g, i)=>{
+      const prev = g.length > 72 ? g.slice(0, 72) + "…" : g;
+      return `<div class="card opencard" onclick="chatWithOpening('${runId}','${q}',${i})">`
+        + `<div class="kv">开场${["一","二","三","四","五","六","七","八"][i] || (i+1)}</div>`
+        + `<div style="font-size:13px;margin-top:5px;line-height:1.6">${esc(prev)}</div>`
+        + `<div style="margin-top:8px;font-size:12px;color:var(--gold)">用这个开场开聊 ›</div></div>`;
+    }).join("");
+  } else {
+    h += `<div class="hint" style="margin:6px 2px">这张卡没有固定开场白，开聊后 AI 会根据人设现场生成开场。</div>`;
+  }
+  /* 7. 玩法说明（由本地数据自动生成，不编造） */
+  h += `<h2 class="sec">玩法说明</h2><div class="card">`
+    + `<div class="kvline"><b>怎么开始</b>：点"立即开始游玩"${openings.length ? "，或挑一个开场进入" : ""}——${esc(nm)}会先和你打招呼，之后你说一句、它回一句。</div>`
+    + `<div class="kvline"><b>它记得什么</b>：${memN ? "已经有 " + memN + " 条记忆，聊过的关键事不会忘" : "聊天中提到的关键信息会自动记下来，越聊越记得你们的事"}。</div>`
+    + `<div class="kvline"><b>小贴士</b>：想换走向直接说；某句不满意可以重抽；重要的设定可以写进世界书长期生效。</div>`
+    + `</div>`;
+  /* 8. 标签 */
+  if(tags.length) h += `<h2 class="sec">标签</h2><div style="margin:2px 0 10px">` + tags.map(t=>`<span class="tagchip">${esc(t)}</span>`).join("") + `</div>`;
+  /* 9. 档案（原有字段分组） */
+  const groups = [["identity","身份"],["core","内核"],["speech","说话方式"],["background","背景"]];
+  const arch = groups.map(g=>{
+    const txt = RP_PROMPT.renderFields(card, RP_PROMPT.LAYERS[g[0]]);
+    return txt ? `<h2 class="sec">${g[1]}</h2><div class="card">`
+      + txt.split("\n").map(l=>`<div class="kvline">${esc(l)}</div>`).join("") + `</div>` : "";
+  }).join("");
+  if(arch) h += `<h2 class="sec">档案</h2>` + arch.replace(/<h2 class="sec">[^<]*<\/h2>/g, "");
+  /* 10. 底部 CTA */
+  h += `<button class="btn landcta" style="margin:14px 0 8px" onclick="chatWith('${runId}','${q}')">▶ 立即开始游玩</button>`;
+  return h;
+}
 function detailBack(){
 if(DETAIL.back === "picker") setNav("chat");
 else if(typeof DETAIL.back === "function") DETAIL.back();
@@ -3923,12 +4047,8 @@ titleEl.innerHTML = icon("user")+" "+esc(nm); subEl.textContent = run.novel || "
 const tabs = [["info","资料"],["memory","记忆"],["chat","最近聊天"],["arc","人物弧光"]];
 let body = "";
 if(DETAIL.tab === "info"){
-const groups = [["identity","身份"],["core","内核"],["speech","说话方式"],["background","背景"]];
-body = playStatCardHTML(runId, nm) + groups.map(g=>{
-const txt = RP_PROMPT.renderFields(card, RP_PROMPT.LAYERS[g[0]]);
-return txt ? `<h2 class="sec">${g[1]}</h2><div class="card">`
-+ txt.split("\n").map(l=>`<div class="kvline">${esc(l)}</div>`).join("") + `</div>` : "";
-}).join("") || `<div class="empty">还没有资料，多聊几句就会有了</div>`;
+/* P0 卡片详情落地页：徽章/数据条/CTA/简介/规格/开场/玩法说明/标签/档案 */
+body = cardLandingHTML(runId, nm, card, run) || `<div class="empty">还没有资料，多聊几句就会有了</div>`;
 } else if(DETAIL.tab === "memory"){
 const st = RP_MEM.get(runId, nm);
 const n = (st && st.short && st.short.length) || 0;
