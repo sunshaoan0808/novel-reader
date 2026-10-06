@@ -1414,7 +1414,26 @@ document.body.classList.remove("chatmode");
 titleEl.textContent = "选个角色开聊";
 subEl.textContent = "";
 const cs = allChars();
-view.innerHTML = (cs.length ? `<div class="chargrid">` + cs.map(c=>{ const qn=c.name.replace(/'/g,"\\'");
+if(!cs.length){
+view.innerHTML = `<div class="empty"><span class="big">🎭</span>还没有角色<br><span style="font-size:12px">去「写卡」创建你的第一个角色</span><br><button class="btn" style="margin-top:10px" onclick="setNav('writer')">去写卡</button></div>`;
+return;
+}
+/* P1 多轨道发现：最近玩过 / 我的收藏 / 换一批看看（横滑轨道，本地计算） */
+const recent = recentPlayed(cs, 8);
+let favs = [];
+try{ favs = cs.filter(c=>{ try{ return RP_STATS.get(c.runId, c.name).fav; }catch(e){ return false; } }); }catch(e){}
+const shuffled = shuffle(cs.slice()).slice(0, 8);
+/* P1 分类 chips 带数量：按标签过滤全部角色 */
+const counts = tagCountsOf(cs);
+const active = window.PICKER_TAG || "";
+const list = active ? cs.filter(c=>charTagsOf(c.runId, c.name).indexOf(active) >= 0) : cs;
+view.innerHTML =
+(recent.length ? railHTML("🕘 最近玩过", recent) : "")
++ (favs.length ? railHTML("⭐ 我的收藏", favs) : "")
++ railHTML(`🎲 换一批看看 <button class="btn ghost sm" style="margin-left:4px" onclick="event.stopPropagation();showChatPicker()">↻</button>`, shuffled)
++ chipsHTML(counts, active, cs.length)
++ `<h2 class="sec">全部角色 · ${list.length}</h2>`
++ (list.length ? `<div class="chargrid">` + list.map(c=>{ const qn=c.name.replace(/'/g,"\\'");
 /* 游玩统计：卡片上显示开局次数与平均轮数（纯本地，RP_STATS） */
 let _sum = charSumFor(c.runId,c.name)||"点我直接开聊";
 let _stat = "";
@@ -1428,8 +1447,51 @@ return charCardHTML({name:c.name, tag:c.novel, img:charImg(c.novel, c.name), sum
 oncard:`chatWith('${c.runId}','${qn}')`,
 ops:`<button class="go" onclick="event.stopPropagation();chatWith('${c.runId}','${qn}')">开聊</button>`
 +`<button onclick="event.stopPropagation();charDetail('${c.runId}','${qn}','picker')">详情</button>`});
-}).join("") + `</div>` : `<div class="empty"><span class="big">🎭</span>还没有角色<br><span style="font-size:12px">去「写卡」创建你的第一个角色</span><br><button class="btn" style="margin-top:10px" onclick="setNav('writer')">去写卡</button></div>`);
+}).join("") + `</div>` : `<div class="empty">这个标签下还没有角色</div>`);
+try{ window.scrollTo(0,0); }catch(e){}
 }
+/* ---- P1 发现页 helpers ---- */
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=a[i]; a[i]=a[j]; a[j]=t; } return a; }
+/* 最近玩过：按最后活跃时间倒序，只取开过局的 */
+function recentPlayed(cs, n){
+try{
+return cs.map(c=>{ let st = null; try{ st = RP_STATS.get(c.runId, c.name); }catch(e){}
+return {c:c, last:(st && st.last) || 0, s:(st && st.s) || 0}; })
+.filter(x=>x.s > 0).sort((a,b)=>b.last - a.last).slice(0, n || 8).map(x=>x.c);
+}catch(e){ return []; }
+}
+/* 横滑轨道 */
+function railHTML(title, cs){
+return `<h2 class="sec">${title}</h2><div class="rail">` + cs.map(c=>{
+const qn = c.name.replace(/'/g, "\\'");
+return `<div class="railcard" onclick="chatWith('${c.runId}','${qn}')">`
++ `<div class="avatar">${esc((c.name || "?")[0])}</div>`
++ `<div class="rn">${esc(c.name)}</div>`
++ `<div class="rk">${esc(c.novel || "")}</div></div>`;
+}).join("") + `</div>`;
+}
+/* 角色标签（复用落地页 cardTags）：导入卡 novel/tags + role_tags */
+function charTagsOf(runId, name){
+try{
+const card = (typeof RP !== "undefined" && RP.findCard) ? RP.findCard(runId, name) : null;
+if(card) return cardTags(card);
+}catch(e){}
+return [];
+}
+function tagCountsOf(cs){
+const m = {};
+cs.forEach(c=>{ charTagsOf(c.runId, c.name).forEach(t=>{ m[t] = (m[t] || 0) + 1; }); });
+return Object.keys(m).map(k=>({tag:k, n:m[k]})).sort((a,b)=>b.n - a.n).slice(0, 12);
+}
+function chipsHTML(counts, active, total){
+let h = `<div class="chiprow"><button class="pickchip${!active ? " on" : ""}" onclick="pickTag('')">全部 ${total}</button>`;
+counts.forEach(x=>{
+h += `<button class="pickchip${active === x.tag ? " on" : ""}" onclick="pickTag('${x.tag.replace(/'/g, "\\'")}')">${esc(x.tag)} ${x.n}</button>`;
+});
+return h + `</div>`;
+}
+window.PICKER_TAG = "";
+window.pickTag = (t)=>{ window.PICKER_TAG = (window.PICKER_TAG === t ? "" : t); showChatPicker(); };
 window.exitChat = ()=>{ SEARCH.active=false; SEARCH.q=""; SEARCH.hits=[]; SEARCH.cur=-1; showChatPicker(); };
 window.exitChatTo = (n)=>{ document.body.classList.remove("chatmode"); setNav(n); };
 window.toggleDrawer = (on)=>{
@@ -2121,12 +2183,21 @@ localStorage.setItem("nd_chat_last", v);
 showChat();
 };
 window.chatWith = (runId, name)=>{
+/* P1 开场选择器：多开场卡片且非指定开场进入时，先弹半屏选开场 */
+if(window.__pendingOpening == null){
+let ops = [];
+try{ ops = cardOpenings(runId, name); }catch(e){}
+if(ops.length > 1){ openSheet(true, runId, name); return; }
+}
+startChat(runId, name);
+};
+function startChat(runId, name){
 CHAT = {mode:"single", runId, name, members:[], forcedSpeaker:null};
 loadPov();
 LAST_STATS = null;
 localStorage.setItem("nd_chat_last", `${runId}|${name}`);
 setNav("chat");
-};
+}
 /* ============ P1-6: 轻量本地成就 ============ */
 window.achvUnlock = (id)=>{
 if(typeof RP_ACHV==="undefined") return;
@@ -3920,15 +3991,39 @@ function cardSettingChars(card){
   }catch(e){}
   return n;
 }
+/* P1 徽章体系：id → 名称 + 说明（移动端点徽章看说明，即 tooltip） */
+const BADGE_DEFS = {
+  official: {label:"官方", desc:"浮生内置角色，由小说蒸馏管线从原著提炼，不是网上搬来的"},
+  custom: {label:"自创", desc:"你在「写卡」页亲手创建的角色"},
+  imported: {label:"导入", desc:"从 SillyTavern 标准角色卡导入，原汁原味"},
+  multiop: {label:"多开场", desc:"自带多个开场白，开局前可以挑一个喜欢的进"},
+  longset: {label:"长篇设定", desc:"人设档案超过 3000 字，细节丰富，不容易聊崩"},
+  regular: {label:"常玩", desc:"你已经和 TA 开过 5 局以上，是老搭档了"},
+};
+function badgeLabel(id){ return (BADGE_DEFS[id] || {}).label || id; }
+/* 通用轻提示 toast（徽章说明等） */
+let TIP_TOAST_TIMER = null;
+function tipToast(html){
+  let el = document.getElementById("tipToast");
+  if(!el){ el = document.createElement("div"); el.id = "tipToast"; el.className = "achv-toast"; document.body.appendChild(el); }
+  el.innerHTML = html;
+  el.classList.add("show");
+  if(TIP_TOAST_TIMER) clearTimeout(TIP_TOAST_TIMER);
+  TIP_TOAST_TIMER = setTimeout(()=>el.classList.remove("show"), 2600);
+}
+window.badgeTip = (id)=>{
+  const d = BADGE_DEFS[id]; if(!d) return;
+  tipToast(`<b>${esc(d.label)}</b><br><span class="dim">${esc(d.desc)}</span>`);
+};
 function cardBadges(runId, card, openings, settingChars, st){
   const b = [];
   const runs = (window.__DATA__ && window.__DATA__.runs) || {};
-  if(runs[runId]) b.push("官方");
-  if(runId === "custom") b.push("自创");
-  if(runId === "imported") b.push("导入");
-  if(openings.length > 1) b.push("多开场");
-  if(settingChars >= 3000) b.push("长篇设定");
-  if(st && st.s >= 5) b.push("常玩");
+  if(runs[runId]) b.push("official");
+  if(runId === "custom") b.push("custom");
+  if(runId === "imported") b.push("imported");
+  if(openings.length > 1) b.push("multiop");
+  if(settingChars >= 3000) b.push("longset");
+  if(st && st.s >= 5) b.push("regular");
   return b.slice(0, 4);
 }
 function cardTags(card){
@@ -3948,7 +4043,38 @@ window.chatWithOpening = (runId, name, idx)=>{
     saveHist(chatKey(runId, name), []);
     window.__pendingOpening = idx;
   }catch(e){ window.__pendingOpening = idx; }
-  chatWith(runId, name);
+  startChat(runId, name);
+};
+/* P1 开场选择器半屏：列出开场 + 随机开场 */
+window.openSheet = (on, runId, name)=>{
+let sh = document.getElementById("opensheet");
+let sc = document.getElementById("openscrim");
+if(!on){ if(sh) sh.classList.remove("on"); if(sc) sc.classList.remove("on"); return; }
+const ops = cardOpenings(runId, name);
+if(!sh){
+sc = document.createElement("div"); sc.id = "openscrim"; sc.className = "scrim msscrim";
+sc.onclick = ()=>openSheet(false);
+document.body.appendChild(sc);
+sh = document.createElement("div"); sh.id = "opensheet"; sh.className = "msgsheet";
+document.body.appendChild(sh);
+}
+const qn = name.replace(/'/g, "\\'");
+const nums = ["一","二","三","四","五","六","七","八"];
+sh.innerHTML = `<div class="mshandle"></div><div class="msprev">选个开场，和 ${esc(name)} 开聊</div>`
++ ops.map((g, i)=>{
+const prev = g.length > 64 ? g.slice(0, 64) + "…" : g;
+return `<button class="msitem opitem" onclick="pickOpening('${runId}','${qn}',${i})"><span class="opn">开场${nums[i] || (i+1)}</span><span class="opp">${esc(prev)}</span></button>`;
+}).join("")
++ `<button class="msitem" onclick="pickOpening('${runId}','${qn}',-1)">🎲 随机开场</button>`;
+sc.classList.add("on"); sh.classList.add("on");
+};
+window.pickOpening = (runId, name, idx)=>{
+openSheet(false);
+if(idx < 0){
+const n = cardOpenings(runId, name).length;
+idx = n ? Math.floor(Math.random() * n) : 0;
+}
+chatWithOpening(runId, name, idx);
 };
 function cardLandingHTML(runId, nm, card, run){
   const q = nm.replace(/'/g, "\\'");
@@ -3971,7 +4097,7 @@ function cardLandingHTML(runId, nm, card, run){
     + `<div class="avatar" style="width:76px;height:76px;font-size:32px;margin:0 auto">${esc((nm || "?")[0])}</div>`
     + `<div class="name" style="font-size:20px;margin-top:10px">${esc(nm)}</div>`
     + (novel ? `<div class="kv" style="margin-top:3px">${esc(novel)}</div>` : "")
-    + (badges.length ? `<div style="margin-top:10px">` + badges.map(b=>`<span class="tagchip">${esc(b)}</span>`).join("") + `</div>` : "")
+    + (badges.length ? `<div style="margin-top:10px">` + badges.map(b=>`<span class="tagchip clickable" onclick="badgeTip('${b}')">${esc(badgeLabel(b))}</span>`).join("") + `</div>` : "")
     + `</div>`;
   /* 2. 数据条（有数据才显示） */
   if(st && (st.s || st.t || st.fav || st.like)){

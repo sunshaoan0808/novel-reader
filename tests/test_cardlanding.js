@@ -18,6 +18,16 @@ function pick(names){
   }
   return out;
 }
+function pickConst(n){
+  const i = APP_SRC.indexOf("const " + n + " =");
+  if(i < 0) throw new Error("const not found: " + n);
+  let d = APP_SRC.indexOf("{", i), lvl = 0, j = d;
+  for(; j < APP_SRC.length; j++){
+    if(APP_SRC[j] === "{") lvl++;
+    else if(APP_SRC[j] === "}"){ lvl--; if(!lvl) break; }
+  }
+  return APP_SRC.slice(i, j + 1) + ";\n";
+}
 function mkCtx(over){
   const store = {};
   const cards = {
@@ -55,7 +65,8 @@ function mkCtx(over){
   // window 引用自身
   ctx.window.window = ctx.window;
   vm.createContext(ctx);
-  const src = pick(["cardOpenings","cardSettingChars","cardBadges","cardTags","cardLandingHTML"]);
+  const src = pickConst("BADGE_DEFS")
+    + pick(["cardOpenings","cardSettingChars","cardBadges","cardTags","cardLandingHTML","badgeLabel"]);
   vm.runInContext(src, ctx);
   return ctx;
 }
@@ -77,12 +88,13 @@ t("空卡0字", C("cardSettingChars({})") === 0);
 
 /* cardBadges */
 let b1 = C("cardBadges('builtin',{},{},5000,{s:6})");
-t("官方徽章", b1.includes("官方"));
-t("长篇设定徽章", b1.includes("长篇设定"));
-t("常玩徽章", b1.includes("常玩"));
-t("自创徽章", C("cardBadges('custom',{},{},10,{s:0})").includes("自创"));
-t("导入徽章", C("cardBadges('imported',{},{},10,{s:0})").includes("导入"));
-t("多开场徽章", C("cardBadges('imported',{},['a','b'],10,{s:0})").includes("多开场"));
+t("官方徽章", b1.includes("official"));
+t("长篇设定徽章", b1.includes("longset"));
+t("常玩徽章", b1.includes("regular"));
+t("自创徽章", C("cardBadges('custom',{},{},10,{s:0})").includes("custom"));
+t("导入徽章", C("cardBadges('imported',{},{},10,{s:0})").includes("imported"));
+t("多开场徽章", C("cardBadges('imported',{},['a','b'],10,{s:0})").includes("multiop"));
+t("badgeLabel映射", C("badgeLabel('official')")==="官方" && C("badgeLabel('multiop')")==="多开场");
 t("徽章上限4", C("cardBadges('builtin',{},{},9999,{s:99})").length <= 4);
 
 /* cardTags */
@@ -92,7 +104,7 @@ t("标签去重", tg.length === 4 && tg.includes("诗社才女") && tg.includes(
 /* cardLandingHTML：导入卡（含开场） */
 let html = C("cardLandingHTML('imported','白月光',RP.findCard('imported','白月光'),{novel:'导入角色卡'})");
 t("落地页有CTA", html.includes("立即开始游玩"));
-t("落地页有徽章", html.includes("导入") && html.includes("多开场"));
+t("落地页有徽章", html.includes("导入") && html.includes("多开场") && html.includes("badgeTip"));
 t("落地页有开场列表", html.includes("开场 · 3 个") && html.includes("chatWithOpening"));
 t("落地页有玩法说明", html.includes("玩法说明"));
 t("落地页有标签", html.includes("校园"));
