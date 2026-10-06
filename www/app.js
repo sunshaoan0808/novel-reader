@@ -1430,6 +1430,7 @@ const list = active ? cs.filter(c=>charTagsOf(c.runId, c.name).indexOf(active) >
 view.innerHTML =
 (recent.length ? railHTML("🕘 最近玩过", recent) : "")
 + (favs.length ? railHTML("⭐ 我的收藏", favs) : "")
++ albumRailHTML()
 + railHTML(`🎲 换一批看看 <button class="btn ghost sm" style="margin-left:4px" onclick="event.stopPropagation();showChatPicker()">↻</button>`, shuffled)
 + chipsHTML(counts, active, cs.length)
 + `<h2 class="sec">全部角色 · ${list.length}</h2>`
@@ -1452,6 +1453,130 @@ try{ window.scrollTo(0,0); }catch(e){}
 }
 /* ---- P1 发现页 helpers ---- */
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=a[i]; a[i]=a[j]; a[j]=t; } return a; }
+/* P2 专辑轨道（发现页）：专辑横滑 + 新建/导入 */
+function albumRailHTML(){
+let albums = [];
+try{ albums = RP_ALBUM.list(); }catch(e){}
+let h = `<h2 class="sec">💿 我的专辑 <button class="btn ghost sm" style="margin-left:4px" onclick="albumCreate()">＋新建</button>`
++ `<button class="btn ghost sm" style="margin-left:4px" onclick="document.getElementById('albumFile').click()">导入</button></h2>`;
+h += `<input type="file" id="albumFile" accept=".json" style="display:none" onchange="albumImportFile(this)">`;
+h += `<div class="rail">`;
+h += albums.map(a=>{
+const cover = a.cards.length ? esc((a.cards[0].name || "?")[0]) : "💿";
+return `<div class="railcard" onclick="albumPage('${a.id}')">`
++ `<div class="avatar">${cover}</div><div class="rn">${esc(a.name)}</div>`
++ `<div class="rk">${a.cards.length} 张</div></div>`;
+}).join("");
+h += `<div class="railcard" onclick="albumCreate()"><div class="avatar">＋</div><div class="rn">新建专辑</div><div class="rk"> </div></div>`;
+return h + `</div>`;
+}
+window.albumCreate = ()=>{
+const name = prompt("给专辑起个名字", "");
+if(name == null) return;
+let alb = null;
+try{ alb = RP_ALBUM.create(name); }catch(e){ return; }
+albumPage(alb.id);
+};
+window.albumPage = (id)=>{
+__backAction = ()=>showChatPicker();
+document.body.classList.remove("chatmode");
+let alb = null;
+try{ alb = RP_ALBUM.get(id); }catch(e){}
+if(!alb){ showChatPicker(); return; }
+titleEl.textContent = "💿 " + alb.name;
+subEl.textContent = `共 ${alb.cards.length} 张卡 · 纯本地`;
+let grid = "";
+if(alb.cards.length){
+grid = `<div class="chargrid">` + alb.cards.map(c=>{
+const qn = c.name.replace(/'/g, "\\'");
+let sum = "";
+try{ sum = charSumFor(c.runId, c.name) || ""; }catch(e){}
+return charCardHTML({name: c.name, tag: c.novel || "", img: charImg(c.novel, c.name), sum: sum,
+oncard: `chatWith('${c.runId}','${qn}')`,
+ops: `<button class="go" onclick="event.stopPropagation();chatWith('${c.runId}','${qn}')">开聊</button>`
++ `<button onclick="event.stopPropagation();albumRemoveCard('${id}','${c.runId}','${qn}')">移除</button>`});
+}).join("") + `</div>`;
+}else{
+grid = `<div class="empty">还没有卡，点「加卡」装满它</div>`;
+}
+view.innerHTML = `<button class="back" onclick="showChatPicker()">${icon("back")} 返回发现</button>`
++ `<div class="btnrow"><button class="btn" onclick="albumPick('${id}')">＋ 加卡</button>`
++ `<button class="btn ghost" onclick="albumExport('${id}')">导出</button>`
++ `<button class="btn ghost" onclick="albumRename('${id}')">改名</button>`
++ `<button class="btn danger" onclick="albumDel('${id}')">删除</button></div>`
++ grid + `<div style="height:40px"></div>`;
+try{ window.scrollTo(0,0); }catch(e){}
+};
+window.albumPick = (id)=>{
+__backAction = ()=>albumPage(id);
+document.body.classList.remove("chatmode");
+let alb = null;
+try{ alb = RP_ALBUM.get(id); }catch(e){}
+if(!alb){ showChatPicker(); return; }
+titleEl.textContent = "加卡到专辑"; subEl.textContent = `「${alb.name}」· 点 ＋ 加入`;
+const cs = allChars();
+const inMap = {};
+alb.cards.forEach(c=>{ inMap[c.runId + "|" + c.name] = 1; });
+view.innerHTML = `<button class="back" onclick="albumPage('${id}')">${icon("back")} 返回专辑</button>`
++ `<div class="chargrid">` + cs.map(c=>{
+const qn = c.name.replace(/'/g, "\\'");
+const has = inMap[c.runId + "|" + c.name];
+let sum = "";
+try{ sum = charSumFor(c.runId, c.name) || "点我直接开聊"; }catch(e){}
+return charCardHTML({name: c.name, tag: c.novel, img: charImg(c.novel, c.name),
+sum: has ? "已在专辑中" : sum,
+oncard: has ? "" : `albumAdd('${id}','${c.runId}','${qn}')`,
+ops: has ? `<button disabled>已加入</button>`
+: `<button class="go" onclick="event.stopPropagation();albumAdd('${id}','${c.runId}','${qn}')">＋ 加入</button>`});
+}).join("") + `</div><div style="height:40px"></div>`;
+try{ window.scrollTo(0,0); }catch(e){}
+};
+window.albumAdd = (id, runId, name)=>{
+let ok = false;
+try{ ok = RP_ALBUM.addCard(id, runId, name); }catch(e){}
+try{ rpToast(ok ? `已加入专辑` : `已经在专辑里了`); }catch(e){}
+albumPick(id);
+};
+window.albumRemoveCard = (id, runId, name)=>{
+try{ RP_ALBUM.removeCard(id, runId, name); }catch(e){}
+albumPage(id);
+};
+window.albumRename = (id)=>{
+let alb = null;
+try{ alb = RP_ALBUM.get(id); }catch(e){}
+if(!alb) return;
+const name = prompt("专辑新名字", alb.name);
+if(name == null) return;
+try{ RP_ALBUM.rename(id, name); }catch(e){}
+albumPage(id);
+};
+window.albumDel = (id)=>{
+if(!confirm("删除这个专辑？（卡片本身不受影响）")) return;
+try{ RP_ALBUM.remove(id); }catch(e){}
+showChatPicker();
+};
+window.albumExport = (id)=>{
+let data = null, alb = null;
+try{ alb = RP_ALBUM.get(id); data = RP_ALBUM.exportData(id); }catch(e){}
+if(!data) return;
+downloadJson(`专辑-${alb.name}.json`, data);
+try{ rpToast("专辑已导出"); }catch(e){}
+};
+window.albumImportFile = (input)=>{
+const f = input.files && input.files[0];
+if(!f) return;
+const rd = new FileReader();
+rd.onload = ()=>{
+try{
+const obj = JSON.parse(rd.result);
+const r = RP_ALBUM.importData(obj);
+try{ rpToast(`已导入专辑，收录 ${r.added} 张卡${r.skipped ? `（${r.skipped} 张跳过）` : ""}`); }catch(e){}
+}catch(e){ alert("导入失败：不是有效的专辑文件"); }
+input.value = "";
+showChatPicker();
+};
+rd.readAsText(f);
+};
 /* 最近玩过：按最后活跃时间倒序，只取开过局的 */
 function recentPlayed(cs, n){
 try{
@@ -2223,6 +2348,53 @@ el.classList.add("show");
 if(ACHV_TOAST_TIMER) clearTimeout(ACHV_TOAST_TIMER);
 ACHV_TOAST_TIMER = setTimeout(()=>el.classList.remove("show"), 2600);
 }
+/* P2 命名主题切换 */
+window.setThemeUI = (id)=>{
+try{ if(typeof RP_THEME !== "undefined") RP_THEME.apply(id); }catch(e){}
+showSettings();
+};
+function themeCardsHTML(){
+try{
+if(typeof RP_THEME === "undefined") return "";
+const cur = RP_THEME.get();
+return `<div class="themerow" style="margin-top:8px">` + RP_THEME.THEMES.map(t=>`
+<div class="themecard${cur===t.id?" on":""}" onclick="setThemeUI('${t.id}')">
+<div class="dots"><span class="dot" style="background:${t.vars["--bg"]}"></span><span class="dot" style="background:${t.vars["--gold"]}"></span><span class="dot" style="background:${t.vars["--ink"]}"></span></div>
+<div class="tname">${esc(t.name)}</div><div class="tdesc">${esc(t.desc)}</div></div>`).join("") + `</div>`;
+}catch(e){ return ""; }
+}
+/* P2 每日签到 */
+window.CHECKIN_M = 0;
+function checkinCardHTML(){
+if(typeof RP_CHECKIN === "undefined") return "";
+const now = new Date();
+const off = window.CHECKIN_M || 0;
+const base = new Date(now.getFullYear(), now.getMonth() + off, 1);
+const y = base.getFullYear(), m = base.getMonth();
+const cells = RP_CHECKIN.monthCells(y, m);
+const signed = RP_CHECKIN.signedSet(y, m);
+const done = RP_CHECKIN.hasToday();
+const st = RP_CHECKIN.streak(), tot = RP_CHECKIN.total();
+let cal = `<div class="calhead"><button class="btn ghost sm" onclick="checkinMonth(-1)">‹ 上月</button>`
++ `<b>${y} 年 ${m + 1} 月</b><button class="btn ghost sm" onclick="checkinMonth(1)">下月 ›</button></div>`;
+cal += `<div class="calgrid">` + ["一","二","三","四","五","六","日"].map(w=>`<div class="calcell wk">${w}</div>`).join("") + `</div>`;
+cal += `<div class="calgrid">` + cells.map(d=>{
+if(d == null) return `<div class="calcell pad"></div>`;
+const cls = "calcell" + (signed[d] ? " signed" : "") + (off === 0 && d === now.getDate() ? " today" : "");
+return `<div class="${cls}">${d}</div>`;
+}).join("") + `</div>`;
+return `<div class="setcard"><h3>📅 每日签到</h3>`
++ `<div class="kv">连续签到 <b style="color:var(--gold)">${st}</b> 天 · 累计 ${tot} 天${done ? " · 今日已签到" : ""}</div>`
++ `<div class="btnrow" style="margin-top:8px"><button class="btn"${done ? " disabled" : ""} onclick="checkinUI()">${done ? "今日已签到 ✓" : "签到"}</button></div>`
++ cal + `<div class="hint">纯本地纪念，无货币无奖励。</div></div>`;
+}
+window.checkinUI = ()=>{
+let r = null;
+try{ r = RP_CHECKIN.checkin(); }catch(e){}
+if(r && r.isNew){ try{ rpToast(`签到成功，已连续 ${r.streak} 天`); }catch(e){} }
+showSettings();
+};
+window.checkinMonth = (d)=>{ window.CHECKIN_M = (window.CHECKIN_M || 0) + d; showSettings(); };
 window.showAchv = ()=>{
 __backAction = ()=>showSettings();
 titleEl.textContent = "成就"; subEl.textContent = `已解锁 ${RP_ACHV.count()}/${RP_ACHV.DEFS.length}`;
@@ -4142,6 +4314,8 @@ function cardLandingHTML(runId, nm, card, run){
     + `</div>`;
   /* 8. 标签 */
   if(tags.length) h += `<h2 class="sec">标签</h2><div style="margin:2px 0 10px">` + tags.map(t=>`<span class="tagchip">${esc(t)}</span>`).join("") + `</div>`;
+  /* P2 开源卡入口 */
+  h += `<button class="btn ghost" style="width:100%;margin:4px 0" onclick="viewCardSource('${runId}','${q}')">📖 查看设定源码（只读学习）</button>`;
   /* 9. 档案（原有字段分组） */
   const groups = [["identity","身份"],["core","内核"],["speech","说话方式"],["background","背景"]];
   const arch = groups.map(g=>{
@@ -4154,6 +4328,66 @@ function cardLandingHTML(runId, nm, card, run){
   h += `<button class="btn landcta" style="margin:14px 0 8px" onclick="chatWith('${runId}','${q}')">▶ 立即开始游玩</button>`;
   return h;
 }
+/* 取卡片全量对象（RP.findCard 对导入/自创卡会裁剪字段，只读视图/导出用全量） */
+function fullCardOf(runId, name){
+try{
+if(runId === "imported" && typeof RP_CARDIMPORT !== "undefined"){
+const c = RP_CARDIMPORT.find(name); if(c) return c;
+}
+if(runId === "custom" && typeof RP_WRITER !== "undefined"){
+const c = RP_WRITER.findCustom(name); if(c) return c;
+}
+}catch(e){}
+return (typeof RP !== "undefined" && RP.findCard) ? RP.findCard(runId, name) : null;
+}
+/* P2 开源卡：只读设定视图（对照学习，不可编辑） */
+window.viewCardSource = (runId, name)=>{
+__backAction = ()=>charDetail(runId, name);
+document.body.classList.remove("chatmode");
+const card = fullCardOf(runId, name);
+titleEl.innerHTML = icon("books") + " 设定源码"; subEl.textContent = name + " · 只读";
+if(!card){
+view.innerHTML = `<button class="back" onclick="charDetail('${runId}','${name.replace(/'/g,"\\'")}')">${icon("back")} 返回</button><div class="empty">找不到这张卡</div>`;
+return;
+}
+const q = name.replace(/'/g, "\\'");
+const f = card.fields || {};
+const fkeys = Object.keys(f);
+const wb = card.worldbook || [];
+const line = (k, v)=>`<div class="kvline"><b>${esc(k)}</b>：${esc(String(v == null ? "" : v))}</div>`;
+let h = `<button class="back" onclick="charDetail('${runId}','${q}')">${icon("back")} 返回</button>`
++ `<div class="hint" style="margin:2px 0 10px">开源卡：设定对所有人只读开放，可对照学习写卡思路，不可在此编辑。</div>`
++ `<div class="card"><div class="name" style="font-size:14px">基本信息</div>`
++ line("名字", card.name) + line("出处", card.novel || runId)
++ (card.creator ? line("作者", card.creator) : "")
++ (card.characterVersion ? line("版本", card.characterVersion) : "")
++ line("字段数", fkeys.length) + line("世界书", wb.length + " 条") + `</div>`;
+const ops = cardOpenings(runId, name);
+if(ops.length){
+h += `<h2 class="sec">开场白 · ${ops.length}</h2><div class="card">`
++ ops.map((g, i)=>`<div class="kvline"><b>开场${["一","二","三","四","五","六","七","八"][i] || (i+1)}</b>：${esc(g)}</div>`).join("") + `</div>`;
+}
+if(fkeys.length){
+h += `<h2 class="sec">人设字段 · ${fkeys.length}</h2><div class="card">`
++ fkeys.map(k=>line(k, Array.isArray(f[k]) ? f[k].join(" / ") : f[k])).join("") + `</div>`;
+}
+if(wb.length){
+h += `<h2 class="sec">世界书 · ${wb.length}</h2><div class="card">`
++ wb.slice(0, 20).map(w=>`<div class="kvline"><b>${esc(w.name || w.key || "条目")}</b> <span class="kv">${esc(String(w.keys || w.keywords || "").toString().slice(0, 60))}</span></div>`).join("")
++ (wb.length > 20 ? `<div class="kv">…还有 ${wb.length - 20} 条</div>` : "") + `</div>`;
+}
+h += `<div class="btnrow" style="margin-top:12px"><button class="btn" onclick="copyCardJson('${runId}','${q}')">复制设定 JSON</button></div><div style="height:40px"></div>`;
+view.innerHTML = h;
+window.scrollTo(0, 0);
+};
+window.copyCardJson = (runId, name)=>{
+const card = fullCardOf(runId, name);
+if(!card) return;
+const clean = {name: card.name, novel: card.novel, fields: card.fields || {},
+greeting: card.greeting || "", altGreetings: card.altGreetings || [],
+scenario: card.scenario || "", tags: (card.raw && card.raw.tags) || []};
+copyText(JSON.stringify(clean, null, 2), "设定 JSON 已复制");
+};
 function detailBack(){
 if(DETAIL.back === "picker") setNav("chat");
 else if(typeof DETAIL.back === "function") DETAIL.back();
@@ -4543,6 +4777,9 @@ titleEl.textContent = "设置";
 subEl.textContent = "";
 const c = getCfg();
 view.innerHTML = renderStorageCard() + `
+<div class="setcard"><h3>🎨 命名主题</h3>
+<div class="kv">三套中式意象色板，纯本地，切换即时生效。</div>
+${themeCardsHTML()}</div>` + checkinCardHTML() + `
 <div class="setcard"><h3>${icon("check",15)} 成就</h3>
 <div class="kv">${typeof RP_ACHV!=="undefined" ? `已解锁 ${RP_ACHV.count()}/${RP_ACHV.DEFS.length}` : ""}</div>
 <div class="btnrow" style="margin-top:8px"><button class="btn ghost" onclick="showAchv()">查看成就</button></div></div>` + `
