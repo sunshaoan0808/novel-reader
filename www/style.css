@@ -740,6 +740,9 @@ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow
 .charbody .n{font-size:16px; font-weight:700; font-family:var(--serif);}
 .charbody .s{font-size:11.5px; color:var(--ink-faint); margin-top:3px; line-height:1.5;
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; min-height:34px;}
+/* 游玩统计行：开局次数·平均轮数（单行，金色） */
+.charbody .statline{font-size:11px; color:var(--gold); margin-top:3px; line-height:1.4;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 .charbody .ops{display:flex; gap:6px; margin-top:8px;}
 .charbody .ops button{flex:1; font-size:12px; padding:6px 0; border-radius:8px;
   border:1px solid var(--line); background:rgba(212,162,78,.07); color:var(--ink-dim); cursor:pointer;}

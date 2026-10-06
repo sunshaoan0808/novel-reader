@@ -604,6 +604,16 @@ async function send(runId, name, text, opts){
   if(b.stats.memHits && b.stats.memHits.length) am.memHits = b.stats.memHits;
   if(b.stats.loreHits && b.stats.loreHits.length) am.loreHits = b.stats.loreHits;
   h.push(am);
+  /* 游玩统计：记一轮 + prompt/回复 token 估算（纯本地，RP_STATS） */
+  try{
+    if(typeof RP_STATS !== "undefined"){
+      var _pc = b.messages.map(function(m){
+        var c = m && m.content;
+        return (typeof c === "string") ? c : (c ? JSON.stringify(c) : "");
+      }).join("\n");
+      RP_STATS.recordTurn(runId, name, _pc, reply, false);
+    }
+  }catch(e){}
   if(ppaR){
     b.stats.ppa = {ran: true, changed: ppaR.changed, mode: ppaR.mode}; // P0-5: 诊断用
     try{ RP_PPA.recordAlign(wsId, h.length, ppaR.changed); }catch(e){}
@@ -679,6 +689,16 @@ async function regenerate(runId, name, opts){
     last.ci = last.candidates.length - 1;
     last.content = reply;
     last.ts = Date.now();
+    /* 游玩统计：重抽只记 token，不记轮数（纯本地，RP_STATS） */
+    try{
+      if(typeof RP_STATS !== "undefined"){
+        var _pc2 = b.messages.map(function(m){
+          var c = m && m.content;
+          return (typeof c === "string") ? c : (c ? JSON.stringify(c) : "");
+        }).join("\n");
+        RP_STATS.recordTurn(runId, name, _pc2, reply, true);
+      }
+    }catch(e){}
   }
   return {history: h};
 }

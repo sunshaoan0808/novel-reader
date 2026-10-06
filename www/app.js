@@ -139,6 +139,7 @@ return `<div class="charcard" onclick="${o.oncard}">`
 + (o.img?`<img class="charimg" src="${esc(o.img)}" alt="" loading="lazy" onerror="this.remove()">`:`<div class="big">${esc((o.name||"?")[0])}</div>`)
 + `</div>`
 + `<div class="charbody"><div class="n">${esc(o.name)}</div>`
++ (o.stat?`<div class="statline">${esc(o.stat)}</div>`:"")
 + `<div class="s">${esc(o.sum||"")}</div>`
 + (o.ops?`<div class="ops">${o.ops}</div>`:"")
 + `</div></div>`;
@@ -201,12 +202,19 @@ setNav("chat");
 };
 function charList(ps){
 if(!ps.length) return `<div class="empty"><span class="big">🎭</span>暂无人物卡</div>`;
-return `<div class="chargrid">` + ps.map(p=>charCardHTML({
-name:p.name, tag:RUN.novel, img:charImg(RUN.novel, p.name), sum:tagline(p)||"人物档案",
+return `<div class="chargrid">` + ps.map(p=>{let _st2="";
+try{
+if(typeof RP_STATS !== "undefined"){
+const _s2 = RP_STATS.get(RUN.run_id, p.name);
+if(_s2.s > 0) _st2 = "开局" + _s2.s + "次 · 平均" + RP_STATS.avgTurns(_s2).toFixed(0) + "轮/局";
+}
+}catch(e){}
+return charCardHTML({
+name:p.name, tag:RUN.novel, img:charImg(RUN.novel, p.name), sum:tagline(p)||"人物档案", stat:_st2,
 oncard:`openChar(${JSON.stringify(p.name)})`,
 ops:`<button class="go" onclick='event.stopPropagation();chatWith(${JSON.stringify(RUN.run_id)},${JSON.stringify(p.name)})'>开聊</button>`
 +`<button onclick='event.stopPropagation();openChar(${JSON.stringify(p.name)})'>详情</button>`
-})).join("") + `</div>`;
+});}).join("") + `</div>`;
 }
 window.filterChars = (kw)=>{
 const items = RUN.profiles.filter(p=>p.name.includes(kw));
@@ -1270,6 +1278,8 @@ paintChatBg();
 attachHeadHide();
 const k = chatKey(CHAT.runId, CHAT.name);
 if(!getHist(k).length){
+/* 游玩统计：空历史进聊天 = 一次开局（纯本地，RP_STATS） */
+try{ if(typeof RP_STATS !== "undefined") RP_STATS.recordSession(CHAT.runId, CHAT.name); }catch(e){}
 RP.greeting(CHAT.runId, CHAT.name, cfg, run.novel).then(g=>{
 if(getHist(k).length) return;
 saveHist(k, [{mid:(typeof nextMsgId==="function"?nextMsgId():"m"+Date.now().toString(36)), role:"assistant", content:g, ts:Date.now()}]); renderChat();
@@ -1398,7 +1408,16 @@ titleEl.textContent = "选个角色开聊";
 subEl.textContent = "";
 const cs = allChars();
 view.innerHTML = (cs.length ? `<div class="chargrid">` + cs.map(c=>{ const qn=c.name.replace(/'/g,"\\'");
-return charCardHTML({name:c.name, tag:c.novel, img:charImg(c.novel, c.name), sum:charSumFor(c.runId,c.name)||"点我直接开聊",
+/* 游玩统计：卡片上显示开局次数与平均轮数（纯本地，RP_STATS） */
+let _sum = charSumFor(c.runId,c.name)||"点我直接开聊";
+let _stat = "";
+try{
+if(typeof RP_STATS !== "undefined"){
+const _st = RP_STATS.get(c.runId, c.name);
+if(_st.s > 0) _stat = "开局" + _st.s + "次 · 平均" + RP_STATS.avgTurns(_st).toFixed(0) + "轮/局";
+}
+}catch(e){}
+return charCardHTML({name:c.name, tag:c.novel, img:charImg(c.novel, c.name), sum:_sum, stat:_stat,
 oncard:`chatWith('${c.runId}','${qn}')`,
 ops:`<button class="go" onclick="event.stopPropagation();chatWith('${c.runId}','${qn}')">开聊</button>`
 +`<button onclick="event.stopPropagation();charDetail('${c.runId}','${qn}','picker')">详情</button>`});
@@ -3867,6 +3886,24 @@ window.charDetail = (runId, name, back)=>{
 DETAIL = {runId:runId, name:name, tab:"info", back:(back||null)};
 renderDetail();
 };
+/* 游玩数据卡（角色详情页"资料" tab 顶部）：开局/轮数/token 估算/收藏/点赞，纯本地 */
+function playStatCardHTML(runId, nm){
+let st = null;
+try{ st = (typeof RP_STATS !== "undefined") ? RP_STATS.get(runId, nm) : null; }catch(e){}
+if(!st) return "";
+/* 从未开局且无收藏/点赞时不展示，避免新用户看到一串 0 */
+if(!st.s && !st.t && !st.fav && !st.like) return "";
+const avg = RP_STATS.avgTurns(st), tot = st.pi + st.po;
+return `<div class="card"><div class="name" style="font-size:14px">📊 游玩数据 <span class="kv" style="font-weight:normal">· 只存本机</span></div>`
++ `<div class="kvline">开局 ${st.s} 次 · 共 ${st.t} 轮 · 平均 ${avg.toFixed(1)} 轮/局</div>`
++ `<div class="kvline">累计消耗约 ${RP_STATS.fmt(tot)} tokens <span class="kv">(输入约${RP_STATS.fmt(st.pi)} / 输出约${RP_STATS.fmt(st.po)})</span></div>`
++ `<div class="btnrow" style="margin-top:8px">`
++ `<button class="btn" onclick="toggleFavUI()">${st.fav ? "⭐ 已收藏" : "☆ 收藏"}</button>`
++ `<button class="btn" onclick="toggleLikeUI()">${st.like ? "👍 已点赞" : "👍 点赞"}</button>`
++ `</div></div>`;
+}
+window.toggleFavUI = ()=>{ try{ RP_STATS.toggleFav(DETAIL.runId, DETAIL.name); }catch(e){} renderDetail(); };
+window.toggleLikeUI = ()=>{ try{ RP_STATS.toggleLike(DETAIL.runId, DETAIL.name); }catch(e){} renderDetail(); };
 function detailBack(){
 if(DETAIL.back === "picker") setNav("chat");
 else if(typeof DETAIL.back === "function") DETAIL.back();
@@ -3887,7 +3924,7 @@ const tabs = [["info","资料"],["memory","记忆"],["chat","最近聊天"],["ar
 let body = "";
 if(DETAIL.tab === "info"){
 const groups = [["identity","身份"],["core","内核"],["speech","说话方式"],["background","背景"]];
-body = groups.map(g=>{
+body = playStatCardHTML(runId, nm) + groups.map(g=>{
 const txt = RP_PROMPT.renderFields(card, RP_PROMPT.LAYERS[g[0]]);
 return txt ? `<h2 class="sec">${g[1]}</h2><div class="card">`
 + txt.split("\n").map(l=>`<div class="kvline">${esc(l)}</div>`).join("") + `</div>` : "";
