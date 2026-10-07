@@ -50,7 +50,8 @@ function parseProfile(md){
   var lines = md.split("\n");
   var curKey = null, curVal = [];
   for(var i = 0; i < lines.length; i++){
-    var m = lines[i].match(/^-\s*([a-z_]+):\s*(.*)$/);
+    var m = lines[i].match(/^-\s*\*\*([a-z_]+)\*\*:\s*(.*)$/) ||
+            lines[i].match(/^-\s*([a-z_]+):\s*(.*)$/);
     if(m){
       if(curKey) fields[curKey] = curVal.join("\n").trim();
       curKey = m[1]; curVal = [m[2]];
