@@ -1634,6 +1634,9 @@ document.body.classList.remove("chatmode");
 titleEl.textContent = "选个角色开聊";
 subEl.textContent = "";
 const cs = allChars();
+/* 未配 API Key 时的瘦横幅（跳过新手引导的用户在这里被接住） */
+let keyBanner = "";
+try{ if(!(getCfg().key)) keyBanner = `<div class="apibanner" onclick="setNav('settings')"><span>⚠️ 还没配置 API Key，配好才能开始聊天</span><span class="ab-go">去设置 ›</span></div>`; }catch(e){}
 if(!cs.length){
 view.innerHTML = `<div class="empty"><span class="big">🎭</span>还没有角色<br><span style="font-size:12px">去「写卡」创建你的第一个角色</span><br><button class="btn" style="margin-top:10px" onclick="setNav('writer')">去写卡</button></div>`;
 return;
@@ -1647,7 +1650,7 @@ const shuffled = shuffle(cs.slice()).slice(0, 8);
 const counts = tagCountsOf(cs);
 const active = window.PICKER_TAG || "";
 const list = active ? cs.filter(c=>charTagsOf(c.runId, c.name).indexOf(active) >= 0) : cs;
-view.innerHTML =
+view.innerHTML = keyBanner + dailyStripHTML() +
 (recent.length ? railHTML("🕘 最近玩过", recent) : "")
 + (favs.length ? railHTML("⭐ 我的收藏", favs) : "")
 + albumRailHTML()
@@ -2583,6 +2586,40 @@ return `<div class="themerow" style="margin-top:8px">` + RP_THEME.THEMES.map(t=>
 <div class="tname">${esc(t.name)}</div><div class="tdesc">${esc(t.desc)}</div></div>`).join("") + `</div>`;
 }catch(e){ return ""; }
 }
+/* ============ 字号缩放（root zoom，全界面等比） ============ */
+function getFontScale(){ try{ return parseFloat(localStorage.getItem("nd_font_scale"))||1; }catch(e){ return 1; } }
+function applyFontScale(){ try{ document.documentElement.style.zoom = getFontScale(); }catch(e){} }
+window.setFontScale = (v)=>{
+  try{ localStorage.setItem("nd_font_scale", String(v)); }catch(e){}
+  applyFontScale(); showSettings();
+};
+function fontScaleCardsHTML(){
+  const fs = getFontScale();
+  const opts = [[1,"标准"],[1.15,"大"],[1.3,"特大"]];
+  return `<div class="chiprow" style="margin-top:8px">` + opts.map(o=>
+    `<button class="pickchip${fs===o[0]?" on":""}" onclick="setFontScale(${o[0]})">${o[1]}</button>`).join("") + `</div>`;
+}
+/* 选人页快捷条：签到 + 成就（把藏在设置里的游玩入口浮上来） */
+function dailyStripHTML(){
+  try{
+    const hasCk = typeof RP_CHECKIN!=="undefined", hasAc = typeof RP_ACHV!=="undefined";
+    if(!hasCk && !hasAc) return "";
+    const done = hasCk && RP_CHECKIN.hasToday();
+    const st = hasCk ? RP_CHECKIN.streak() : 0;
+    const ac = hasAc ? `${RP_ACHV.count()}/${RP_ACHV.DEFS.length}` : "";
+    return `<div class="dailystrip">`
+      + (hasCk ? `<button class="ds${done?" done":""}" onclick="checkinQuick()">${done?"📅 今日已签到 ✓":"📅 签到"+(st?` · 连${st}天`:"")}</button>` : "")
+      + (hasAc ? `<button class="ds" onclick="showAchv('picker')">🏆 成就 ${ac} ›</button>` : "")
+      + `</div>`;
+  }catch(e){ return ""; }
+}
+window.checkinQuick = ()=>{
+  try{
+    const r = RP_CHECKIN.checkin();
+    if(r && r.isNew) rpToast(`签到成功，已连续 ${r.streak} 天`);
+  }catch(e){}
+  showChatPicker();
+};
 /* P2 每日签到 */
 window.CHECKIN_M = 0;
 function checkinCardHTML(){
@@ -2615,11 +2652,13 @@ if(r && r.isNew){ try{ rpToast(`签到成功，已连续 ${r.streak} 天`); }cat
 showSettings();
 };
 window.checkinMonth = (d)=>{ window.CHECKIN_M = (window.CHECKIN_M || 0) + d; showSettings(); };
-window.showAchv = ()=>{
-__backAction = ()=>showSettings();
+window.showAchv = (from)=>{
+window._achvFrom = (from==="picker") ? "picker" : "settings";
+const backFn = window._achvFrom==="picker" ? "showChatPicker()" : "showSettings()";
+__backAction = ()=>{ if(window._achvFrom==="picker") showChatPicker(); else showSettings(); };
 titleEl.textContent = "成就"; subEl.textContent = `已解锁 ${RP_ACHV.count()}/${RP_ACHV.DEFS.length}`;
 document.body.classList.remove("chatmode");
-view.innerHTML = `<button class="back" onclick="showSettings()">${icon("back")} 返回设置</button>
+view.innerHTML = `<button class="back" onclick="${backFn}">${icon("back")} 返回${window._achvFrom==="picker"?"选人":"设置"}</button>
 <div class="hint">本地记录, 无数值无排行, 纯粹纪念。</div>`
 + RP_ACHV.list().map(a=>`<div class="card ${a.unlocked?"":"dimmed"}"><div class="row"><div class="avatar">${icon(a.icon,20)}</div>
 <div><div class="name">${esc(a.name)} ${a.unlocked?"":`<span class="badge">未解锁</span>`}</div>
@@ -2866,6 +2905,7 @@ extra += `<div class="swipe" onclick="event.stopPropagation()"><button onclick="
 }
 extra += `<div class="msgtools">` + rateBtns + memBtn
 + voiceBubbleHTML(idx, m)
++ (repickInfo() ? `<button onclick="event.stopPropagation();repickOption()" title="回到上一个决策点重新选择">↩ 重选</button>` : "")
 + `<button onclick="event.stopPropagation();editMsg(${idx})">编辑</button>`
 + `<button onclick="event.stopPropagation();copyMsg(${idx})">复制</button>`
 + `<button onclick="event.stopPropagation();regenMsg()">↻ 重生</button>`
@@ -3149,6 +3189,39 @@ window.pickOption = async (idx, oi)=>{
   const oc = parseOptCard(m.content); if(!oc || !oc.options[oi]) return;
   pickLock = true;
   try{ await sendChatText(oc.options[oi]); }finally{ pickLock = false; }
+};
+/* 后悔药：仅当"决策→你的选择→AI回复"恰好是最后三条消息时可回退 */
+function repickInfo(){
+  try{
+    if(!CHAT || !CHAT.travId || typeof RP_PLOTRUN==="undefined") return null;
+    const h = getHist(chatHistKey());
+    if(h.length < 3) return null;
+    const aiReply = h[h.length-1], userPick = h[h.length-2], decMsg = h[h.length-3];
+    if(!aiReply || aiReply.role!=="assistant") return null;
+    if(!userPick || userPick.role!=="user") return null;
+    if(!decMsg || decMsg.role!=="assistant") return null;
+    const oc = parseOptCard(decMsg.content); if(!oc) return null;
+    const t = String(userPick.content||"").trim();
+    if(!oc.options.some(o=>String(o).trim()===t)) return null;
+    return { decIdx: h.length-3 };
+  }catch(e){ return null; }
+}
+window.repickOption = ()=>{
+  const info = repickInfo();
+  if(!info){ rpToast("之后已有新的对话，无法回退到决策点"); return; }
+  if(!confirm("回到决策点重新选择？你的选择和 AI 的回复会被删除，剧情回退一步。")) return;
+  const k = chatHistKey(), h = getHist(k);
+  h.splice(h.length-2, 2); /* 删掉"你的选择 + AI回复" */
+  saveHist(k, h);
+  try{
+    const ts = (typeof RP_TRAVERSE!=="undefined") ? RP_TRAVERSE.get(CHAT.travId) : null;
+    if(ts && ts.plotrunId && typeof RP_PLOTRUN!=="undefined"){
+      const st = RP_PLOTRUN.load(ts.plotrunId);
+      if(st) RP_PLOTRUN.revertLast(st);
+    }
+  }catch(e){}
+  renderChat(true);
+  rpToast("已回到决策点，重新选吧");
 };
 window.swipeMsg = (idx, dir)=>{
 const k = chatKey(CHAT.runId, CHAT.name);
@@ -4838,6 +4911,66 @@ window.acceptCardEvo = (idx)=>{
   }
   showCardEvo();
 };
+/* ===== 浮生小助手 UI (2026-10-07) ===== */
+window.openAssistant = ()=>{
+  if(document.getElementById("asst_win")) return;
+  var w = document.createElement("div");
+  w.id = "asst_win";
+  w.innerHTML = `<div class="asst_head"><span>💡 浮生小助手</span>
+    <button class="btn ghost" style="padding:4px 10px" onclick="closeAssistant()">✕</button></div>
+    <div class="asst_msgs" id="asst_msgs"></div>
+    <div class="asst_chips" id="asst_chips"></div>
+    <div class="asst_input">
+      <input id="asst_in" placeholder="问我功能用法，或让我帮你创建东西…"
+        onkeydown="if(event.key==='Enter')sendAssistant()">
+      <button onclick="sendAssistant()">发送</button>
+    </div>`;
+  document.body.appendChild(w);
+  renderAsstChips();
+  asstSay("你好！我是浮生小助手。问我功能用法，或让我帮你创建角色/世界书。", false);
+  setTimeout(function(){ var i = document.getElementById("asst_in"); if(i) i.focus(); }, 100);
+};
+window.closeAssistant = ()=>{
+  var w = document.getElementById("asst_win"); if(w) w.remove();
+};
+function renderAsstChips(){
+  var c = document.getElementById("asst_chips"); if(!c) return;
+  c.innerHTML = ASSISTANT.chips().map(function(ch){
+    return `<button class="asst_chip" onclick="asstChip('${ch.text.replace(/'/g, "\\'")}')">${esc(ch.label)}</button>`;
+  }).join("");
+}
+window.asstChip = (text)=>{
+  var i = document.getElementById("asst_in"); if(i) i.value = text;
+  sendAssistant();
+};
+function asstSay(text, isUser){
+  var box = document.getElementById("asst_msgs"); if(!box) return;
+  var d = document.createElement("div");
+  d.className = "asst_msg " + (isUser ? "user" : "ai");
+  d.textContent = text;
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+}
+window.sendAssistant = async ()=>{
+  var inp = document.getElementById("asst_in"); if(!inp) return;
+  var text = inp.value.trim(); if(!text) return;
+  inp.value = "";
+  asstSay(text, true);
+  asstSay("想一想…", false);
+  var cfg = (typeof getCfg !== "undefined") ? getCfg() : {};
+  try{
+    var r = await ASSISTANT.chat(text, cfg,
+      function(c, ms, t){ return RP_NET.complete(c, ms, t); });
+    // 移除 "想一想"
+    var box = document.getElementById("asst_msgs");
+    if(box && box.lastChild) box.removeChild(box.lastChild);
+    asstSay(r.text, false);
+  }catch(e){
+    var box2 = document.getElementById("asst_msgs");
+    if(box2 && box2.lastChild) box2.removeChild(box2.lastChild);
+    asstSay("出错了：" + e.message, false);
+  }
+};
 window.showSystem = ()=>{
 if(!LAST_SYSTEM){ alert("先发一句话，引擎组装好人设 prompt 后这里才能预览。"); return; }
 __backAction = ()=>showChat();
@@ -5136,23 +5269,43 @@ ${su.groups.map(g=>`<div class="storow"><span>${g.label}</span><span>${g.keys} �
 <button class="btn danger" onclick="wipeAll()">清空全部数据</button></div>
 </div>`;
 };
+/* 设置页搜索：按卡片文本过滤，顺带隐藏空分组标题 */
+window.filterSettings = (q)=>{
+  q = (q||"").trim();
+  document.querySelectorAll("#view .setcard").forEach(c=>{
+    c.style.display = (!q || c.textContent.indexOf(q)>=0) ? "" : "none";
+  });
+  document.querySelectorAll("#view .setsec").forEach(h=>{
+    let el = h.nextElementSibling, vis = false;
+    while(el && !el.classList.contains("setsec")){
+      if(el.classList.contains("setcard") && el.style.display!=="none"){ vis = true; break; }
+      el = el.nextElementSibling;
+    }
+    h.style.display = vis ? "" : "none";
+  });
+};
 function showSettings(){
 __backAction = null;
 titleEl.textContent = "设置";
 subEl.textContent = "";
 const c = getCfg();
-view.innerHTML = renderStorageCard() + `
+view.innerHTML = `<div class="searchwrap"><input id="set_q" placeholder="搜索设置…" oninput="filterSettings(this.value)"></div>`
++ `<h2 class="sec setsec">本机</h2>` + renderStorageCard()
++ `<h2 class="sec setsec">外观</h2>` + `
 <div class="setcard"><h3>🎨 命名主题</h3>
 <div class="kv">三套中式意象色板，纯本地，切换即时生效。</div>
-${themeCardsHTML()}</div>` + `\n<div class="setcard"><h3>🖼️ 全局壁纸</h3>
+${themeCardsHTML()}</div>` + `
+<div class="setcard"><h3>🔠 字号</h3>
+<div class="kv">整体缩放界面，聊天泡泡也会变大，即时生效。</div>
+${fontScaleCardsHTML()}</div>` + `\n<div class="setcard"><h3>🖼️ 全局壁纸</h3>
 <div class="kv">所有聊天的默认背景，存在本机；某个聊天单独设过壁纸的不受影响。</div>
-<div class="btnrow" style="margin-top:8px"><button class="btn ghost" onclick="globalWallpaperEditor()">设置全局壁纸</button></div></div>` + checkinCardHTML() + `
+<div class="btnrow" style="margin-top:8px"><button class="btn ghost" onclick="globalWallpaperEditor()">设置全局壁纸</button></div></div>` + `<h2 class="sec setsec">游玩</h2>` + checkinCardHTML() + `
 <div class="setcard"><h3>${icon("check",15)} 成就</h3>
 <div class="kv">${typeof RP_ACHV!=="undefined" ? `已解锁 ${RP_ACHV.count()}/${RP_ACHV.DEFS.length}` : ""}</div>
-<div class="btnrow" style="margin-top:8px"><button class="btn ghost" onclick="showAchv()">查看成就</button></div></div>` + `
+<div class="btnrow" style="margin-top:8px"><button class="btn ghost" onclick="showAchv()">查看成就</button></div></div>` + `<h2 class="sec setsec">安全</h2>
 <div class="setcard"><h3>${icon("check",15)} 应用锁</h3>
 <div class="kv">纯前端 PIN 锁。忘记 PIN 只能清除全部数据, 没有找回途径。</div>
-<div id="pinset" style="margin-top:8px"></div></div>` + `
+<div id="pinset" style="margin-top:8px"></div></div>` + `<h2 class="sec setsec">连接</h2>
 <div class="setcard"><h3>大模型接口 · RP 聊天用 (OpenAI 兼容)</h3>
 <div class="field"><label>API 地址</label>
 <input id="c_base" placeholder="https://api.openai.com/v1" value="${esc(c.base||"")}"></div>
@@ -5182,8 +5335,8 @@ ${themeCardsHTML()}</div>` + `\n<div class="setcard"><h3>🖼️ 全局壁纸</h
 <div class="field"><label>TTS 音色</label>
 <input id="c_voice" placeholder="alloy" value="${esc(c.ttsVoice||"")}"></div>
 <div class="btnrow"><button class="btn" onclick="saveCfgUI()">保存</button></div>
-</div>
-<div class="setcard"><h3>RP 引擎</h3>
+</div>`+`<h2 class="sec setsec">RP 引擎</h2>
+<div class="setcard"><h3>基础</h3>
 <div class="field"><label>${icon("user",15)} 我的人设（全局）</label>
 <div class="btnrow"><button class="btn ghost" onclick="personaEditor(null,'settings')">编辑全局人设</button></div>
 <div class="hint" id="persona_sum"></div></div>
@@ -5277,6 +5430,7 @@ ${themeCardsHTML()}</div>` + `\n<div class="setcard"><h3>🖼️ 全局壁纸</h
 <div class="btnrow"><button class="btn" onclick="saveRpCfgUI()">保存 RP 设置</button></div>
 </div>
 
+<h2 class="sec setsec">通知</h2>
 <div class="setcard"><h3>${icon("bell",15)} 通知 · 角色召回</h3>
 <div class="field"><label><input id="r_notify_on" type="checkbox" style="width:auto"> 角色召回通知（App 从后台回到前台、且距上次聊天超过 N 小时，发一条本地通知）</label></div>
 <div class="field"><label>超过 N 小时未聊天则召回</label>
@@ -5300,7 +5454,7 @@ ${themeCardsHTML()}</div>` + `\n<div class="setcard"><h3>🖼️ 全局壁纸</h
 <div id="hb_log"></div>
 </div>
 
-<h2 class="sec">数据</h2>
+<h2 class="sec setsec">数据</h2>
 <div class="hint">产物数据随 App 版本更新。新蒸馏任务跑完后, 我会打新版 APK, 覆盖安装即可。</div>
 <div class="btnrow"><button class="btn ghost" onclick="showOnboard(1)">重新查看新手引导</button>
 <button class="btn danger" onclick="wipeAll()">清空任务/聊天/配置</button></div>
@@ -6344,6 +6498,7 @@ function showTraverse(){
   __backAction = null;
   document.body.classList.remove("chatmode");
   titleEl.innerHTML = icon("book-open")+" 穿越"; subEl.textContent = "进入书里活";
+  const hintTimeline = `<div class="hint" style="margin:0 0 10px">🕰️ 穿越是独立的时间线：这里发生的事，不会影响「聊天」里的对话和记忆。</div>`;
   const modes = [
     {id:"plotline", ic:"clapperboard", name:"走原著线", desc:"沿导演因果蓝图推进剧情，在决策点做选择", ok:true, seal:"迹"},
     {id:"soul", ic:"user", name:"魂穿", desc:"成为TA：扮演原著角色，走进TA的人生", ok:true, seal:"魂"},
@@ -6358,6 +6513,7 @@ function showTraverse(){
     <div class="gh-desc">选书 → 选人 → 选开场，3 步直入原著因果线</div></div>
     <div class="tm-go">›</div>
   </div>
+  ${hintTimeline}
   <div class="travmodes">${modes.map(m=>`
     <div class="travmode${m.ok?"":" locked"}" ${m.ok?`onclick="travMode('${m.id}')"`:""}>
       ${m.seal?`<div class="tm-seal" aria-hidden="true">${m.seal}</div>`:""}

@@ -117,6 +117,20 @@ function completeNode(state, nodeId, choice){
   save(state);
   return state;
 }
+/* 后悔药：弹出最后一次 completeNode 的效果（决策点重新选择用） */
+function revertLast(state){
+  if(!state) return state;
+  var chs = state.choices || [];
+  var ch = chs.pop();
+  if(ch && ch.nodeId){
+    var cids = state.completedNodeIds || [];
+    var i = cids.lastIndexOf(ch.nodeId);
+    if(i >= 0) cids.splice(i, 1);
+    state.currentNodeId = ch.nodeId;
+  }
+  save(state);
+  return state;
+}
 function progress(state){
   if(!state) return { done:0, total:0, pct:0 };
   var total = stageNodes(state.runId, state.stageId).length;
@@ -213,7 +227,7 @@ function hudHTML(state){
 
 var api = {
   start:start, load:load, reset:reset,
-  nextNode:nextNode, completeNode:completeNode, progress:progress, isFinished:isFinished,
+  nextNode:nextNode, completeNode:completeNode, revertLast:revertLast, progress:progress, isFinished:isFinished,
   directorBlock:directorBlock, choicesFor:choicesFor, bansFor:bansFor,
   decisionNode:decisionNode,
   hudHTML:hudHTML, listStages:listStages, latestFor:latestFor, allStates:allStates,
