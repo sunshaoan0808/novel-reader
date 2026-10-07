@@ -579,6 +579,15 @@ async function send(runId, name, text, opts){
     if(dirText && b.messages.length && b.messages[0].role === "system")
       b.messages[0].content += "\n\n" + dirText;
   }catch(e){}
+  /* Push Story: 一次性剧情推进指令 */
+  try{
+    if(typeof AGENT_PUSHSTORY !== "undefined"){
+      var pushText = AGENT_PUSHSTORY.injectPrompt(wsId);
+      if(pushText && b.messages.length && b.messages[0].role === "system")
+        b.messages[0].content += "\n\n" + pushText;
+      if(pushText) b.stats.hasPushStory = true;
+    }
+  }catch(e){}
   b.stats.hasWorldsim = !!wsText;   // P0-5: Prompt 诊断用
   b.stats.hasDirector = !!dirText;
   if(opts.optCards && b.messages.length && b.messages[0].role === "system")
@@ -656,6 +665,16 @@ async function send(runId, name, text, opts){
   if(b.stats.memHits && b.stats.memHits.length) am.memHits = b.stats.memHits;
   if(b.stats.loreHits && b.stats.loreHits.length) am.loreHits = b.stats.loreHits;
   h.push(am);
+  /* Lorebook Keeper: 后台提取新事实进世界书，失败不打断 */
+  try{
+    if(typeof AGENT_LOREKEEPER !== "undefined"){
+      AGENT_LOREKEEPER.onReply(runId, name, h,
+        function(c, ms, t){ return RP_NET.complete(c, ms, t); }, cfg
+      ).then(function(r){
+        if(r && r.added) console.log("[LoreKeeper] +" + r.added + " 条新事实");
+      }).catch(function(){});
+    }
+  }catch(e){}
   /* 游玩统计：记一轮 + prompt/回复 token 估算（纯本地，RP_STATS） */
   try{
     if(typeof RP_STATS !== "undefined"){

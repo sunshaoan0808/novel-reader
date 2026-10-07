@@ -51,7 +51,7 @@ function mkCtx(){
   vm.createContext(ctx);
   vm.runInContext(
     pickConst("BADGE_DEFS")
-    + pick(["badgeLabel","cardBadges","cardOpenings","cardTags","charTagsOf",
+    + pick(["badgeLabel","cardBadges","cardOpenings","cardTags","isChipTag","charTagsOf",
             "tagCountsOf","recentPlayed","shuffle","railHTML","chipsHTML"]),
     ctx);
   return ctx;
@@ -91,7 +91,7 @@ t("轨道横滑容器", rail.includes('class="rail"'));
 /* chipsHTML */
 const chips = C("chipsHTML(" + JSON.stringify(counts) + ", '', 3)");
 t("chips有全部N", chips.includes("全部 3"));
-t("chips带数量", chips.includes("校园 1"));
+t("chips带数量", chips.includes("校园") && chips.includes('<span class="n">1</span>'));
 t("chips默认选中全部", chips.includes('class="pickchip on"'));
 const chips2 = C("chipsHTML(" + JSON.stringify(counts) + ", '校园', 3)");
 t("chips选中态", (chips2.match(/pickchip on/g) || []).length === 1 && chips2.includes("校园"));

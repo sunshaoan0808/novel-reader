@@ -166,6 +166,21 @@ vm.runInContext("RUN = {run_id:'r2', novel:'三国演义', n_chunks:100, profile
 t("无封面的书不展示横幅", viewHTML().indexOf('class="runbanner"') < 0);
 t("横幅CSS存在", /\.runbanner[\s\S]{0,200}?border-radius:14px/.test(css));
 
+/* ---- 十项美化回归 ---- */
+t("tagline按标点截断", vm.runInContext("tagline({md:'- core_identity: 依附女婿家过活的积年老寡妇，为人精明能干极会见风使舵，乡间贫农门户出身却惯会察言观色，平生最得意的是攀上了贾府这门贵亲'})", ctx) === "依附女婿家过活的积年老寡妇，为人精明能干极会见风使舵，乡间贫农门户出身却惯会察言观色，");
+t("tagline短文本不截", vm.runInContext("tagline({md:'- core_identity: 军师'})", ctx) === "军师");
+t("isChipTag过滤长剧透", vm.runInContext("isChipTag('被宋江赐死以绝后患者')", ctx) === false);
+t("isChipTag保留短标签", vm.runInContext("isChipTag('军师')", ctx) === true && vm.runInContext("isChipTag('步军头领')", ctx) === true);
+t("cardTags过滤后干净", (()=>{ const tags = vm.runInContext("cardTags({novel:'水浒传', fields:{role_tags:'军师，被宋江赐死以绝后患者'}})", ctx); return tags.indexOf("军师") >= 0 && tags.indexOf("被宋江赐死以绝后患者") < 0; })());
+t("skeleton存在", vm.runInContext("skeletonHTML(3).indexOf('skelwrap')", ctx) >= 0);
+t("选项卡壹贰叁", (()=>{ const h = vm.runInContext("optCardHTML({intro:'选', options:['a','b'], tips:''}, true, 0)", ctx); return h.indexOf("壹") >= 0 && h.indexOf("贰") >= 0; })());
+vm.runInContext("goldenPickBook()", ctx);
+t("选书页有封面", viewHTML().indexOf('class="bookcover gbk"') >= 0);
+t("印章CSS存在", /\.tm-seal[\s\S]{0,300}?border-radius:7px/.test(css));
+t("统计格CSS存在", /\.statgrid[\s\S]{0,80}?grid-template-columns:1fr 1fr/.test(css));
+t("空状态分隔线", /\.empty::before[\s\S]{0,200}?linear-gradient/.test(css));
+t("骨架屏CSS存在", /@keyframes skelsh/.test(css));
+
 console.log(`\ngolden: ${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);
 })().catch(e=>{ console.log("ERROR", e); process.exit(1); });

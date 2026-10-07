@@ -66,7 +66,7 @@ function mkCtx(over){
   ctx.window.window = ctx.window;
   vm.createContext(ctx);
   const src = pickConst("BADGE_DEFS")
-    + pick(["cardOpenings","cardSettingChars","cardBadges","cardTags","cardLandingHTML","badgeLabel"]);
+    + pick(["cardOpenings","cardSettingChars","cardBadges","cardTags","isChipTag","cardLandingHTML","badgeLabel"]);
   vm.runInContext(src, ctx);
   return ctx;
 }

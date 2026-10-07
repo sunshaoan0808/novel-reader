@@ -144,7 +144,13 @@ function tagline(p){
 /* 兼容两种档案格式: 红楼 `- **core_identity**: ...` / 水浒 `- core_identity: ...` */
 const m = p.md.match(/(?:\*\*)?core_identity(?:\*\*)?:\s*([^\n]+)/)
 || p.md.match(/(?:\*\*)?core_traits(?:\*\*)?:\s*([^\n]+)/);
-return m ? m[1].trim().slice(0, 46) : "";
+if(!m) return "";
+const s = m[1].trim();
+if(s.length <= 46) return s;
+/* 按标点截断，避免"门户的…"这种半截词；CSS line-clamp 负责补 … */
+const cut = s.slice(0, 46);
+const pm = cut.match(/.*[，。；、！？]/);
+return pm ? pm[0] : cut;
 }
 /* Janitor 式角色卡片网格 (v24) */
 function charCoverCls(name){ let h=0; const s2=String(name||"?"); for(let i=0;i<s2.length;i++) h=(h*31+s2.charCodeAt(i))>>>0; return "cc"+(h%4); }
@@ -364,7 +370,7 @@ return `<h2 class="sec">判词·红楼梦曲</h2>` + mine.map(it=>
 let _dagCache = {};
 function showStoryline(){
   const runId = RUN.run_id;
-  view.innerHTML = `<div class="empty">剧情线加载中…</div>`;
+  view.innerHTML = skeletonHTML(3);
   const render = (dag)=>{
     if(!dag || !dag.nodes || !dag.nodes.length){
       view.innerHTML = `<div class="empty">暂无剧情线数据</div>`; return;
@@ -425,6 +431,14 @@ function getWorldcard(runId){
   if(!runId) return null;
   return _wcCache[runId] || window["__WORLDCARD_" + runId] || null;
 }
+/* 骨架屏占位：n 个 shimmer 条，替换纯文字"加载中…" */
+function skeletonHTML(n){
+  n = Math.max(1, Math.min(6, n || 3));
+  const ws = [94, 82, 88, 76];
+  let h = `<div class="skelwrap" aria-hidden="true">`;
+  for(let i=0;i<n;i++) h += `<div class="skel" style="width:${ws[i%ws.length]}%"></div>`;
+  return h + `</div>`;
+}
 /* 世界卡 coverage.gaps 管线黑话 → 用户可读文案 */
 function humanizeGap(g){
   let s = String(g == null ? "" : g);
@@ -439,7 +453,7 @@ function humanizeGap(g){
 function showWorldcard(){
   const runId = RUN.run_id;
   _wcData = null;
-  view.innerHTML = `<div class="empty">世界卡加载中…</div>`;
+  view.innerHTML = skeletonHTML(4);
   const typeName = {setting:"世界概览",lore:"世界暗线",npcs:"次要人物",factions:"阵营",items:"道具",rules:"世界规则",economy:"经济",culture:"文化"};
   const render = (wc)=>{
     if(!wc || !wc.worldBookEntries){
@@ -456,7 +470,12 @@ function showWorldcard(){
     entries.forEach(e=>{ (types[e.entryType]=types[e.entryType]||[]).push(e); });
     const head = `<div class="card"><div class="kvline"><b>${esc(wc.name||"世界卡")}</b> `
       + `<span class="badge" title="世界卡对原著内容的覆盖情况">${wc.novelMaterialStatus==="complete"?"完整":"部分覆盖"}</span></div>`
-      + `<div class="kvline">世界书 ${entries.length} 条 · 导演 ${stages.length} 幕 / ${nodes.length} 节点 / ${actors.length} 演员</div>`
+      + `<div class="statgrid">`
+      + `<div class="stat"><div class="v">${entries.length}</div><div class="k">世界书</div></div>`
+      + `<div class="stat"><div class="v">${stages.length}</div><div class="k">导演分幕</div></div>`
+      + `<div class="stat"><div class="v">${nodes.length}</div><div class="k">剧情节点</div></div>`
+      + `<div class="stat"><div class="v">${actors.length}</div><div class="k">演员</div></div>`
+      + `</div>`
       + (gaps.length?`<div class="kvline" style="color:var(--muted,#888);font-size:12px">待补：${esc(gaps.slice(0,3).map(humanizeGap).join("；"))}${gaps.length>3?"…":""}</div>`:"")
       + `</div>`;
     const conflict = dd.coreConflict
@@ -1809,7 +1828,7 @@ return Object.keys(m).map(k=>({tag:k, n:m[k]})).sort((a,b)=>b.n - a.n).slice(0, 
 function chipsHTML(counts, active, total){
 let h = `<div class="chiprow"><button class="pickchip${!active ? " on" : ""}" onclick="pickTag('')">全部 ${total}</button>`;
 counts.forEach(x=>{
-h += `<button class="pickchip${active === x.tag ? " on" : ""}" onclick="pickTag('${x.tag.replace(/'/g, "\\'")}')">${esc(x.tag)} ${x.n}</button>`;
+h += `<button class="pickchip${active === x.tag ? " on" : ""}" onclick="pickTag('${x.tag.replace(/'/g, "\\'")}')">${esc(x.tag)} <span class="n">${x.n}</span></button>`;
 });
 return h + `</div>`;
 }
@@ -3088,10 +3107,11 @@ function parseOptCard(text){
   return {intro: parts[0].trim(), options: opts, tips: tips, full: m[0]};
 }
 function optCardHTML(card, active, idx){
+  var nums = ["壹","贰","叁","肆","伍","陆"];
   var btns = card.options.map(function(o, i){
     return active
-      ? `<button class="optbtn" onclick="event.stopPropagation();pickOption(${idx},${i})">${esc(o)}</button>`
-      : `<div class="optbtn off">${esc(o)}</div>`;
+      ? `<button class="optbtn" onclick="event.stopPropagation();pickOption(${idx},${i})"><span class="onum">${nums[i]||""}</span><span>${esc(o)}</span></button>`
+      : `<div class="optbtn off"><span class="onum">${nums[i]||""}</span><span>${esc(o)}</span></div>`;
   }).join("");
   return `<div class="optcard">`
     + (card.intro ? `<div class="optintro">${esc(card.intro)}</div>` : "")
@@ -4450,7 +4470,12 @@ function cardBadges(runId, card, openings, settingChars, st){
 }
 function cardTags(card){
   const out = [];
-  const push = t=>{ t = String(t == null ? "" : t).trim(); if(t && out.indexOf(t) < 0 && out.length < 12) out.push(t); };
+  const push = t=>{
+    t = String(t == null ? "" : t).trim();
+    if(!t || out.indexOf(t) >= 0 || out.length >= 12) return;
+    if(!isChipTag(t)) return;
+    out.push(t);
+  };
   try{
     if(card.novel) push(card.novel);
     const rt = (card.fields && card.fields.role_tags) || "";
@@ -4458,6 +4483,12 @@ function cardTags(card){
     if(card.raw && Array.isArray(card.raw.tags)) card.raw.tags.forEach(push);
   }catch(e){}
   return out;
+}
+/* 分类 chips 只收"身份式"短标签：过滤剧情描述长句（多为原文剧透，如"被宋江赐死…"） */
+function isChipTag(t){
+  if(t.length > 6) return false;
+  if(/[。！？]$/.test(t)) return false;
+  return true;
 }
 /* 用指定开场白开聊：清掉当前历史，进聊天时首条 AI 消息用该开场 */
 window.chatWithOpening = (runId, name, idx)=>{
@@ -5014,7 +5045,7 @@ return `<div class="setcard"><h3>本地存储用量</h3>
 <div class="storbar"><div class="storbar-fg${warn?" warn":""}" style="width:${pct.toFixed(1)}%"></div></div>
 <div class="stornum${warn?" warn":""}">${fmtBytes(su.total)} / 2 GB（${pct.toFixed(0)}%）${warn?" · 空间告急，建议清理":""}</div>
 ${su.groups.map(g=>`<div class="storow"><span>${g.label}</span><span>${g.keys} 项 · ${fmtBytes(g.bytes)}</span></div>`).join("")}
-<div class="storow" id="fileline"><span>大文件存储（App 私有目录，上限 2GB）</span><span>${su.fileCount} 个文件 · ${fmtBytes(su.fileBytes)}</span></div>
+<div class="storow" id="fileline"><span>大文件存储<br><small style="color:var(--ink-faint);font-size:11px">App 私有目录，上限 2GB</small></span><span>${su.fileCount} 个文件 · ${fmtBytes(su.fileBytes)}</span></div>
 <div class="storow" id="idbline"><span>浏览器大文件存储（估算）</span><span>统计中…</span></div>
 <div class="storow" id="idbcopied"><span>已备份到大文件存储</span><span>—</span></div>
 <div class="btnrow"><button class="btn ghost" onclick="if(confirm('清空所有单聊/群聊/穿越聊天记录？\n会清空记忆和关系，从头来过。'))clearChat()">清空聊天记录</button>
@@ -6231,11 +6262,11 @@ function showTraverse(){
   document.body.classList.remove("chatmode");
   titleEl.innerHTML = icon("book-open")+" 穿越"; subEl.textContent = "进入书里活";
   const modes = [
-    {id:"plotline", ic:"clapperboard", name:"走原著线", desc:"沿导演因果蓝图推进剧情，在决策点做选择", ok:true},
-    {id:"soul", ic:"user", name:"魂穿", desc:"成为TA：扮演原著角色，走进TA的人生", ok:true},
-    {id:"body", ic:"users", name:"肉身穿越", desc:"成为自己：现代人直穿，或捏一个古代身份", ok:true},
-    {id:"isekai", ic:"repeat", name:"异世界穿越", desc:"把角色送进另一部作品（林黛玉去水浒）", ok:true, badge:"P2"},
-    {id:"party", ic:"chat", name:"组团穿越", desc:"和多名角色组队一起穿", ok:true, badge:"P3"},
+    {id:"plotline", ic:"clapperboard", name:"走原著线", desc:"沿导演因果蓝图推进剧情，在决策点做选择", ok:true, seal:"迹"},
+    {id:"soul", ic:"user", name:"魂穿", desc:"成为TA：扮演原著角色，走进TA的人生", ok:true, seal:"魂"},
+    {id:"body", ic:"users", name:"肉身穿越", desc:"成为自己：现代人直穿，或捏一个古代身份", ok:true, seal:"身"},
+    {id:"isekai", ic:"repeat", name:"异世界穿越", desc:"把角色送进另一部作品（林黛玉去水浒）", ok:true, badge:"P2", seal:"异"},
+    {id:"party", ic:"chat", name:"组团穿越", desc:"和多名角色组队一起穿", ok:true, badge:"P3", seal:"众"},
   ];
   const recents = RP_TRAVERSE.recent();
   view.innerHTML = `
@@ -6246,6 +6277,7 @@ function showTraverse(){
   </div>
   <div class="travmodes">${modes.map(m=>`
     <div class="travmode${m.ok?"":" locked"}" ${m.ok?`onclick="travMode('${m.id}')"`:""}>
+      ${m.seal?`<div class="tm-seal" aria-hidden="true">${m.seal}</div>`:""}
       <div class="tm-icon">${icon(m.ic,26)}</div>
       <div class="tm-body"><div class="tm-name">${m.name}${m.badge?` <span class="badge warn">${m.badge}</span>`:""}</div>
       <div class="tm-desc">${m.desc}</div></div>
@@ -6300,7 +6332,7 @@ function plotlinePickBook(){
 }
 function plotlinePickStage(runId){
   titleEl.innerHTML = icon("clapperboard")+" 走原著线"; subEl.textContent = "选一幕";
-  view.innerHTML = `<div class="empty">世界卡加载中…</div>`;
+  view.innerHTML = skeletonHTML(4);
   loadWorldcard(runId).then(()=>{
     const stages = (typeof RP_PLOTRUN!=="undefined") ? RP_PLOTRUN.listStages(runId) : [];
     view.innerHTML = `<button class="back" onclick="plotlinePickBook()">‹ 返回选书</button>`
@@ -6333,10 +6365,12 @@ function goldenPickBook(){
   titleEl.innerHTML = "✨ 一键魂穿开局"; subEl.textContent = "3 步进入原著因果线";
   view.innerHTML = `<button class="back" onclick="showTraverse()">‹ 返回穿越</button>
   <div class="hint" style="margin:8px 2px">选一本书 → 选魂穿人物与导演风格 → 选开场，直入原著剧情线</div>`
-    + (runs.length ? runs.map((r,i)=>`<div class="card" onclick="goldenPickChar(${i})">
-      <div class="row"><div><div class="name">《${esc(r.novel)}》</div>
+    + (runs.length ? runs.map((r,i)=>{
+      const cover = (window.BOOKCOVER||{})[r.novel];
+      return `<div class="card" onclick="goldenPickChar(${i})">
+      <div class="row">${cover?`<img class="bookcover gbk" src="${esc(cover)}" alt="${esc(r.novel)}封面" loading="lazy" onerror="this.remove()">`:""}<div><div class="name">《${esc(r.novel)}》</div>
       <div class="meta">${esc(r.run_id)}${resumable[r.run_id]?' · <span class="badge">可继续</span>':""}</div>
-      </div><div class="tm-go">›</div></div></div>`).join("")
+      </div><div class="tm-go" style="margin-left:auto">›</div></div></div>`;}).join("")
       : `<div class="empty">暂无带世界卡的书<br><span style="font-size:12px">管线执行 worldcard 阶段后自动出现</span></div>`);
   window._goldenRuns = runs;
   window.scrollTo(0,0);
@@ -6375,7 +6409,7 @@ window.goldenSetStyle = (si)=>{
 window.goldenOpening = ()=>{
   const g = window._golden; if(!g) return;
   titleEl.innerHTML = "✨ 一键魂穿开局"; subEl.textContent = "第 3 步 · 选开场";
-  view.innerHTML = `<div class="empty">开场加载中…</div>`;
+  view.innerHTML = skeletonHTML(3);
   window.scrollTo(0,0);
   loadWorldcard(g.runId).then(()=>{
     const charName = g.charIdx >= 0 ? g.chars[g.charIdx] : "";

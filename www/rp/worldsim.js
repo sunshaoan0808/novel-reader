@@ -90,7 +90,7 @@ return "modern";
 
 function mkState(tplKey){
 var t = WORLDS[tplKey] || WORLDS.modern;
-var st = {v: 1, tpl: tplKey, mode: t.mode, wx: 0, msgCount: 0, travelMin: 30, cur: t.start, places: []};
+var st = {v: 1, tpl: tplKey, mode: t.mode, wx: 0, msgCount: 0, travelMin: 30, cur: t.start, places: [], present: []};
 if(t.mode === "ancient"){ st.era = t.era; st.y = t.year;}
 else { st.y = t.y;}
 st.m = t.m; st.d = t.d; st.min = t.min;
@@ -257,8 +257,9 @@ var lines = ["",
 "时间：" + fmtTime(st),
 "天气：" + weatherName(st.wx) + "（" + seasonName(st.m) + "）",
 "地点：" + p.name + (p.mood? "——" + p.mood: "")];
+if(st.present && st.present.length) lines.push("在场人物：" + st.present.join("、"));
 lines.push("要求：你的叙述必须呼应以上时间/天气/地点（如深夜则万籁俱寂、雨天则描写雨声），不得写出矛盾的时辰天气；" +
-"如剧情需要改变时间/天气/地点，在回复中用 ⟦+30分钟⟧ / ⟦天气=雨⟧ / ⟦地点=宁国府⟧ 标记（标记会被系统解析，不显示给用户）。");
+"如剧情需要改变时间/天气/地点/在场人物，在回复中用 ⟦+30分钟⟧ / ⟦天气=雨⟧ / ⟦地点=宁国府⟧ / ⟦在场=宝玉,黛玉⟧ 标记（标记会被系统解析，不显示给用户）。");
 return lines.join("\n");
 }
 function seasonName(m){
@@ -274,7 +275,8 @@ var p = curPlace(st);
 var ic = (typeof icon!== "undefined")? icon: function(){ return "";};
 return '<span class="simchip">' + ic("clock",12) + " " + esc(fmtTime(st)) + "</span>" +
 '<span class="simchip">' + ic(weatherIcon(st.wx),12) + " " + esc(weatherName(st.wx)) + "</span>" +
-'<span class="simchip">' + ic("pin",12) + " " + esc(p.name) + "</span>";
+'<span class="simchip">' + ic("pin",12) + " " + esc(p.name) + "</span>" +
+((st.present && st.present.length) ? '<span class="simchip">' + ic("users",12) + " " + esc(st.present.join("、")) + "</span>" : "");
 }
 
 /* 手动调整（设置页/编辑器调用） */
