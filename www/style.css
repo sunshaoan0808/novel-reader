@@ -1085,10 +1085,13 @@ body[data-font="kai"] .bubble{font-family:"Kaiti SC","STKaiti","KaiTi","TW-Kai",
 .charcard.sel{outline:2px solid var(--gold);border-radius:10px}
 .ooc{color:#e0a33e;font-weight:600}
 /* ---- 世界模拟三件套（2026-09-30）：时间/天气/地理 HUD ---- */
-.simbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);
+.simbar{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);
   background:var(--barbg-solid, #14110d);border-bottom:1px solid var(--line);padding:6px 12px;cursor:pointer;line-height:1.6;
+  flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none; /* 单行横滑：首屏只占一行 */
   transition:transform .3s ease; /* 跟随顶栏一起滑入滑出，纯视觉过渡 */
   position:relative;z-index:1; /* 浮于 .chatbg(z0) 之上：与 chatwrap 同层，否则被背景盖住只剩空白带 */}
+.simbar::-webkit-scrollbar{display:none}
+.simbar .simchip{flex:none}
 /* 兜底：即使 JS 量高为 0，沉浸式下世界条本身也必须移出视口 */
 body.chatmode.immersive #simbar{ transform:translateY(-105%); }
 .simchip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;color:var(--ink)}

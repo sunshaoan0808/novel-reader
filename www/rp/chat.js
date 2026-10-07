@@ -508,6 +508,14 @@ async function send(runId, name, text, opts){
     run = {novel: _cc.novel || "自定义", worldbook: _wr.worldbook || [], relations: []};
   }
   var card = findCard(runId, name) || {name: name, fields: {}};
+  /* 聊天设置 per-chat 参数覆盖 */
+  try{
+    var _csId = (typeof chatKey !== "undefined") ? chatKey(runId, name) : (runId + "|" + name);
+    var _tp = parseFloat(localStorage.getItem("nd_temp_" + _csId));
+    if(isFinite(_tp)) opts.temperature = _tp;
+    var _mt = parseInt(localStorage.getItem("nd_maxtok_" + _csId));
+    if(isFinite(_mt) && _mt > 0) opts.maxTokens = _mt;
+  }catch(e){}
   /* Card Evolution: 已接受的建议覆盖卡字段 */
   try{
     if(typeof AGENT_CARDEVO !== "undefined"){

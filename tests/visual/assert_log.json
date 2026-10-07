@@ -3,112 +3,53 @@
  "results": [
   {
    "name": "ctxbar-no-stray",
-   "ok": true,
+   "ok": false,
    "detail": {
-    "low": {
-     "tail0": false,
-     "hasNaN": false,
-     "tail": "触发：大观园</div>"
-    },
-    "high": {
-     "tail0": false,
-     "hasNaN": false,
-     "hasWarn": true,
-     "tail": "会一直保留。</div>"
-    }
+    "error": "page JS error: ReferenceError: renderCtxBar is not defined\n    at <anonymous>:5:7\n    at <anonymous>:18:7"
    }
   },
   {
    "name": "scroll-no-jitter",
-   "ok": true,
+   "ok": false,
    "detail": {
-    "s0": 0,
-    "s1": 0,
-    "s2": 60,
-    "s3": 60,
-    "lastAI": 17,
-    "twRan": true,
-    "twDrift": 0,
-    "streamDrift": 0
+    "error": "'twRan'"
    }
   },
   {
    "name": "scroll-hidebars",
-   "ok": true,
+   "ok": false,
    "detail": {
-    "preHidden": false,
-    "cleanStart": true,
-    "maxST": 2104,
-    "immediate": true,
-    "distAfter20": 20,
-    "trace": [
-     true,
-     true,
-     true,
-     true,
-     true,
-     true
-    ],
-    "noFlickerSlow": true,
-    "hidden": true,
-    "scenGone": true,
-    "simGone": true,
-    "h0": 328,
-    "h1": 624,
-    "grown": true,
-    "barTop": 797,
-    "winH": 800,
-    "barGone": true,
-    "flick": [
-     true,
-     true,
-     true,
-     true,
-     true,
-     true
-    ],
-    "noFlickerTop": true,
-    "stillHidden": true,
-    "shown": true,
-    "shownGeo": true,
-    "scenBack": true,
-    "simBack": true,
-    "distEnd": 0
+    "error": "'cleanStart'"
    }
   },
   {
    "name": "immersive-bg",
-   "ok": true,
+   "ok": false,
    "detail": {
-    "bgExists": true,
-    "layerExists": true,
-    "shadeExists": true,
-    "full": true,
-    "bubbleBlur": "blur(10px)",
-    "headBlur": "blur(14px)",
-    "anim": "chatbreathe",
+    "bgExists": false,
+    "layerExists": false,
+    "shadeExists": false,
+    "full": false,
+    "bubbleBlur": "",
+    "headBlur": "",
+    "anim": "",
     "reduced": false
    }
   },
   {
    "name": "bars-follow-bg",
-   "ok": true,
+   "ok": false,
    "detail": {
-    "ready": true,
-    "headBg": "rgba(242, 184, 198, 0.58)",
-    "simBg": "rgba(242, 184, 198, 0.94)",
-    "barBg": "rgba(242, 184, 198, 0.78)",
-    "light": true,
-    "cnameColor": "rgb(42, 32, 19)"
+    "error": "'ready'"
    }
   },
   {
    "name": "bars-transition",
-   "ok": true,
+   "ok": false,
    "detail": {
-    "head": "transform 0.3s",
-    "sim": "transform 0.3s",
-    "bar": "transform 0.3s"
+    "head": "missing",
+    "sim": "missing",
+    "bar": "missing"
    }
   },
   {
@@ -119,41 +60,15 @@
      "overlaps": 0,
      "overflows": 0,
      "pageOverflow": false,
-     "nLeaf": 109,
+     "nLeaf": 8,
      "overlapSample": [],
      "overflowSample": []
     },
     "settings": {
-     "overlaps": 0,
-     "overflows": 0,
-     "pageOverflow": false,
-     "nLeaf": 165,
-     "overlapSample": [],
-     "overflowSample": []
+     "renderError": "page JS error: ReferenceError: showSettings is not defined\n    at <anonymous>:1:14\n    at <anonymous>:1:45"
     },
     "traverse": {
-     "overlaps": 8,
-     "overflows": 0,
-     "pageOverflow": false,
-     "nLeaf": 42,
-     "overlapSample": [
-      {
-       "a": "div.tm-seal \"迹\"",
-       "b": "div.tm-name \"走原著线\"",
-       "pct": 29
-      },
-      {
-       "a": "div.tm-seal \"迹\"",
-       "b": "div.tm-go \"›\"",
-       "pct": 59
-      },
-      {
-       "a": "div.tm-seal \"魂\"",
-       "b": "div.tm-name \"魂穿\"",
-       "pct": 29
-      }
-     ],
-     "overflowSample": []
+     "renderError": "page JS error: ReferenceError: showTraverse is not defined\n    at <anonymous>:1:14\n    at <anonymous>:1:45"
     }
    }
   }

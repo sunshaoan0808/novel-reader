@@ -185,5 +185,25 @@ await t("铁律：模块不写正文、不替玩家做决定", ()=>{
   assert.ok(!/document\./.test(src), "无 DOM 操作");
   assert.ok(src.indexOf("fetch(") < 0 && src.indexOf("XMLHttpRequest") < 0, "无网络请求");
 });
+await t("revertLast：弹出最后一次推进", ()=>{
+  const { P } = mkCtx(WC);
+  const st = P.start("wctest", "stage-00");
+  const first = st.currentNodeId;
+  P.completeNode(st, first, "玩家选择A");
+  assert.ok(st.completedNodeIds.indexOf(first) >= 0, "已完成");
+  assert.strictEqual(st.choices.length, 1, "有choice记录");
+  const cur2 = st.currentNodeId;
+  assert.notStrictEqual(cur2, first, "已推进到下一节点");
+  P.revertLast(st);
+  assert.strictEqual(st.currentNodeId, first, "currentNodeId回到决策节点");
+  assert.strictEqual(st.completedNodeIds.indexOf(first), -1, "完成列表移除");
+  assert.strictEqual(st.choices.length, 0, "choice记录弹出");
+});
+await t("revertLast：空状态不崩", ()=>{
+  const { P } = mkCtx(WC);
+  const st = P.start("wctest", "stage-00");
+  P.revertLast(st);
+  assert.strictEqual(st.choices.length, 0);
+});
 console.log("\n" + n + " pass, 0 fail");
 })().catch(e=>{ console.error("FAIL:", e); process.exit(1); });

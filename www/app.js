@@ -515,8 +515,13 @@ function wcSearch(){
     (e.content||"").indexOf(kw)>=0 || (e.comment||"").indexOf(kw)>=0 ||
     (e.key||[]).join(" ").indexOf(kw)>=0).slice(0,50);
   box.innerHTML = hits.map(e=>`<div class="rel"><div class="pair">${esc(e.comment||"")} <span class="badge">${esc(e.entryType||"")}</span></div><div class="st">${esc((e.content||"").slice(0,200))}</div></div>`).join("")
-    || `<div class="empty">无匹配</div>`;
+    || `<div class="empty">无匹配<br><button class="btn ghost sm" style="margin-top:8px" onclick="wcClearSearch()">清空搜索</button></div>`;
 }
+window.wcClearSearch = ()=>{
+  const qEl = document.getElementById("wc-q");
+  if(qEl) qEl.value = "";
+  wcSearch();
+};
 
 function showMore(){
 const wb = RUN.worldbook;
@@ -1189,7 +1194,7 @@ try { RP_CARDIMPORT.list().forEach(c=>out.push({runId:"imported", novel:c.novel,
 for(const r of INDEX){
 const list = cards[r.run_id] || [];
 if(list.length){ list.forEach(c=>out.push({runId:r.run_id, novel:r.novel, name:c.name})); }
-else { const run = window.__DATA__.runs[r.run_id];
+else { const run = (window.__DATA__.runs||{})[r.run_id] || {};
 (run.profiles||[]).forEach(p=>out.push({runId:r.run_id, novel:r.novel, name:p.name})); }
 }
 return out;
@@ -1438,6 +1443,13 @@ try{ if(CHAT.runId) loadWorldcard(CHAT.runId); }catch(e){} /* 世界卡预热：
 let memN = 0;
 try{ const mst = RP_MEM.get(CHAT.runId, CHAT.name); memN = (mst && mst.short ? mst.short.length : 0); }catch(e){}
 await warmWallpaper(); await warmGlobalWall(); /* 先读用户壁纸，避免先闪默认图 */
+/* 消息操作发现性：首次进聊天提示一次"点一下消息有更多操作" */
+try{
+  if(!localStorage.getItem("nd_msgtools_tip")){
+    localStorage.setItem("nd_msgtools_tip", "1");
+    setTimeout(()=>{ try{ rpToast("💡 点一下消息，可以编辑 / 复制 / 重生 / 朗读"); }catch(e){} }, 900);
+  }
+}catch(e){}
 view.innerHTML = `
 ${chatBgHTML()}
 <div class="chathead" id="chathead">
@@ -1480,6 +1492,8 @@ ${povChipsHTML()}
 <h3>AI 助手</h3>
 <button class="ditem" onclick="toggleDrawer(false);showRelManager()">🔗 关系管理</button>
 <button class="ditem" onclick="toggleDrawer(false);showCardEvo()">📝 角色卡更新建议<span id="cardevo_badge"></span></button>
+<h3>⚙️ 本次聊天设置</h3>
+<button class="ditem" onclick="toggleDrawer(false);showChatSettings()">🎛️ 聊天设置（Agent/参数/世界）</button>
 <button class="ditem" onclick="toggleDrawer(false);exportChat()">&#x1F4E4; 复制聊天记录</button>
 <button class="ditem" onclick="toggleDrawer(false);showForeshadow()">${icon("book-open")} 伏笔面板</button>
 <button class="ditem" onclick="toggleDrawer(false);exportChatTxt()">${icon("download")} 导出聊天 TXT</button>
@@ -1671,7 +1685,7 @@ return charCardHTML({name:c.name, tag:c.novel, img:charImg(c.novel, c.name), sum
 oncard:`chatWith('${c.runId}','${qn}')`,
 ops:`<button class="go" onclick="event.stopPropagation();chatWith('${c.runId}','${qn}')">开聊</button>`
 +`<button onclick="event.stopPropagation();charDetail('${c.runId}','${qn}','picker')">详情</button>`});
-}).join("") + `</div>` : `<div class="empty">这个标签下还没有角色</div>`);
+}).join("") + `</div>` : `<div class="empty">这个标签下还没有角色<br><button class="btn ghost sm" style="margin-top:8px" onclick="pickTag('')">清除筛选</button></div>`);
 try{ window.scrollTo(0,0); }catch(e){}
 }
 /* ---- P1 发现页 helpers ---- */
@@ -2897,6 +2911,13 @@ const rateBtns = m.role==="assistant"
 /* S-4 召回指示器：本条 AI 回复注入了记忆/世界书时，气泡工具条出现 🧠 角标 */
 const memBtn = (m.role==="assistant" && ((m.memHits&&m.memHits.length)||(m.loreHits&&m.loreHits.length)))
 ? `<button onclick="event.stopPropagation();toggleMemHits(${idx})" title="这次想起了什么">🧠</button>` : "";
+/* 🧠 命中透明度：第一次出现时解释一次含义 */
+if(memBtn){ try{
+  if(!localStorage.getItem("nd_memhit_tip")){
+    localStorage.setItem("nd_memhit_tip", "1");
+    setTimeout(()=>{ try{ rpToast("🧠 表示这条回复参考了记忆 / 世界书，点它查看明细"); }catch(e){} }, 1200);
+  }
+}catch(e){} }
 if(m.role==="assistant" && idx===lastAI){
 if(m.candidates && m.candidates.length>1){
 extra += `<div class="swipe" onclick="event.stopPropagation()"><button onclick="swipeMsg(${idx},-1)">‹</button>`
@@ -4970,6 +4991,121 @@ window.sendAssistant = async ()=>{
     if(box2 && box2.lastChild) box2.removeChild(box2.lastChild);
     asstSay("出错了：" + e.message, false);
   }
+};
+/* ===== 统一聊天设置面板 (2026-10-07, 借鉴 Marinara Chat Settings) =====
+ * 单聊天的所有主要配置一处搞定：Agent 开关、生成参数、世界状态 */
+window.showChatSettings = ()=>{
+  var runId = CHAT.runId, name = CHAT.name;
+  var chatId = (typeof chatKey !== "undefined") ? chatKey(runId, name) : (runId + "|" + name);
+  var v = document.getElementById("view");
+
+  // Agent 开关状态
+  var lkOn = (typeof AGENT_LOREKEEPER !== "undefined") ? AGENT_LOREKEEPER.isEnabled() : true;
+  var ctOn = (typeof AGENT_CONTINUITY !== "undefined") ? AGENT_CONTINUITY.isEnabled() : true;
+  var ceOff = false;
+  try{ ceOff = localStorage.getItem("nd_cardevo_off") === "1"; }catch(e){}
+  var rdOff = false;
+  try{ rdOff = localStorage.getItem("nd_reldyn_off") === "1"; }catch(e){}
+  var pushMode = (typeof AGENT_PUSHSTORY !== "undefined") ? AGENT_PUSHSTORY.getMode(chatId) : null;
+
+  // 生成参数 (per-chat)
+  var tp = "", mt = "";
+  try{
+    tp = localStorage.getItem("nd_temp_" + chatId) || "";
+    mt = localStorage.getItem("nd_maxtok_" + chatId) || "";
+  }catch(e){}
+
+  // 世界状态
+  var wsHtml = "";
+  try{
+    if(typeof RP_WORLDSIM !== "undefined" && RP_WORLDSIM.enabled()){
+      var st = RP_WORLDSIM.ensure(chatId, {novel: ((window.__DATA__.runs||{})[runId]||{}).novel});
+      var p = RP_WORLDSIM.curPlace(st);
+      wsHtml = `<div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:13px;margin-bottom:8px">🌍 世界状态</div>
+        <div style="font-size:13px;margin-bottom:4px">时间：${esc(RP_WORLDSIM.fmtTime(st))}</div>
+        <div style="font-size:13px;margin-bottom:4px">天气：${esc(RP_WORLDSIM.weatherName(st.wx))} · 地点：${esc(p.name)}</div>
+        ${(st.present && st.present.length) ? `<div style="font-size:13px;margin-bottom:4px">在场：${esc(st.present.join("、"))}</div>` : ""}
+        <div class="btnrow" style="margin-top:8px">
+          <button class="btn" style="font-size:12px" onclick="wsAdjustTimePrompt()">⏰ 调时间</button>
+          <button class="btn" style="font-size:12px" onclick="wsSetPlacePrompt()">📍 换地点</button>
+        </div></div>`;
+    }
+  }catch(e){}
+
+  var html = `<h2 class="sec">🎛️ 聊天设置</h2>
+    <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">本次聊天的专属配置，不影响其他聊天</div>
+
+    <div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:13px;margin-bottom:8px">🤖 AI 助手</div>
+      ${asstToggle("📚 Lorebook Keeper", "聊天自动提炼世界书", lkOn, "toggleLK")}
+      ${asstToggle("🔍 Continuity Checker", "检查逻辑矛盾", ctOn, "toggleCT")}
+      ${asstToggle("📝 角色卡审计", "建议角色成长更新", !ceOff, "toggleCE")}
+      ${asstToggle("🔗 关系动态", "聊天中关系演变", !rdOff, "toggleRD")}
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0">
+        <div><div style="font-size:13px">🚀 Push Story</div>
+        <div style="font-size:11px;color:var(--ink-faint)">${pushMode ? "已武装（" + (pushMode === "natural" ? "顺推" : "意外") + "），下条回复生效" : "一键推进剧情"}</div></div>
+        <button class="btn" style="font-size:12px;padding:4px 10px" onclick="togglePushStory(event);showChatSettings();">${pushMode ? "解除" : "武装"}</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:13px;margin-bottom:8px">🎚️ 生成参数（本次聊天）</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <span style="font-size:13px">温度</span>
+        <input id="cs_temp" type="number" step="0.1" min="0" max="2" value="${esc(tp)}" placeholder="默认"
+          style="width:80px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:inherit">
+        <span style="font-size:13px">最大token</span>
+        <input id="cs_maxtok" type="number" step="100" min="100" value="${esc(mt)}" placeholder="默认"
+          style="width:90px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:inherit">
+        <button class="btn" style="font-size:12px" onclick="saveChatParams()">保存</button>
+      </div>
+      <div style="font-size:11px;color:var(--ink-faint)">留空用全局设置。温度越高越发散，0-2。</div>
+    </div>
+
+    ${wsHtml}
+
+    <div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:13px;margin-bottom:8px">🔗 快捷入口</div>
+      <div class="btnrow">
+        <button class="btn" style="font-size:12px" onclick="showRelManager()">关系管理</button>
+        <button class="btn" style="font-size:12px" onclick="showCardEvo()">卡更新建议</button>
+        <button class="btn" style="font-size:12px" onclick="loreEditor(CHAT.runId,'chat')">世界书</button>
+      </div>
+    </div>
+
+    <button class="btn" onclick="showChat()">返回聊天</button>`;
+  v.innerHTML = html;
+};
+function asstToggle(name, desc, on, fn){
+  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0">
+    <div><div style="font-size:13px">${name}</div>
+    <div style="font-size:11px;color:var(--ink-faint)">${desc}</div></div>
+    <button class="btn${on ? " primary" : ""}" style="font-size:12px;padding:4px 14px" onclick="${fn}();showChatSettings();">${on ? "开" : "关"}</button>
+  </div>`;
+}
+window.toggleLK = ()=>{ AGENT_LOREKEEPER.setEnabled(!AGENT_LOREKEEPER.isEnabled()); };
+window.toggleCT = ()=>{ AGENT_CONTINUITY.setEnabled(!AGENT_CONTINUITY.isEnabled()); };
+window.toggleCE = ()=>{ AGENT_CARDEVO.setEnabled(localStorage.getItem("nd_cardevo_off") === "1"); };
+window.toggleRD = ()=>{ AGENT_RELATIONS.setEnabled(localStorage.getItem("nd_reldyn_off") === "1"); };
+window.saveChatParams = ()=>{
+  var chatId = (typeof chatKey !== "undefined") ? chatKey(CHAT.runId, CHAT.name) : (CHAT.runId + "|" + CHAT.name);
+  var tp = document.getElementById("cs_temp").value, mt = document.getElementById("cs_maxtok").value;
+  try{
+    if(tp) localStorage.setItem("nd_temp_" + chatId, tp); else localStorage.removeItem("nd_temp_" + chatId);
+    if(mt) localStorage.setItem("nd_maxtok_" + chatId, mt); else localStorage.removeItem("nd_maxtok_" + chatId);
+  }catch(e){}
+  alert("已保存");
+};
+window.wsAdjustTimePrompt = ()=>{
+  var m = prompt("推进多少分钟？（如 30）", "30");
+  if(!m) return;
+  var chatId = (typeof chatKey !== "undefined") ? chatKey(CHAT.runId, CHAT.name) : (CHAT.runId + "|" + CHAT.name);
+  try{ RP_WORLDSIM.adjustTime(chatId, parseInt(m) || 0, {}); }catch(e){}
+  showChatSettings();
+};
+window.wsSetPlacePrompt = ()=>{
+  var p = prompt("去哪里？", "");
+  if(!p) return;
+  var chatId = (typeof chatKey !== "undefined") ? chatKey(CHAT.runId, CHAT.name) : (CHAT.runId + "|" + CHAT.name);
+  try{ RP_WORLDSIM.moveTo(chatId, p, {}); }catch(e){}
+  showChatSettings();
 };
 window.showSystem = ()=>{
 if(!LAST_SYSTEM){ alert("先发一句话，引擎组装好人设 prompt 后这里才能预览。"); return; }

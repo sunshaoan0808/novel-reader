@@ -181,6 +181,39 @@ t("统计格CSS存在", /\.statgrid[\s\S]{0,80}?grid-template-columns:1fr 1fr/.t
 t("空状态分隔线", /\.empty::before[\s\S]{0,200}?linear-gradient/.test(css));
 t("骨架屏CSS存在", /@keyframes skelsh/.test(css));
 
+/* ---- 易用性十项回归 ---- */
+// 1. 后悔药
+vm.runInContext("CHAT={mode:'traverse',travId:'t9',runId:'r1',name:'林黛玉'};", ctx);
+vm.runInContext("var EM9=String.fromCharCode(0xFE0F,0x20E3),NL=String.fromCharCode(10);", ctx);
+vm.runInContext("var decC='选吧<small>'+NL+'intro'+NL+'1'+EM9+'选A'+NL+'2'+EM9+'选B</small>';", ctx);
+vm.runInContext("localStorage.setItem('nd_travchat_t9',JSON.stringify([{role:'assistant',content:decC,ts:1},{role:'user',content:'选A',ts:2},{role:'assistant',content:'好',ts:3}]));", ctx);
+t("repickInfo命中决策", vm.runInContext("repickInfo()!==null && repickInfo().decIdx===0", ctx) === true);
+vm.runInContext("localStorage.setItem('nd_travchat_t9',JSON.stringify([{role:'assistant',content:'hi',ts:1},{role:'user',content:'hello',ts:2}]));", ctx);
+t("repickInfo非决策返回null", vm.runInContext("repickInfo()===null", ctx) === true);
+vm.runInContext("CHAT={mode:'single',runId:'r1',name:'林黛玉'};", ctx);
+t("repickInfo非traverse返回null", vm.runInContext("repickInfo()===null", ctx) === true);
+// 2. API横幅
+vm.runInContext(`localStorage.removeItem("nd_api_cfg_v1"); showChatPicker();`, ctx);
+t("无Key选人页有横幅", viewHTML().indexOf("apibanner") >= 0);
+vm.runInContext(`localStorage.setItem("nd_api_cfg_v1", JSON.stringify({key:"sk-x",base:"https://x",model:"m"})); showChatPicker();`, ctx);
+t("有Key无横幅", viewHTML().indexOf("apibanner") < 0);
+// 3. 字号
+t("字号默认1", vm.runInContext("getFontScale()", ctx) === 1);
+vm.runInContext(`localStorage.setItem("nd_font_scale","1.15");`, ctx);
+t("字号读取1.15", vm.runInContext("getFontScale()", ctx) === 1.15);
+vm.runInContext(`localStorage.removeItem("nd_font_scale");`, ctx);
+// 4. 设置搜索不崩
+t("filterSettings不崩", (()=>{ try{ vm.runInContext("filterSettings('壁纸')", ctx); return true; }catch(e){ return false; } })());
+// 5. 快捷条
+t("无模块时快捷条为空", vm.runInContext("dailyStripHTML()", ctx) === "");
+vm.runInContext(`window.RP_CHECKIN={hasToday:()=>false,streak:()=>3,checkin:()=>({isNew:true,streak:4})};
+window.RP_ACHV={count:()=>2,DEFS:[1,2,3]};`, ctx);
+t("快捷条有签到成就", (()=>{ const h = vm.runInContext("dailyStripHTML()", ctx); return h.indexOf("签到")>=0 && h.indexOf("成就")>=0; })());
+// 6. 穿越时间线说明
+t("穿越页有时间线说明", (()=>{ try{ vm.runInContext("showTraverse()", ctx); return viewHTML().indexOf("独立的时间线")>=0; }catch(e){ return false; } })());
+// 10. simbar单行
+t("simbar单行横滑", /\.simbar[\s\S]{0,400}?flex-wrap:nowrap/.test(css));
+
 console.log(`\ngolden: ${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);
 })().catch(e=>{ console.log("ERROR", e); process.exit(1); });
