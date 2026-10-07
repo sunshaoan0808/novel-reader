@@ -8,14 +8,45 @@ var DISTILL_PACKAGE = (function(){
 var PREFIX = "nd_package_";
 var INDEX_KEY = "nd_package_index";
 
+// 混合存储: 小数据走 localStorage，大数据自动搬到 IndexedDB/文件层
+function _storeSet(key, json){
+  try{ localStorage.setItem(key, json); }catch(e){
+    console.warn("package save failed (quota):", key);
+  }
+  try{
+    if(typeof RP_STORE !== "undefined"){
+      RP_STORE.cacheSet(key, json);
+      RP_STORE.syncBig(key, json);
+    }
+  }catch(e){}
+}
+function _storeGet(key){
+  var s = null;
+  try{
+    if(typeof RP_STORE !== "undefined"){
+      s = (RP_STORE.getSync || RP_STORE.cacheGet).call(RP_STORE, key);
+    }
+  }catch(e){}
+  if(s == null){
+    try{ s = localStorage.getItem(key); }catch(e){}
+  }
+  return s;
+}
+function _storeDel(key){
+  try{ localStorage.removeItem(key); }catch(e){}
+  try{
+    if(typeof RP_STORE !== "undefined" && RP_STORE.evictFile) RP_STORE.evictFile(key);
+  }catch(e){}
+}
+
 function listPackages(){
   try{
-    return JSON.parse(localStorage.getItem(INDEX_KEY) || "[]");
+    return JSON.parse(_storeGet(INDEX_KEY) || "[]");
   }catch(e){ return []; }
 }
 
 function saveIndex(idx){
-  localStorage.setItem(INDEX_KEY, JSON.stringify(idx));
+  _storeSet(INDEX_KEY, JSON.stringify(idx));
 }
 
 function createPackage(novelName){
@@ -30,18 +61,18 @@ function createPackage(novelName){
   var idx = listPackages();
   idx.push({id: id, novel: novelName, created: pkg.created, charCount: 0});
   saveIndex(idx);
-  localStorage.setItem(PREFIX + id + "_meta", JSON.stringify(pkg));
+  _storeSet(PREFIX + id + "_meta", JSON.stringify(pkg));
   return pkg;
 }
 
 function getPackage(id){
   try{
-    return JSON.parse(localStorage.getItem(PREFIX + id + "_meta") || "null");
+    return JSON.parse(_storeGet(PREFIX + id + "_meta") || "null");
   }catch(e){ return null; }
 }
 
 function updatePackage(pkg){
-  localStorage.setItem(PREFIX + pkg.id + "_meta", JSON.stringify(pkg));
+  _storeSet(PREFIX + pkg.id + "_meta", JSON.stringify(pkg));
   var idx = listPackages();
   var item = idx.find(function(x){ return x.id === pkg.id; });
   if(item){
@@ -53,12 +84,12 @@ function updatePackage(pkg){
 
 // 角色卡
 function saveCharacterCard(pkgId, name, card){
-  localStorage.setItem(PREFIX + pkgId + "_char_" + name, JSON.stringify(card));
+  _storeSet(PREFIX + pkgId + "_char_" + name, JSON.stringify(card));
 }
 
 function getCharacterCard(pkgId, name){
   try{
-    return JSON.parse(localStorage.getItem(PREFIX + pkgId + "_char_" + name) || "null");
+    return JSON.parse(_storeGet(PREFIX + pkgId + "_char_" + name) || "null");
   }catch(e){ return null; }
 }
 
@@ -73,17 +104,12 @@ function listCharacterCards(pkgId){
 
 // 关系 / 剧情 / 世界书
 function saveData(pkgId, key, data){
-  try{
-    localStorage.setItem(PREFIX + pkgId + "_" + key, JSON.stringify(data));
-  }catch(e){
-    // localStorage 满了，记警告
-    console.warn("package save failed (quota):", key);
-  }
+  _storeSet(PREFIX + pkgId + "_" + key, JSON.stringify(data));
 }
 
 function getData(pkgId, key){
   try{
-    return JSON.parse(localStorage.getItem(PREFIX + pkgId + "_" + key) || "null");
+    return JSON.parse(_storeGet(PREFIX + pkgId + "_" + key) || "null");
   }catch(e){ return null; }
 }
 
@@ -96,7 +122,7 @@ function deletePackage(id){
     var k = localStorage.key(i);
     if(k && k.indexOf(PREFIX + id) === 0) keys.push(k);
   }
-  keys.forEach(function(k){ localStorage.removeItem(k); });
+  keys.forEach(function(k){ _storeDel(k); });
   var idx = listPackages().filter(function(x){ return x.id !== id; });
   saveIndex(idx);
 }
