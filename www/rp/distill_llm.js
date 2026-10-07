@@ -20,10 +20,25 @@ function saveCfg(c){
   localStorage.setItem("nd_distill_llm", JSON.stringify(c));
 }
 
+// 调用统计
+var _stats = {calls: 0, errors: 0, totalMs: 0, startTime: 0};
+function getStats(){
+  return {calls: _stats.calls, errors: _stats.errors, totalMs: _stats.totalMs};
+}
+function resetStats(){
+  _stats.calls = 0; _stats.errors = 0; _stats.totalMs = 0; _stats.startTime = 0;
+}
+function fmtStats(){
+  var s = (_stats.totalMs / 1000).toFixed(0);
+  return "调用 " + _stats.calls + " 次" + (_stats.errors ? " (失败 " + _stats.errors + ")" : "") + " · 耗时 " + s + "s";
+}
+
 async function chat(messages, opts){
   opts = opts || {};
   var c = cfg();
   if(!c.key) throw new Error("未配置 LLM API Key, 请到设置页填写");
+  _stats.calls++;
+  var t0 = Date.now();
   var model = opts.model || c.model;
   var url = c.baseUrl.replace(/\/$/, "") + "/chat/completions";
   var lastErr = null;
@@ -42,6 +57,7 @@ async function chat(messages, opts){
         var d = await r.json();
         var content = (((d.choices || [])[0] || {}).message || {}).content || "";
         if(!content.trim()) throw new Error("空正文");
+        _stats.totalMs += Date.now() - t0;
         return {content: content, model: models[mi]};
       }catch(e){
         lastErr = e;
@@ -49,8 +65,10 @@ async function chat(messages, opts){
       }
     }
   }
+  _stats.errors++;
+  _stats.totalMs += Date.now() - t0;
   throw lastErr || new Error("LLM 调用失败");
 }
 
-return {cfg: cfg, saveCfg: saveCfg, chat: chat};
+return {cfg: cfg, saveCfg: saveCfg, chat: chat, getStats: getStats, resetStats: resetStats, fmtStats: fmtStats};
 })();

@@ -56,6 +56,17 @@ function stats(index){
   return s;
 }
 
+// 引用存在性校验: 检查事实引用的 chunk_id 是否真实存在
+// validChunkIds: string[] (如 ["ch001", "ch002-1", ...])
+// 返回: 引用了不存在 chunk 的事实列表
+function validateCitations(index, validChunkIds){
+  var idSet = {};
+  (validChunkIds || []).forEach(function(id){ idSet[id] = true; });
+  return index.facts.filter(function(f){
+    return f.chunk_id && !idSet[f.chunk_id];
+  });
+}
+
 var SOURCE_LABEL = {
   canon: "原文实证",
   ref: "间接旁证",
@@ -74,6 +85,7 @@ return {
   parseAnnotated: parseAnnotated,
   buildIndex: buildIndex,
   stats: stats,
+  validateCitations: validateCitations,
   SOURCE_LABEL: SOURCE_LABEL,
   SOURCE_COLOR: SOURCE_COLOR
 };

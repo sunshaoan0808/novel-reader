@@ -88,8 +88,9 @@ function extractCandidates(text, opts){
 }
 
 // 第二遍: LLM 确认 + 别名归一
-async function confirmCharacters(candidates, text, opts){
+async function confirmCharacters(candidates, text, opts, warnings){
   opts = opts || {};
+  warnings = warnings || [];
   var onProgress = opts.onProgress || function(){};
   // 取 Top 30 让 LLM 确认
   var top = candidates.slice(0, 30);
@@ -123,7 +124,9 @@ async function confirmCharacters(candidates, text, opts){
       }).filter(Boolean).sort(function(a, b){ return b.importance - a.importance || b.count - a.count; });
     }
   }catch(e){
-    onProgress(0, 1, "LLM 确认失败，用规则结果: " + e.message);
+    var wmsg = "LLM 确认失败，已降级为规则结果: " + e.message;
+    warnings.push(wmsg);
+    onProgress(0, 1, wmsg);
   }
   // 降级: 直接用规则结果
   return top.slice(0, 20).map(function(c){
@@ -138,7 +141,9 @@ async function discover(text, opts){
   var cands = extractCandidates(text, opts);
   onProgress(1, 2, "发现 " + cands.length + " 个候选");
   onProgress(1, 2, "第二遍: LLM 确认...");
-  var chars = await confirmCharacters(cands, text, opts);
+  var warnings = [];
+  var chars = await confirmCharacters(cands, text, opts, warnings);
+  chars.warnings = warnings;  // 挂到数组上，UI 可读
   onProgress(2, 2, "确认 " + chars.length + " 个角色");
   return chars;
 }

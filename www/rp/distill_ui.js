@@ -75,7 +75,12 @@ function renderDiscover(){
       <div id="d_disc_bar" style="height:8px;background:var(--line);border-radius:4px;margin-top:8px">
       <i style="display:block;height:100%;width:0;background:var(--gold);border-radius:4px"></i></div></div>`;
   }
+  var warnHtml = "";
+  if(S.discovered.warnings && S.discovered.warnings.length){
+    warnHtml = `<div style="font-size:12px;color:#f0ad4e;background:rgba(240,173,78,.1);border:1px solid #f0ad4e;border-radius:6px;padding:8px;margin-bottom:12px">⚠️ ${S.discovered.warnings.map(esc).join("<br>")}</div>`;
+  }
   return `<div class="card">
+    ${warnHtml}
     <div style="font-size:13px;margin-bottom:12px">发现 <b>${S.discovered.length}</b> 个角色，勾选要蒸馏的：</div>
     <div style="max-height:400px;overflow-y:auto">
     ${S.discovered.map(function(c, i){
@@ -223,7 +228,8 @@ function renderDistill(){
 function renderPackages(){
   var pkgs = DISTILL_PACKAGE.listPackages();
   if(!pkgs.length) return `<div class="empty">还没有剧本包</div>`;
-  return `<h2 class="sec">剧本包 (${pkgs.length})</h2>` + pkgs.map(function(p){
+  var citeWarn = S.citationWarnings ? `<div style="font-size:12px;color:#f0ad4e;margin:8px 0">⚠️ ${esc(S.citationWarnings)}</div>` : "";
+  return `<h2 class="sec">剧本包 (${pkgs.length})</h2>` + citeWarn + pkgs.map(function(p){
     return `<div class="card" style="padding:12px" onclick="DISTILL_UI.openPackage('${p.id}')">
       <div style="font-weight:600">${esc(p.novel)}</div>
       <div style="font-size:12px;color:var(--ink-faint)">${p.charCount} 个角色</div>
@@ -314,6 +320,7 @@ async function onStartDistill(){
 
   S.step = 4; render();
   S.running = true;
+  if(window.DISTILL_LLM && DISTILL_LLM.resetStats) DISTILL_LLM.resetStats();
 
   var stages = [
     {id: "alias", label: "别名消解"},
@@ -334,7 +341,8 @@ async function onStartDistill(){
     el.style.color = st === "run" ? "var(--gold)" : st === "done" ? "var(--ink)" : "var(--ink-faint)";
   }
   function prog(msg, pct){
-    var m = document.getElementById("d_msg"); if(m) m.textContent = msg;
+    var stat = (window.DISTILL_LLM && DISTILL_LLM.fmtStats) ? DISTILL_LLM.fmtStats() : "";
+    var m = document.getElementById("d_msg"); if(m) m.textContent = msg + (stat ? "  [" + stat + "]" : "");
     var b = document.getElementById("d_bar"); if(b && b.firstChild) b.firstChild.style.width = (pct || 0) + "%";
   }
 
@@ -406,10 +414,17 @@ async function onStartDistill(){
 
     S.running = false;
     try{ localStorage.removeItem(ckptKey); }catch(e){}
-    // 构建出处索引
+    // 构建出处索引 + 引用校验
     try{
       var chars = Object.keys(S.selected).filter(function(k){ return S.selected[k]; });
-      DISTILL_PROVENANCE.buildIndex(S.pkg.id, chars);
+      var idx = DISTILL_PROVENANCE.buildIndex(S.pkg.id, chars);
+      var chunkIds = (S.chunks || []).map(function(c){ return c.id; });
+      var bad = DISTILL_PROVENANCE.validateCitations(idx, chunkIds);
+      if(bad.length){
+        S.citationWarnings = bad.length + " 条引用指向不存在的 chunk (可能为 LLM 幻觉)";
+      } else {
+        S.citationWarnings = null;
+      }
     }catch(e){}
     prog("完成! 剧本包已生成", 100);
     setTimeout(function(){ S.step = 5; render(); }, 1500);
