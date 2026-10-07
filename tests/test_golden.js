@@ -57,7 +57,7 @@ nodes: [
 {id: "n2", stageId: "s1", title: "初见", intent: "宝黛初见", execution: "foreground", conditions: [], dependsOn: ["n1"], constraints: [], actorIds: [], sourceRefs: []}],
 characters: [], coverage: {}}]};
 vm.createContext(ctx);
-for(const f of ["data.js", "icons.js", "data/char_plots.js", "rp/prompt.js", "rp/persona.js",
+for(const f of ["data.js", "icons.js", "data/covers.js", "data/char_plots.js", "rp/prompt.js", "rp/persona.js",
 "rp/memory.js", "rp/tasks.js", "rp/cardwriter.js", "rp/ooc.js", "rp/chat.js", "rp/aifill.js",
 "rp/group.js", "rp/cardexport.js", "rp/cardimport.js", "rp/traverse.js", "rp/traverse2.js",
 "rp/plotrun.js", "app.js"]){
@@ -145,6 +145,15 @@ t("actionbar走主题变量", /\.actionbar[\s\S]{0,400}?background:\s*var\(--nav
 const themeJs = fs.readFileSync(WWW + "/rp/theme.js", "utf8");
 t("三主题都有nav-bg", (themeJs.match(/"--nav-bg"/g) || []).length === 3);
 t("栏位无硬编码棕色", !/#topbar[\s\S]{0,300}?rgba\(2[034],1[678],[01][357]/.test(css));
+
+/* ---- 书封面 ---- */
+t("封面映射红楼", vm.runInContext("window.BOOKCOVER['红楼梦']", ctx) === "data/covers/honglou.jpg");
+t("封面映射水浒", vm.runInContext("window.BOOKCOVER['水浒传']", ctx) === "data/covers/shuihu.jpg");
+t("封面文件存在", fs.existsSync(WWW + "/data/covers/honglou.jpg") && fs.existsSync(WWW + "/data/covers/shuihu.jpg"));
+vm.runInContext("showRuns()", ctx);
+h = viewHTML();
+t("有封面的书渲染img", h.indexOf('class="bookcover"') >= 0 && h.indexOf("data/covers/honglou.jpg") >= 0);
+t("无封面的书回退avatar", (h.match(/class="avatar"/g) || []).length === 1); /* r2 三国演义无封面 */
 
 console.log(`\ngolden: ${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);

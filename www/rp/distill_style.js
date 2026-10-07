@@ -104,7 +104,7 @@ localStorage.setItem("distill_styles", JSON.stringify(cards));
 // 生成文风 prompt (注入用)
 function toPrompt(card){
 if(!card) return "";
-var parts = [""];
+var parts = ["文风：" + card.name];
 Object.keys(CATEGORIES).forEach(function(cat){
 var items = (card.sheet[cat] || []);
 if(items.length){
