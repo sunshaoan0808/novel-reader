@@ -23,7 +23,7 @@ function show(){
 }
 
 function stepDots(){
-  var labels = ["上传", "发现角色", "配置", "蒸馏", "剧本包"];
+  var labels = ["上传", "发现角色", "配置", "计划书", "蒸馏", "剧本包"];
   return `<div style="display:flex;gap:4px;margin-bottom:16px">` +
     labels.map(function(l, i){
       var c = i === S.step ? "var(--gold)" : i < S.step ? "var(--ink)" : "var(--line)";
@@ -38,8 +38,9 @@ function render(){
   if(S.step === 0) html += renderUpload();
   else if(S.step === 1) html += renderDiscover();
   else if(S.step === 2) html += renderConfig();
-  else if(S.step === 3) html += renderDistill();
-  else if(S.step === 4) html += renderPackages();
+  else if(S.step === 3) html += renderPlan();
+  else if(S.step === 4) html += renderDistill();
+  else if(S.step === 5) html += renderPackages();
   v.innerHTML = html;
   wire();
 }
@@ -116,9 +117,98 @@ function renderConfig(){
     <div class="btnrow">
       <button class="btn" id="d_back2">← 上一步</button>
       <button class="btn" id="d_savekey">保存 Key</button>
-      <button class="btn primary" id="d_start">开始蒸馏</button>
+      <button class="btn primary" id="d_plan">生成计划书 →</button>
     </div>
   </div>`;
+}
+
+function renderPlan(){
+  var p = S.plan;
+  if(!p) return `<div class="card"><div>正在生成计划书...</div></div>`;
+  return `<div class="card">
+    <div style="font-size:15px;font-weight:600;margin-bottom:12px">蒸馏计划书</div>
+
+    <div style="font-size:13px;font-weight:600;margin:12px 0 6px">一、蒸馏角色 (${p.chars.length} 人)</div>
+    ${p.chars.map(function(c){
+      return `<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--line)">
+        <b>${esc(c.name)}</b> <span style="font-size:11px;color:var(--gold)">★${c.importance}</span>
+        <div style="font-size:12px;color:var(--ink-dim);margin-top:2px">推荐理由: ${esc(c.reason)}</div>
+      </div>`;
+    }).join("")}
+
+    <div style="font-size:13px;font-weight:600;margin:12px 0 6px">二、蒸馏深度</div>
+    <div style="font-size:13px">${p.depth === "full" ? "完整 (画像+关系+剧情+世界书)" : "快速 (画像+关系)"}</div>
+
+    <div style="font-size:13px;font-weight:600;margin:12px 0 6px">三、预估成本</div>
+    <div style="font-size:13px;color:var(--ink-dim)">
+      约 ${p.estCalls} 次 API 调用 · 预计 ${p.estTime} · ${p.estChunks} 个文本块
+    </div>
+
+    <div style="font-size:13px;font-weight:600;margin:12px 0 6px">四、不做清单</div>
+    <div style="font-size:13px;color:var(--ink-dim)">${p.excludes.map(esc).join("<br>")}</div>
+
+    <div class="btnrow" style="margin-top:16px">
+      <button class="btn" id="d_backplan">← 返回修改</button>
+      <button class="btn primary" id="d_confirm">确认，开始蒸馏</button>
+    </div>
+  </div>`;
+}
+
+async function onGenPlan(){
+  var key = document.getElementById("d_key").value.trim();
+  if(!key){ alert("请填写 API Key"); return; }
+  var c = DISTILL_LLM.cfg(); c.key = key; DISTILL_LLM.saveCfg(c);
+  S.depth = document.getElementById("d_depth").value;
+  var chars = Object.keys(S.selected).filter(function(k){ return S.selected[k]; });
+  if(!chars.length){ alert("请至少选一个角色"); return; }
+
+  S.step = 3; render();
+
+  // 生成推荐理由 (LLM)
+  var charInfos = chars.map(function(n){
+    var d = S.discovered.find(function(x){ return x.name === n; }) || {};
+    return {name: n, importance: d.importance || 5, count: d.count || 0, aliases: d.aliases || []};
+  });
+
+  try{
+    var r = await DISTILL_LLM.chat([
+      {role: "system", content: "你是蒸馏规划师。为每个角色写一句推荐理由(为什么值得蒸馏)。返回JSON，格式:{reasons:{角色名:理由}}"},
+      {role: "user", content: JSON.stringify({characters: charInfos, novel: S.fileName})}
+    ]);
+    var m = r.content.match(/\{[\s\S]*\}/);
+    var reasons = m ? JSON.parse(m[0]).reasons || {} : {};
+    charInfos.forEach(function(ci){
+      ci.reason = reasons[ci.name] || ("出现 " + ci.count + " 次，重要性 ★" + ci.importance);
+    });
+  }catch(e){
+    charInfos.forEach(function(ci){
+      ci.reason = "出现 " + ci.count + " 次，重要性 ★" + ci.importance;
+    });
+  }
+
+  // 预估
+  var nChunks = S.chunks.length;
+  var nChars = chars.length;
+  var estCalls = nChunks * nChars + nChars * 3 + 20; // 画像 + 合并 + 其他
+  if(S.depth === "full") estCalls += nChunks + 20;
+  var estMin = Math.round(estCalls * 0.25);
+
+  var unselected = S.discovered.filter(function(d){ return !S.selected[d.name]; }).length;
+
+  S.plan = {
+    chars: charInfos,
+    depth: S.depth,
+    estCalls: estCalls,
+    estTime: estMin > 60 ? Math.round(estMin / 60 * 10) / 10 + " 小时" : estMin + " 分钟",
+    estChunks: nChunks,
+    excludes: [
+      "未选中的 " + unselected + " 个角色不蒸馏",
+      S.depth === "quick" ? "快速模式: 不做剧情层 (大纲/冲突/弧光/伏笔) 和世界书" : "完整模式: 包含剧情层和世界书",
+      "probe/judge/correction 质检环不做",
+      "embedding 伏笔配对不做 (用关键词版)"
+    ]
+  };
+  render();
 }
 
 function renderDistill(){
@@ -168,8 +258,12 @@ function wire(){
     DISTILL_LLM.saveCfg(c);
     alert("已保存");
   });
-  var st = document.getElementById("d_start");
-  if(st) st.addEventListener("click", onStartDistill);
+  var pl = document.getElementById("d_plan");
+  if(pl) pl.addEventListener("click", onGenPlan);
+  var cf = document.getElementById("d_confirm");
+  if(cf) cf.addEventListener("click", onStartDistill);
+  var bp = document.getElementById("d_backplan");
+  if(bp) bp.addEventListener("click", function(){ S.step = 2; render(); });
 }
 
 function onFile(e){
@@ -213,14 +307,12 @@ async function runDiscover(){
 }
 
 async function onStartDistill(){
-  var key = document.getElementById("d_key").value.trim();
-  if(!key){ alert("请填写 API Key"); return; }
-  var c = DISTILL_LLM.cfg(); c.key = key; DISTILL_LLM.saveCfg(c);
-  var depth = document.getElementById("d_depth").value;
-  var chars = Object.keys(S.selected).filter(function(k){ return S.selected[k]; });
+  var chars = S.plan ? S.plan.chars.map(function(c){ return c.name; }) :
+    Object.keys(S.selected).filter(function(k){ return S.selected[k]; });
+  var depth = S.depth || "full";
   if(!chars.length){ alert("请至少选一个角色"); return; }
 
-  S.step = 3; render();
+  S.step = 4; render();
   S.running = true;
 
   var stages = [
@@ -320,7 +412,7 @@ async function onStartDistill(){
       DISTILL_PROVENANCE.buildIndex(S.pkg.id, chars);
     }catch(e){}
     prog("完成! 剧本包已生成", 100);
-    setTimeout(function(){ S.step = 4; render(); }, 1500);
+    setTimeout(function(){ S.step = 5; render(); }, 1500);
   }catch(e){
     S.running = false;
     prog("出错: " + e.message, 0);
