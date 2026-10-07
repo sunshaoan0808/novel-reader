@@ -9,6 +9,25 @@ var DISTILL_QUALITY = (function(){
 var PROFILE_FIELDS = ["core_identity", "core_traits", "appearance", "speech_style",
   "background", "relationships_summary", "key_events", "arc_summary"];
 
+// AI 腔禁用模式 (dama-cyber 镜像翻转: 他的"去AI味" → 我们的"档案去AI腔")
+var AI_CLICHE_PATTERNS = [
+  "眼中闪过", "嘴角勾起", "眼眶微红", "不可置信", "眼底闪过", "咬了咬唇", "冷冷地说",
+  "不仅是.*更是", "不是.*而是", "既.*又", "一种说不出的",
+  "真正的.*是", "的意义在于", "谁说.*就一定"
+];
+
+function detectAiCliche(text){
+  var hits = [];
+  AI_CLICHE_PATTERNS.forEach(function(p){
+    try{
+      var re = new RegExp(p, "g");
+      var m = text.match(re);
+      if(m) hits.push({pattern: p, count: m.length});
+    }catch(e){}
+  });
+  return hits;
+}
+
 function check(pkgId){
   var checks = [];
   var pkg = DISTILL_PACKAGE.getPackage(pkgId);
@@ -52,6 +71,31 @@ function check(pkgId){
       msg: "字段完整度仅 " + Math.round(fieldRate * 100) + "%，建议重蒸"});
   }
 
+  // 2.5 AI 腔检测
+  var clicheHits = [];
+  withCard.forEach(function(c){
+    var card = DISTILL_PACKAGE.getCharacterCard(pkgId, c.name);
+    var d = (card && card._distill) || {};
+    PROFILE_FIELDS.forEach(function(f){
+      var val = d[f];
+      if(val && typeof val === "string"){
+        var hits = detectAiCliche(val);
+        hits.forEach(function(h){
+          clicheHits.push({character: c.name, field: f, pattern: h.pattern, count: h.count});
+        });
+      }
+    });
+  });
+  if(!clicheHits.length){
+    checks.push({id: "aicliche", level: "pass", msg: "无 AI 腔"});
+  } else if(clicheHits.length <= 3){
+    checks.push({id: "aicliche", level: "warn",
+      msg: clicheHits.length + " 处疑似 AI 腔 (" + clicheHits.slice(0, 2).map(function(h){ return h.pattern; }).join("、") + ")"});
+  } else {
+    checks.push({id: "aicliche", level: "fail",
+      msg: clicheHits.length + " 处 AI 腔，建议用改动单重写"});
+  }
+
   // 3. 引用覆盖率 (四态标注)
   var prov = DISTILL_PACKAGE.getData(pkgId, "provenance");
   if(prov && prov.facts && prov.facts.length){
@@ -75,6 +119,27 @@ function check(pkgId){
     checks.push({id: "citations", level: "warn", msg: "无出处索引"});
   }
 
+  // 3.5 引用密度 (dama-cyber 镜像翻转: 他的"爽点密度" → 我们的"引用密度")
+  // 每百字有依据引用数，衡量档案的实证扎实程度
+  if(prov && prov.facts && prov.facts.length){
+    var totalChars = 0, groundedCount = 0;
+    prov.facts.forEach(function(f){
+      totalChars += (f.value || "").length;
+      if(f.source === "canon" || f.source === "ref") groundedCount++;
+    });
+    var density = totalChars ? (groundedCount / totalChars * 100) : 0;
+    if(density >= 1.5){
+      checks.push({id: "density", level: "pass",
+        msg: "引用密度 " + density.toFixed(1) + "/百字"});
+    } else if(density >= 0.8){
+      checks.push({id: "density", level: "warn",
+        msg: "引用密度 " + density.toFixed(1) + "/百字，实证偏稀疏"});
+    } else {
+      checks.push({id: "density", level: "fail",
+        msg: "引用密度仅 " + density.toFixed(1) + "/百字，多为无依据论述"});
+    }
+  }
+
   // 4. 关系覆盖率
   var rels = DISTILL_PACKAGE.getData(pkgId, "relations") || [];
   var relChars = {};
@@ -91,6 +156,13 @@ function check(pkgId){
       msg: "关系覆盖 " + Object.keys(relChars).length + "/" + withCard.length + " 人"});
   } else {
     checks.push({id: "relations", level: "warn", msg: "无关系数据"});
+  }
+
+  // 4.5 无锚定引用
+  var unanchored = DISTILL_PACKAGE.getData(pkgId, "unanchored") || [];
+  if(unanchored.length){
+    checks.push({id: "unanchored", level: "fail",
+      msg: unanchored.length + " 条引用内容在原文找不到 (幻觉嫌疑)"});
   }
 
   // 5. 剧情完整度 (完整模式)
@@ -131,6 +203,7 @@ function renderReport(q){
 return {
   check: check,
   renderReport: renderReport,
+  detectAiCliche: detectAiCliche,
   LEVEL_ICON: LEVEL_ICON,
   PROFILE_FIELDS: PROFILE_FIELDS
 };

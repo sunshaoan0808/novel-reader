@@ -466,17 +466,21 @@ async function onStartDistill(){
 
     S.running = false;
     try{ localStorage.removeItem(ckptKey); }catch(e){}
-    // 构建出处索引 + 引用校验
+    // 构建出处索引 + 引用校验 (存在性 + 内容真实性)
     try{
       var chars = Object.keys(S.selected).filter(function(k){ return S.selected[k]; });
       var idx = DISTILL_PROVENANCE.buildIndex(S.pkg.id, chars);
       var chunkIds = (S.chunks || []).map(function(c){ return c.id; });
-      var bad = DISTILL_PROVENANCE.validateCitations(idx, chunkIds);
-      if(bad.length){
-        S.citationWarnings = bad.length + " 条引用指向不存在的 chunk (可能为 LLM 幻觉)";
-      } else {
-        S.citationWarnings = null;
-      }
+      var badId = DISTILL_PROVENANCE.validateCitations(idx, chunkIds);
+      var badContent = DISTILL_PROVENANCE.verifyCitationContent(idx, S.chunks);
+      var warns = [];
+      if(badId.length) warns.push(badId.length + " 条引用指向不存在的 chunk");
+      if(badContent.length) warns.push(badContent.length + " 条引用内容在原文找不到 (无锚定)");
+      S.citationWarnings = warns.length ? warns.join("；") + "，可能为 LLM 幻觉" : null;
+      // 存无锚定引用供质量门使用
+      try{ DISTILL_PACKAGE.saveData(S.pkg.id, "unanchored", badContent.map(function(b){
+        return {character: b.fact.character, field: b.fact.field, value: b.fact.value.slice(0, 50)};
+      })); }catch(e){}
     }catch(e){}
     prog("完成! 剧本包已生成", 100);
     setTimeout(function(){ S.step = 5; render(); }, 1500);
@@ -593,6 +597,9 @@ function showProvenance(pkgId, name){
   v.innerHTML = `<h2 class="sec">📚 资料库 ${name ? "· " + esc(name) : ""}</h2>
     <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">
       ${facts.length} 条事实${libStats && libStats.edited ? " · " + libStats.edited + " 条已编辑" : ""}
+    </div>
+    <div style="font-size:11px;color:var(--ink-faint);background:var(--line);border-radius:6px;padding:8px;margin-bottom:12px">
+      ℹ️ 引用核验只能证明原句在原文存在，不能证明结论正确。请结合上下文判断。
     </div>
     ${facts.map(function(f, i){
       var color = DISTILL_PROVENANCE.SOURCE_COLOR[f.source] || "var(--ink-faint)";
