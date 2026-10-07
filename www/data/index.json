@@ -1,58 +1,44 @@
 [
- {
-  "run_id": "honglou_full",
-  "novel": "红楼梦",
-  "characters": [
-   "刘姥姥",
-   "晴雯",
-   "林黛玉",
-   "王夫人",
-   "王熙凤",
-   "秦钟",
-   "薛宝钗",
-   "袭人",
-   "贾宝玉",
-   "贾母"
-  ],
-  "n_chunks": 224,
-  "n_profiles": 10,
-  "has_plot": true,
-  "scope": null,
-  "has_worldcard": true
- },
- {
-  "run_id": "honglou_head10",
-  "novel": "红楼梦",
-  "characters": [
-   "林黛玉",
-   "贾宝玉"
-  ],
-  "n_chunks": 15,
-  "n_profiles": 2,
-  "has_plot": true,
-  "scope": {
-   "chapters": "1-10"
+  {
+    "run_id": "honglou_full",
+    "novel": "红楼梦",
+    "characters": [
+      "刘姥姥",
+      "晴雯",
+      "林黛玉",
+      "王夫人",
+      "王熙凤",
+      "秦钟",
+      "薛宝钗",
+      "袭人",
+      "贾宝玉",
+      "贾母"
+    ],
+    "n_chunks": 224,
+    "n_profiles": 10,
+    "has_plot": true,
+    "scope": null,
+    "has_worldcard": true
+  },
+  {
+    "run_id": "shuihu_full",
+    "novel": "水浒传",
+    "characters": [
+      "公孙胜",
+      "卢俊义",
+      "吴用",
+      "宋江",
+      "晁盖",
+      "李逵",
+      "杨志",
+      "林冲",
+      "武松",
+      "鲁智深"
+    ],
+    "n_chunks": 220,
+    "n_profiles": 10,
+    "has_plot": true,
+    "scope": null,
+    "has_worldcard": true
   }
- },
- {
-  "run_id": "shuihu_full",
-  "novel": "水浒传",
-  "characters": [
-   "公孙胜",
-   "卢俊义",
-   "吴用",
-   "宋江",
-   "晁盖",
-   "李逵",
-   "杨志",
-   "林冲",
-   "武松",
-   "鲁智深"
-  ],
-  "n_chunks": 220,
-  "n_profiles": 10,
-  "has_plot": true,
-  "scope": null,
-  "has_worldcard": true
- }
 ]
