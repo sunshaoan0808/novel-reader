@@ -54,6 +54,34 @@ return {rules: [], locations: [], factions: [], built: Date.now(), error: e.mess
 }
 
 // 世界书条目转 SillyTavern lorebook 格式 (复用)
+// C6: Lorebook 触发条件 (Character.AI)
+// 条目可按事件/地点/配角触发：trigger: {events:[], locations:[], characters:[]}
+function matchTrigger(entry, context){
+  context = context || {};
+  var t = entry.trigger || {};
+  // 无触发条件 = 常驻
+  if(!t.events && !t.locations && !t.characters) return true;
+  if(t.events && t.events.length){
+    var hit = (context.events || []).some(function(e){
+      return t.events.some(function(te){ return e.indexOf(te) >= 0 || te.indexOf(e) >= 0; });
+    });
+    if(!hit) return false;
+  }
+  if(t.locations && t.locations.length){
+    var hit2 = (context.locations || []).some(function(l){
+      return t.locations.indexOf(l) >= 0;
+    });
+    if(!hit2) return false;
+  }
+  if(t.characters && t.characters.length){
+    var hit3 = (context.characters || []).some(function(c){
+      return t.characters.indexOf(c) >= 0;
+    });
+    if(!hit3) return false;
+  }
+  return true;
+}
+
 function toLorebook(worldbook){
 var entries = [];
 (worldbook.rules || []).forEach(function(r, i){
@@ -85,6 +113,7 @@ return entries;
 
 return {
 extractWorldbook: extractWorldbook,
-toLorebook: toLorebook
+toLorebook: toLorebook,
+matchTrigger: matchTrigger
 };
 })();
