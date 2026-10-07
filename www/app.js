@@ -86,10 +86,12 @@ function showRuns(){
 __backAction = null;
 titleEl.textContent = "浮生";
 subEl.textContent = `${INDEX.length} 个蒸馏任务 · 离线浏览`;
-view.innerHTML = INDEX.map(r=>`
-<div class="card" onclick='openRun(${JSON.stringify(r.run_id)})'>
+view.innerHTML = INDEX.map(r=>{
+const cover = (window.BOOKCOVER||{})[r.novel];
+return `
+<div class="card bookcard" onclick='openRun(${JSON.stringify(r.run_id)})'>
 <div class="row">
-<div class="avatar">${esc(r.novel[0]||"书")}</div>
+${cover?`<img class="bookcover" src="${esc(cover)}" alt="${esc(r.novel)}封面" loading="lazy" onerror="this.remove()">`:`<div class="avatar">${esc(r.novel[0]||"书")}</div>`}
 <div>
 <div class="name">${esc(r.novel)}</div>
 <div class="meta">${esc(r.run_id)} · ${r.n_chunks} 块</div>
@@ -100,7 +102,7 @@ ${r.characters.map(c=>`<span class="badge">${esc(c)}</span>`).join("")}
 ${r.scope?`<span class="badge warn">范围蒸馏</span>`:""}
 ${r.has_plot?`<span class="badge stat">有剧情层</span>`:""}${r.has_worldcard?`<span class="badge stat">有世界卡</span>`:""}
 </div>
-</div>`).join("") || `<div class="empty">暂无任务</div>`;
+</div>`;}).join("") || `<div class="empty">暂无任务</div>`;
 }
 
 function openRun(runId){
@@ -1205,13 +1207,15 @@ try{ v = JSON.parse(v); }catch(e){ /* 老版本存的是纯 dataURL 字符串 */
 WALL_MEM[k] = v || null;
 return getWallOpts();
 }
-/* 选背景优先级：用户上传壁纸 > 角色卡/穿越世界自带 bg > 内置默认图；
+/* 选背景优先级：单聊上传壁纸 > 全局壁纸 > 角色卡/穿越世界自带 bg > 内置默认图；
    图片加载失败回退渐变，绝不破图。
    预留 setChatBg(url)：以后世界状态/剧情推进可按场景切换背景 */
 function pickChatBgURL(){
 try{
 const o = getWallOpts();
 if(o && o.url) return o.url;
+const g = getGlobalWallOpts();
+if(g && g.url) return g.url;
 if(CHAT.mode === "traverse" && typeof RP_TRAVERSE !== "undefined"){
 const trav = RP_TRAVERSE.get(CHAT.travId); if(trav && trav.bg) return trav.bg;
 }else if(CHAT.name && typeof allChars === "function"){
@@ -1225,7 +1229,7 @@ function paintChatBg(){
 const layer = document.getElementById("chatbglayer");
 if(!layer) return;
 const url = pickChatBgURL();
-const filter = wallFilterCSS(getWallOpts());
+const filter = wallFilterCSS(getWallOpts() || getGlobalWallOpts());
 const probe = new Image();
 probe.onload = ()=>{ layer.style.backgroundImage = `url("${url}")`; layer.style.filter = filter; sampleBarColors(probe); };
 probe.onerror = ()=>{ layer.style.backgroundImage = ""; layer.style.filter = ""; clearBarColors(); };
@@ -1264,11 +1268,13 @@ const layer = document.getElementById("chatbglayer");
 if(layer) layer.style.backgroundImage = url ? `url("${url}")` : "";
 };
 /* ============ 聊天壁纸（上传 / 恢复默认） ============ */
-window.wallpaperEditor = ()=>{
-__backAction = ()=>showChat();
+window.wallpaperEditor = (storeId)=>{
+_wallStore = (storeId === "global") ? "global" : "chat";
+const S = _wallStores[_wallStore];
+__backAction = ()=>S.back();
 document.body.classList.remove("chatmode");
-titleEl.innerHTML = "🖼️ 聊天壁纸"; subEl.textContent = "只换这个聊天的背景，存在本机";
-const o = getWallOpts(), cur = o && o.url;
+titleEl.innerHTML = S.title; subEl.textContent = S.sub;
+const o = S.get(), cur = o && o.url;
 const dim = o ? o.dim : 0, blur = o ? o.blur : 0;
 view.innerHTML = `<button class="back" onclick="__backAction()">${icon("back")} 返回</button>
 <div class="card" style="text-align:center">
@@ -1284,7 +1290,7 @@ ${cur ? `<div class="field"><label>暗度 <span id="wall_dim_v">${dim}%</span></
 ${cur ? `<button class="btn ghost" onclick="clearWallpaperUI()">恢复默认</button>` : ""}
 </div>
 <input type="file" id="wall_file" accept="image/*" style="display:none" onchange="uploadWallpaperUI(this)">
-<div class="hint">图片会压缩到最长边 1080px 后存到本机，只影响当前聊天。单聊、群聊、穿越各用各的壁纸。图太亮看不清字时，调高暗度或加一点模糊。</div>
+<div class="hint">${S.hint}</div>
 <div style="height:40px"></div>`;
 window.scrollTo(0,0);
 };
@@ -1306,11 +1312,9 @@ const pv = document.getElementById("wall_preview");
 if(pv) pv.style.filter = wallFilterCSS({dim:dim, blur:blur});
 clearTimeout(_wallOptT);
 _wallOptT = setTimeout(()=>{
-const k = chatHistKey();
-const cur = getWallOpts() || {url:""};
-const o = {url:cur.url, dim:dim, blur:blur};
-WALL_MEM[k] = o;
-try{ if(typeof RP_STORE!=="undefined") RP_STORE.setItemAsync(wallStoreKey(), JSON.stringify(o)); }catch(e){}
+const S = _wallStores[_wallStore] || _wallStores.chat;
+const cur = S.get() || {url:""};
+S.save(cur.url, {dim:dim, blur:blur});
 }, 400);
 };
 window.uploadWallpaperUI = (input)=>{
@@ -1331,7 +1335,8 @@ w = Math.max(1, Math.round(w * s)); h = Math.max(1, Math.round(h * s));
 const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
 cv.getContext("2d").drawImage(img, 0, 0, w, h);
 const url = cv.toDataURL("image/jpeg", 0.85);
-saveWallpaper(url).then(()=>{ alert("壁纸已更换"); wallpaperEditor(); });
+const S = _wallStores[_wallStore] || _wallStores.chat;
+S.save(url).then(()=>{ alert("壁纸已更换"); wallpaperEditor(_wallStore); });
 }catch(e){ alert("图片处理失败：" + (e && e.message || e)); }
 };
 img.onerror = ()=>alert("图片读取失败，换一张试试");
@@ -1341,11 +1346,48 @@ rd.onerror = ()=>alert("文件读取失败");
 rd.readAsDataURL(f);
 };
 window.clearWallpaperUI = async ()=>{
-const k = chatHistKey();
-WALL_MEM[k] = null;
-try{ if(typeof RP_STORE!=="undefined") await RP_STORE.removeItemAsync(wallStoreKey()); }catch(e){}
-alert("已恢复默认壁纸"); wallpaperEditor();
+const S = _wallStores[_wallStore] || _wallStores.chat;
+await S.clear();
+alert("已恢复默认壁纸"); wallpaperEditor(_wallStore);
 };
+/* ============ 全局壁纸：所有聊天的默认背景；单聊单独设置的优先 ============ */
+const GLOBAL_WALL_KEY = "nd_wallpaper_global";
+let GLOBAL_WALL = null, _gwLoaded = false;
+function getGlobalWallOpts(){ return normWall(GLOBAL_WALL); }
+async function warmGlobalWall(){
+if(_gwLoaded) return getGlobalWallOpts();
+_gwLoaded = true;
+let v = "";
+try{ if(typeof RP_STORE!=="undefined") v = await RP_STORE.getItemAsync(GLOBAL_WALL_KEY) || ""; }catch(e){}
+try{ v = JSON.parse(v); }catch(e){}
+GLOBAL_WALL = v || null;
+return getGlobalWallOpts();
+}
+window.saveGlobalWallpaper = async (url, opts)=>{
+const o = Object.assign({url:url, dim:0, blur:0}, opts || {});
+o.dim = Math.min(70, +o.dim || 0); o.blur = Math.min(12, +o.blur || 0);
+GLOBAL_WALL = o;
+try{ if(typeof RP_STORE!=="undefined") await RP_STORE.setItemAsync(GLOBAL_WALL_KEY, JSON.stringify(o)); }catch(e){}
+};
+window.clearGlobalWallpaper = async ()=>{
+GLOBAL_WALL = null;
+try{ if(typeof RP_STORE!=="undefined") await RP_STORE.removeItemAsync(GLOBAL_WALL_KEY); }catch(e){}
+};
+/* 壁纸编辑器：单聊 / 全局共用一套 UI，store 决定读写与返回 */
+const _wallStores = {
+chat:{ title:"🖼️ 聊天壁纸", sub:"只换这个聊天的背景，存在本机",
+  hint:"图片会压缩到最长边 1080px 后存到本机，只影响当前聊天。单聊、群聊、穿越各用各的壁纸。图太亮看不清字时，调高暗度或加一点模糊。",
+  get:()=>getWallOpts(), save:(u,o)=>saveWallpaper(u,o),
+  clear:async ()=>{ const k = chatHistKey(); WALL_MEM[k] = null;
+    try{ if(typeof RP_STORE!=="undefined") await RP_STORE.removeItemAsync(wallStoreKey()); }catch(e){} },
+  back:()=>showChat() },
+global:{ title:"🖼️ 全局壁纸", sub:"所有聊天的默认背景，存在本机",
+  hint:"图片会压缩到最长边 1080px 后存到本机。所有聊天默认都用它；某个聊天单独设过壁纸的，仍用自己的那张。",
+  get:()=>getGlobalWallOpts(), save:(u,o)=>saveGlobalWallpaper(u,o),
+  clear:()=>clearGlobalWallpaper(), back:()=>setNav("settings") }
+};
+let _wallStore = "chat";
+window.globalWallpaperEditor = ()=>wallpaperEditor("global");
 async function showChat(){
 __backAction = ()=>exitChat();
 document.body.classList.add("chatmode");
@@ -1362,7 +1404,7 @@ const run = (window.__DATA__.runs||{})[CHAT.runId] || {};
 try{ if(CHAT.runId) loadWorldcard(CHAT.runId); }catch(e){} /* 世界卡预热：导演编排可用原著蓝图，fire-and-forget */
 let memN = 0;
 try{ const mst = RP_MEM.get(CHAT.runId, CHAT.name); memN = (mst && mst.short ? mst.short.length : 0); }catch(e){}
-await warmWallpaper(); /* 先读用户壁纸，避免先闪默认图 */
+await warmWallpaper(); await warmGlobalWall(); /* 先读用户壁纸，避免先闪默认图 */
 view.innerHTML = `
 ${chatBgHTML()}
 <div class="chathead" id="chathead">
@@ -1444,7 +1486,7 @@ const k = chatHistKey();
 const gkey = ms.slice().sort().join("_");
 const gorder = RP_GROUP.getOrder(CHAT.runId, gkey);
 const stack = ms.slice(0,4).map(n=>`<div class="avatar sm stacka">${esc(n[0])}</div>`).join("");
-await warmWallpaper(); /* 先读用户壁纸，避免先闪默认图 */
+await warmWallpaper(); await warmGlobalWall(); /* 先读用户壁纸，避免先闪默认图 */
 view.innerHTML = `
 ${chatBgHTML()}
 <div class="chathead" id="chathead">
@@ -4974,7 +5016,9 @@ const c = getCfg();
 view.innerHTML = renderStorageCard() + `
 <div class="setcard"><h3>🎨 命名主题</h3>
 <div class="kv">三套中式意象色板，纯本地，切换即时生效。</div>
-${themeCardsHTML()}</div>` + checkinCardHTML() + `
+${themeCardsHTML()}</div>` + `\n<div class="setcard"><h3>🖼️ 全局壁纸</h3>
+<div class="kv">所有聊天的默认背景，存在本机；某个聊天单独设过壁纸的不受影响。</div>
+<div class="btnrow" style="margin-top:8px"><button class="btn ghost" onclick="globalWallpaperEditor()">设置全局壁纸</button></div></div>` + checkinCardHTML() + `
 <div class="setcard"><h3>${icon("check",15)} 成就</h3>
 <div class="kv">${typeof RP_ACHV!=="undefined" ? `已解锁 ${RP_ACHV.count()}/${RP_ACHV.DEFS.length}` : ""}</div>
 <div class="btnrow" style="margin-top:8px"><button class="btn ghost" onclick="showAchv()">查看成就</button></div></div>` + `
@@ -6816,7 +6860,7 @@ async function showTraverseChat(cfg){
   const modeName = _comps0.length? "组团穿越" : trav.mode==="isekai"? "异世界" : (RP_TRAVERSE.MODES[trav.mode]||"穿越");
   const _plotHud = (trav.plotrunId && typeof RP_PLOTRUN!=="undefined") ? RP_PLOTRUN.hudHTML(RP_PLOTRUN.load(trav.plotrunId)) : "";
   const title = travPlayerName();
-  await warmWallpaper(); /* 先读用户壁纸，避免先闪默认图 */
+  await warmWallpaper(); await warmGlobalWall(); /* 先读用户壁纸，避免先闪默认图 */
   view.innerHTML = `
   ${chatBgHTML()}
   <div class="chathead" id="chathead">

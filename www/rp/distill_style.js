@@ -79,8 +79,17 @@ localStorage.setItem("distill_styles", JSON.stringify(cards));
 }
 
 function listCards(){
-try{ return JSON.parse(localStorage.getItem("distill_styles") || "[]");}
-catch(e){ return [];}
+var cards = [];
+try{ cards = JSON.parse(localStorage.getItem("distill_styles") || "[]"); }
+catch(e){ cards = []; }
+// 合并预置卡 (去重)
+try{
+  var presets = window.__STYLE_PRESETS__ || [];
+  presets.forEach(function(p){
+    if(!cards.some(function(c){ return c.id === p.id; })) cards.unshift(p);
+  });
+}catch(e2){}
+return cards;
 }
 
 function getCard(id){

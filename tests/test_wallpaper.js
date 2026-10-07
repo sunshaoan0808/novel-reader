@@ -101,6 +101,25 @@ t("clearWallpaper: 内存清除", run("getWallOpts()") === null);
 t("clearWallpaper: IDB 清除", !(run("wallStoreKey()") in idbData));
 t("clearWallpaper: 清除后回退默认", run("pickChatBgURL()") === "bg/chat_night.jpg");
 
+// ---------- 全局壁纸 ----------
+await runA("await saveGlobalWallpaper('data:image/jpeg;base64,GGG', {dim:20, blur:4})");
+t("全局壁纸: 内存即时生效", run("pickChatBgURL()") === "data:image/jpeg;base64,GGG");
+t("全局壁纸: IDB 落盘", (()=>{ const v = JSON.parse(idbData["nd_wallpaper_global"]||"null");
+  return v && v.url === "data:image/jpeg;base64,GGG" && v.dim === 20 && v.blur === 4; })());
+await runA("await saveWallpaper('data:image/jpeg;base64,CCC', {dim:0, blur:0})");
+t("单聊优先于全局", run("pickChatBgURL()") === "data:image/jpeg;base64,CCC");
+t("全局滤镜生效", run("wallFilterCSS(getGlobalWallOpts())") === "brightness(0.80) blur(4px)");
+await runA("await clearWallpaperUI()");
+t("清除单聊后回退全局", run("pickChatBgURL()") === "data:image/jpeg;base64,GGG");
+await runA("await clearGlobalWallpaper()");
+t("清除全局后回退默认", run("pickChatBgURL()") === "bg/chat_night.jpg");
+await runA("await warmGlobalWall(); await warmGlobalWall();");
+t("warmGlobalWall 幂等", run("getGlobalWallOpts()") === null);
+run("globalWallpaperEditor()");
+t("全局编辑器标题", /全局壁纸/.test(run("titleEl.innerHTML")));
+run("wallpaperEditor()");
+t("单聊编辑器标题不变", /聊天壁纸/.test(run("titleEl.innerHTML")) && !/全局/.test(run("titleEl.innerHTML")));
+
 console.log(`wallpaper: ${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);
 })().catch(e=>{ console.log("ERROR:", e.message); process.exit(1); });

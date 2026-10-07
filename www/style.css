@@ -1186,3 +1186,6 @@ body.chatmode.immersive #scenbar{ min-height:0; }
 
 /* ===== 产物页：状态徽章降调（人物名是主信息） ===== */
 .badge.stat{color:var(--ink-faint);border-color:var(--line);background:transparent}
+/* ===== 书封面 ===== */
+.bookcover{width:54px;height:72px;object-fit:cover;border-radius:6px;flex:none;
+  box-shadow:var(--shadow-s);border:1px solid var(--line-soft)}
