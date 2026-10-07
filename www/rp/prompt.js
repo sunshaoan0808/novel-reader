@@ -370,7 +370,7 @@ function buildMessages(card, ctx, budget){
   var memTasks = ctx.memTasks || "";
   if(memSeg && memTasks) memSeg += "\n" + memTasks;
   else if(memTasks) memSeg = memTasks;
-  add("memory", memSeg ? "【长期记忆】\n" + memSeg : "");
+  add("memory", memSeg ? "【长期记忆】\n" + memSeg + "\n(约束：引用记忆时只能用上面列出的内容，不得编造未提及的往事细节。)" : "");
   /* P0-3: 人物弧光段 (当前 timeline_stage, 无弧光卡为空) */
   add("arc", ctx.arc ? "【人物弧光】\n" + ctx.arc : "");
   add("speech", "【说话方式】\n" + renderFields(card, LAYERS.speech));
@@ -378,8 +378,8 @@ function buildMessages(card, ctx, budget){
   add("background", "【背景】\n" + renderFields(card, LAYERS.background) +
     (card.scenario ? "\n世界设定：" + String(card.scenario).trim() : "") + lorePlacedText(loreRes, "background"));
   var rel = pickRelations(ctx.relations, name);
-  add("relations", rel ? "【人物关系】\n" + rel : "");
-  add("lore", loreRes.text);
+  add("relations", rel ? "【人物关系】\n" + rel + "\n(约束：不得编造上面未列出的人物关系。)" : "");
+  add("lore", loreRes.text ? loreRes.text + "\n(约束：世界书只作为背景参考，不得编造书中未记载的设定细节。)" : "");
 
   perm.sort(function(a, b){ return a.pri - b.pri; });
   var sysParts = [], used = 0, dropped = [], segTokens = {};

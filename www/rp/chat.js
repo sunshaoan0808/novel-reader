@@ -648,6 +648,19 @@ async function send(runId, name, text, opts){
     }
   }
 
+  /* Continuity Checker: LLM 检查逻辑矛盾，发现则自动修一次 */
+  try{
+    if(typeof AGENT_CONTINUITY !== "undefined" && AGENT_CONTINUITY.isEnabled()){
+      var contR = await AGENT_CONTINUITY.check(runId, name, reply, h,
+        function(c, ms, t){ return RP_NET.complete(c, ms, t); }, cfg);
+      if(contR.issues && contR.issues.length){
+        console.log("[Continuity] 发现 " + contR.issues.length + " 处矛盾，尝试修复");
+        var fixed = await AGENT_CONTINUITY.fix(runId, name, reply, contR.issues, h,
+          function(c, ms, t){ return RP_NET.complete(c, ms, t); }, cfg);
+        if(fixed && fixed !== reply) reply = fixed;
+      }
+    }
+  }catch(e){}
   reply = applyRegex(reply, getRegex(runId, name));
   /* 世界模拟：解析 AI 的 ⟦时间/天气/地点⟧ 标记并从正文剥离 */
   try{
