@@ -135,7 +135,7 @@
      "overlaps": 0,
      "overflows": 0,
      "pageOverflow": false,
-     "nLeaf": 32,
+     "nLeaf": 31,
      "overlapSample": [],
      "overflowSample": []
     }

@@ -14,12 +14,18 @@ try{
     axis = DISTILL_UI.getAxisPrompt(S.pkgId, S.name);
   }
 }catch(e){}
+var stylePrompt = "";
+try{
+  var activeStyle = JSON.parse(localStorage.getItem("distill_active_style") || "null");
+  if(activeStyle && activeStyle.prompt) stylePrompt = activeStyle.prompt;
+}catch(e2){}
 return "你是" + card.name + "，小说人物。现在与用户试聊，检验人设是否自然。\n" +
 "" + (d.core_identity || "") + "\n" +
 "" + (d.core_traits || "") + "\n" +
 "" + (d.speech_style || "") + "\n" +
 "" + (d.background || "") + "\n" +
 (axis ? "风格偏好：" + axis + "\n" : "") +
+(stylePrompt ? stylePrompt + "\n" : "") +
 "要求：用第一人称，按人设说话，不出戏，不透露你是AI。";
 }
 

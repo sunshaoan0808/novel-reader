@@ -61,7 +61,7 @@ mainnav.querySelectorAll("button").forEach(b=>
 b.classList.toggle("active", b.dataset.nav===n));
 window.scrollTo(0,0);
 if(n==="product"){ tabs.classList.toggle("hidden",!RUN); RUN? setTab(TAB,true): showRuns();}
-else if(n==="tasks"){ tabs.classList.add("hidden"); showTasks();}
+else if(n==="tasks"){ setNav("distill"); }
 else if(n==="chat"){ tabs.classList.add("hidden"); (CHAT.name||CHAT.mode==="traverse"||CHAT.mode==="group") ? showChat() : showChatPicker(); }
 else if(n==="traverse"){ tabs.classList.add("hidden"); showTraverse(); }
 else if(n==="settings"){ tabs.classList.add("hidden"); showSettings();}

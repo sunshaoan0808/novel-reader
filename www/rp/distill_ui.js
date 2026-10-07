@@ -51,6 +51,20 @@ function render(){
   wire();
 }
 
+// 旧任务历史 (从任务 tab 迁移)
+function renderTaskHistory(){
+  var ts = [];
+  try{ ts = JSON.parse(localStorage.getItem("nd_tasks") || "[]"); }catch(e){}
+  if(!ts.length) return "";
+  return `<h2 class="sec">历史任务 (${ts.length})</h2>` +
+    ts.map(function(t){
+      return `<div class="card" style="padding:10px;margin-bottom:8px">
+        <div style="font-weight:600;font-size:13px">${esc(t.novel || t.id)}</div>
+        <div style="font-size:11px;color:var(--ink-faint)">${esc(t.created_at || "")} · ${esc(t.status || "排队中")}</div>
+      </div>`;
+    }).join("");
+}
+
 function renderUpload(){
   var pkgs = DISTILL_PACKAGE.listPackages();
   return `<div class="card">
@@ -66,6 +80,7 @@ function renderUpload(){
       <button class="btn primary" id="d_next0" disabled>下一步 →</button>
     </div>
   </div>
+  ${renderTaskHistory()}
   ${pkgs.length ? `<h2 class="sec">已有剧本包 (${pkgs.length})</h2>` +
     pkgs.map(function(p){
       return `<div class="card" style="padding:12px" onclick="DISTILL_UI.openPackage('${p.id}')">
@@ -540,6 +555,15 @@ async function onStartDistill(){
       })); }catch(e){}
     }catch(e){}
     prog("完成! 剧本包已生成", 100);
+    // 文风抽取 (后台，不阻塞)
+    try{
+      if(S.chunks && S.chunks.length && typeof DISTILL_STYLE !== "undefined"){
+        var samples = S.chunks.slice(0, 3).map(function(c){ return c.text; });
+        DISTILL_STYLE.extract(S.pkg.id, S.pkg.novel, samples, {}).then(function(card){
+          console.log("文风卡已生成:", card.name);
+        }).catch(function(e){ console.log("文风抽取跳过:", e.message); });
+      }
+    }catch(e){}
     setTimeout(function(){ S.step = 5; render(); }, 1500);
   }catch(e){
     S.running = false;
@@ -574,6 +598,7 @@ function openPackage(id){
     ${wbCount ? `<button class="btn" style="margin-bottom:12px" onclick="DISTILL_UI.showWorldbook('${id}')">📖 世界书 (${wbCount})</button>` : ""}
     <button class="btn" style="margin-bottom:12px;margin-left:8px" onclick="DISTILL_UI.runAudit('${id}')">🔍 审计员</button>
     <button class="btn" style="margin-bottom:12px;margin-left:8px" onclick="DISTILL_UI.runProbes('${id}')">🎭 人格探针</button>
+    <button class="btn" style="margin-bottom:12px;margin-left:8px" onclick="DISTILL_UI.showStyles()">✒️ 文风库</button>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
     ${cards.map(function(c){
       return `<div class="card" style="padding:12px" onclick="DISTILL_UI.openCharacter('${id}','${esc(c.name)}')">
@@ -998,6 +1023,64 @@ return {show: show, openPackage: openPackage, openCharacter: openCharacter, show
   requestChange: requestChange, confirmChange: confirmChange,
   editFact: editFact, saveFact: saveFact, deleteFact: deleteFact, addFact: addFact, recompileCard: recompileCard,
   showWorldbook: showWorldbook,
+  showStyles: function(){
+    var cards = DISTILL_STYLE.listCards();
+    var v = document.getElementById("view");
+    var html = `<h2 class="sec">✒️ 文风库 (${cards.length})</h2>
+      <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">调用文风 = 对应作家执笔，可续写/创作</div>`;
+    if(!cards.length){
+      html += `<div class="card"><div style="font-size:13px;color:var(--ink-faint)">暂无文风卡。蒸馏小说时会自动抽取。</div></div>`;
+    }
+    cards.forEach(function(c){
+      var total = Object.keys(c.sheet || {}).reduce(function(n, k){ return n + (c.sheet[k] || []).length; }, 0);
+      html += `<div class="card" style="margin-bottom:8px;padding:12px" onclick="DISTILL_UI.showStyleDetail('${c.id}')">
+        <div style="font-weight:600">${esc(c.name)}</div>
+        <div style="font-size:12px;color:var(--ink-faint)">${total} 条风格特征 · ${c.signature_lines.length} 句式</div>
+      </div>`;
+    });
+    html += `<button class="btn" onclick="DISTILL_UI.show()">返回</button>`;
+    v.innerHTML = html;
+  },
+  showStyleDetail: function(id){
+    var c = DISTILL_STYLE.getCard(id);
+    if(!c) return;
+    var v = document.getElementById("view");
+    var html = `<h2 class="sec">✒️ ${esc(c.name)}</h2>`;
+    Object.keys(DISTILL_STYLE.CATEGORIES).forEach(function(cat){
+      var items = (c.sheet[cat] || []);
+      if(!items.length) return;
+      html += `<div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:13px;margin-bottom:6px">${DISTILL_STYLE.CATEGORIES[cat]}</div>`;
+      items.forEach(function(it){
+        html += `<div style="font-size:13px;margin-bottom:4px">• ${esc(it.claim)}</div>`;
+        if(it.evidence) html += `<div style="font-size:12px;color:var(--ink-faint);margin-left:12px;margin-bottom:6px">例：${esc(it.evidence.slice(0, 80))}</div>`;
+      });
+      html += `</div>`;
+    });
+    if(c.signature_lines.length){
+      html += `<div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:13px;margin-bottom:6px">标志性句式</div>`;
+      c.signature_lines.forEach(function(l){
+        html += `<div style="font-size:13px;margin-bottom:4px">“${esc(l.slice(0, 100))}”</div>`;
+      });
+      html += `</div>`;
+    }
+    html += `<div class="btnrow" style="margin-top:12px">
+      <button class="btn" onclick="DISTILL_UI.showStyles()">← 返回</button>
+      <button class="btn" style="color:#e74c3c" onclick="if(confirm('删除？')){DISTILL_STYLE.deleteCard('${id}');DISTILL_UI.showStyles();}">删除</button>
+      <button class="btn primary" onclick="DISTILL_UI.useStyle('${id}')">✍️ 用此文风续写</button>
+    </div>`;
+    v.innerHTML = html;
+  },
+  useStyle: function(id){
+    var c = DISTILL_STYLE.getCard(id);
+    if(!c) return;
+    var prompt = DISTILL_STYLE.toPrompt(c);
+    var text = prompt("续写内容（会按【" + c.name + "】文风生成）：", "");
+    if(!text) return;
+    // 存待用，下次聊天/写卡时注入
+    try{ localStorage.setItem("distill_active_style", JSON.stringify({id: id, prompt: prompt})); }catch(e){}
+    alert("已选用【" + c.name + "】文风，将在下次生成时应用");
+    DISTILL_UI.showStyles();
+  },
   dynamicGreeting: async function(pkgId, name){
     var stage = prompt("当前阶段？(early/mid/late，可空)", "");
     var text = await DISTILL_OPENINGS.generateDynamic(pkgId, name, {stage: stage || undefined});
