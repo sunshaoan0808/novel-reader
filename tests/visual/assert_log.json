@@ -3,72 +3,141 @@
  "results": [
   {
    "name": "ctxbar-no-stray",
-   "ok": false,
+   "ok": true,
    "detail": {
-    "error": "page JS error: ReferenceError: renderCtxBar is not defined\n    at <anonymous>:5:7\n    at <anonymous>:18:7"
+    "low": {
+     "tail0": false,
+     "hasNaN": false,
+     "tail": "触发：大观园</div>"
+    },
+    "high": {
+     "tail0": false,
+     "hasNaN": false,
+     "hasWarn": true,
+     "tail": "会一直保留。</div>"
+    }
    }
   },
   {
    "name": "scroll-no-jitter",
-   "ok": false,
+   "ok": true,
    "detail": {
-    "error": "'twRan'"
+    "s0": 0,
+    "s1": 0,
+    "s2": 60,
+    "s3": 60,
+    "lastAI": 17,
+    "twRan": true,
+    "twDrift": 0,
+    "streamDrift": 0
    }
   },
   {
    "name": "scroll-hidebars",
-   "ok": false,
+   "ok": true,
    "detail": {
-    "error": "'cleanStart'"
+    "preHidden": false,
+    "cleanStart": true,
+    "maxST": 2104,
+    "immediate": true,
+    "distAfter20": 20,
+    "trace": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ],
+    "noFlickerSlow": true,
+    "hidden": true,
+    "scenGone": true,
+    "simGone": true,
+    "h0": 328,
+    "h1": 624,
+    "grown": true,
+    "barTop": 797,
+    "winH": 800,
+    "barGone": true,
+    "flick": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     true
+    ],
+    "noFlickerTop": true,
+    "stillHidden": true,
+    "shown": true,
+    "shownGeo": true,
+    "scenBack": true,
+    "simBack": true,
+    "distEnd": 0
    }
   },
   {
    "name": "immersive-bg",
-   "ok": false,
+   "ok": true,
    "detail": {
-    "bgExists": false,
-    "layerExists": false,
-    "shadeExists": false,
-    "full": false,
-    "bubbleBlur": "",
-    "headBlur": "",
-    "anim": "",
+    "bgExists": true,
+    "layerExists": true,
+    "shadeExists": true,
+    "full": true,
+    "bubbleBlur": "blur(10px)",
+    "headBlur": "blur(14px)",
+    "anim": "chatbreathe",
     "reduced": false
    }
   },
   {
    "name": "bars-follow-bg",
-   "ok": false,
+   "ok": true,
    "detail": {
-    "error": "'ready'"
+    "ready": true,
+    "headBg": "rgba(242, 184, 198, 0.58)",
+    "simBg": "rgba(242, 184, 198, 0.94)",
+    "barBg": "rgba(242, 184, 198, 0.78)",
+    "light": true,
+    "cnameColor": "rgb(42, 32, 19)"
    }
   },
   {
    "name": "bars-transition",
-   "ok": false,
+   "ok": true,
    "detail": {
-    "head": "missing",
-    "sim": "missing",
-    "bar": "missing"
+    "head": "transform 0.3s",
+    "sim": "transform 0.3s",
+    "bar": "transform 0.3s"
    }
   },
   {
    "name": "layout-no-overlap",
-   "ok": false,
+   "ok": true,
    "detail": {
     "chat": {
      "overlaps": 0,
      "overflows": 0,
      "pageOverflow": false,
-     "nLeaf": 8,
+     "nLeaf": 116,
      "overlapSample": [],
      "overflowSample": []
     },
     "settings": {
-     "renderError": "page JS error: ReferenceError: showSettings is not defined\n    at <anonymous>:1:14\n    at <anonymous>:1:45"
+     "overlaps": 0,
+     "overflows": 0,
+     "pageOverflow": false,
+     "nLeaf": 178,
+     "overlapSample": [],
+     "overflowSample": []
     },
     "traverse": {
-     "renderError": "page JS error: ReferenceError: showTraverse is not defined\n    at <anonymous>:1:14\n    at <anonymous>:1:45"
+     "overlaps": 0,
+     "overflows": 0,
+     "pageOverflow": false,
+     "nLeaf": 45,
+     "overlapSample": [],
+     "overflowSample": []
     }
    }
   }

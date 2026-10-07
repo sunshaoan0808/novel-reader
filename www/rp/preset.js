@@ -89,6 +89,35 @@ function parseFile(json, fallbackName){
     });
   });
   if(!prompts.length) return {ok: false, err: "empty"};
+  /* ST 的 prompt_order 才是实际生效的配置（按角色覆盖启用状态和排序）。
+   * 忽略它会导致多启用几十条、prompt 体积失控。取第一条 prompt_order
+   * （导入的预设通常只有一条模板），按它的 enabled 和顺序重排。 */
+  try{
+    var po = d.prompt_order;
+    if(Array.isArray(po) && po.length && Array.isArray(po[0].order) && po[0].order.length){
+      var orderMap = {}, orderIdx = {};
+      po[0].order.forEach(function(o, i){
+        if(!o || !o.identifier) return;
+        orderMap[o.identifier] = (o.enabled !== false);
+        orderIdx[o.identifier] = i;
+      });
+      var hasAny = prompts.some(function(p){ return p.identifier in orderMap; });
+      /* 只有 prompt_order 覆盖了大部分条目时才采用；残缺的 order（比如只含
+       * 十几条）是导出时的角色残留，不能覆盖全局启用状态。 */
+      var coverCount = prompts.filter(function(p){ return p.identifier in orderMap; }).length;
+      if(hasAny && coverCount >= prompts.length * 0.8){
+        prompts.forEach(function(p){
+          if(p.identifier in orderMap) p.enabled = orderMap[p.identifier];
+        });
+        prompts.sort(function(a, b){
+          var ia = (a.identifier in orderIdx) ? orderIdx[a.identifier] : 1e9;
+          var ib = (b.identifier in orderIdx) ? orderIdx[b.identifier] : 1e9;
+          return ia - ib;
+        });
+        prompts.forEach(function(p, i){ p.pos = i; });
+      }
+    }
+  }catch(e){}
   var params = {};
   if(d.temperature != null && isFinite(+d.temperature)) params.temperature = +d.temperature;
   if(d.top_p != null && isFinite(+d.top_p)) params.top_p = +d.top_p;
