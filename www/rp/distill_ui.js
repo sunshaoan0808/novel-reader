@@ -565,6 +565,7 @@ function openCharacter(pkgId, name, stage){
     </div>` : ""}
     <div class="btnrow" style="margin-top:12px">
       <button class="btn" onclick="DISTILL_UI.show()">← 返回</button>
+      <button class="btn" onclick="DISTILL_UI.requestChange('${pkgId}','${esc(name)}')">✏️ 改动</button>
       <button class="btn primary" onclick="chatWith('${esc(name)}')">开聊</button>
     </div>`;
 }
@@ -591,5 +592,77 @@ function showProvenance(pkgId, name){
     <button class="btn" onclick="DISTILL_UI.openCharacter('${pkgId}','${esc(name || "")}')">← 返回</button>`;
 }
 
-return {show: show, openPackage: openPackage, openCharacter: openCharacter, showProvenance: showProvenance};
+// 改动单 UI
+var _pendingChange = null;
+
+async function requestChange(pkgId, name){
+  var v = document.getElementById("view");
+  v.innerHTML = `<h2 class="sec">✏️ 申请改动 · ${esc(name)}</h2>
+    <div class="card">
+      <div style="font-size:13px;margin-bottom:8px">一句话描述你想怎么改：</div>
+      <textarea id="d_change_req" rows="3" style="width:100%;font-size:14px;padding:8px;border:1px solid var(--line);border-radius:6px" placeholder="例如：把她改得更活泼一点，少一点忧郁"></textarea>
+      <div class="btnrow" style="margin-top:12px">
+        <button class="btn" onclick="DISTILL_UI.openCharacter('${pkgId}','${esc(name)}')">取消</button>
+        <button class="btn primary" id="d_change_go">分析影响 →</button>
+      </div>
+      <div id="d_change_msg" style="font-size:12px;margin-top:8px;color:var(--ink-faint)"></div>
+    </div>`;
+  document.getElementById("d_change_go").onclick = async function(){
+    var req = document.getElementById("d_change_req").value.trim();
+    if(!req){ alert("请先描述改动"); return; }
+    var msg = document.getElementById("d_change_msg");
+    msg.textContent = "AI 分析中...";
+    try{
+      var result = await DISTILL_CHANGE.proposeChange(pkgId, name, req, function(m){ msg.textContent = m; });
+      _pendingChange = {pkgId: pkgId, name: name, result: result};
+      showChangeImpacts();
+    }catch(e){
+      msg.textContent = "失败: " + e.message;
+    }
+  };
+}
+
+function showChangeImpacts(){
+  var p = _pendingChange;
+  if(!p) return;
+  var v = document.getElementById("view");
+  var r = p.result;
+  v.innerHTML = `<h2 class="sec">改动影响清单 · ${esc(p.name)}</h2>
+    <div class="card" style="margin-bottom:12px">
+      <div style="font-size:13px;margin-bottom:8px">${esc(r.summary)}</div>
+      <div style="font-size:12px;color:var(--ink-faint)">将修改 ${r.impacts.length} 个字段：</div>
+    </div>
+    ${r.impacts.map(function(im, i){
+      return `<div class="card" style="margin-bottom:8px;padding:10px">
+        <div style="font-weight:600;font-size:13px;margin-bottom:4px">${esc(im.label)}</div>
+        <div style="font-size:11px;color:var(--ink-faint);margin-bottom:4px">💡 ${esc(im.reason)}</div>
+        <div style="font-size:12px;background:var(--line);border-radius:4px;padding:6px;margin-bottom:4px;max-height:80px;overflow-y:auto">
+          <span style="color:var(--ink-faint)">原:</span> ${esc(im.old_value.slice(0, 200))}${im.old_value.length > 200 ? "..." : ""}
+        </div>
+        <div style="font-size:12px;background:rgba(240,173,78,.1);border-radius:4px;padding:6px;max-height:80px;overflow-y:auto">
+          <span style="color:#f0ad4e">新:</span> ${esc(im.new_value.slice(0, 200))}${im.new_value.length > 200 ? "..." : ""}
+        </div>
+      </div>`;
+    }).join("")}
+    <div class="btnrow" style="margin-top:12px">
+      <button class="btn" onclick="DISTILL_UI.openCharacter('${p.pkgId}','${esc(p.name)}')">取消</button>
+      <button class="btn primary" onclick="DISTILL_UI.confirmChange()">确认改动</button>
+    </div>
+    <div style="font-size:11px;color:var(--ink-faint);margin-top:8px">改动将标记为 [inference] 来源</div>`;
+}
+
+function confirmChange(){
+  var p = _pendingChange;
+  if(!p) return;
+  try{
+    DISTILL_CHANGE.applyChange(p.pkgId, p.name, p.result.impacts);
+    _pendingChange = null;
+    openCharacter(p.pkgId, p.name);
+  }catch(e){
+    alert("应用失败: " + e.message);
+  }
+}
+
+return {show: show, openPackage: openPackage, openCharacter: openCharacter, showProvenance: showProvenance,
+  requestChange: requestChange, confirmChange: confirmChange};
 })();
