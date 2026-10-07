@@ -106,6 +106,49 @@ const sys2 = run(ctx, `RP_PROMPT.buildMessages(
 ).messages.filter(function(m){return m.role==="system";}).map(function(m){return m.content;}).join("\\n")`);
 t("无纠错不注入", sys2.indexOf("OOC 纠错") < 0);
 
+/* ---- 5. 世界卡 tab ---- */
+run(ctx, pickFn("esc"));
+run(ctx, `var _wcCache = {}, _wcData = null, view = document.getElementById("view"),
+  RUN = {run_id: "wctest", novel: "测试小说"}, TAB = "world";`);
+run(ctx, `window.__WORLDCARD_wctest = {
+  name: "测试小说（小说世界）", novelMaterialStatus: "partial",
+  worldBookEntries: [
+    {uid:"wb-00001", comment:"世界概览", content:"江湖与朝廷对立。", entryType:"setting",
+     key:["测试"], constant:false, order:80, position:"before_char", novelProvenance:{}},
+    {uid:"wb-00002", comment:"次要人物", content:"店小二C（出场ch001）", entryType:"npcs",
+     key:["店小二C"], constant:false, order:60, position:"before_char", novelProvenance:{}},
+    {uid:"wb-00003", comment:"世界规则", content:"上山规矩：投名状方可入伙", entryType:"rules",
+     key:["上山"], constant:false, order:50, position:"before_char", novelProvenance:{}}
+  ],
+  directorDefinitions: [{
+    id:"d1", title:"测试小说剧情因果蓝图", coreConflict:"上山之争——被逼上山",
+    anchors:["上山之争"],
+    stages:[{id:"stage-00", title:"开端", description:"主角出场。",
+              nodeIds:["event-e0"], completion:false}],
+    nodes:[{id:"event-e0", stageId:"stage-00", title:"主角A上山", intent:"主角A上山。",
+            actorIds:["actor-主角A"], execution:"background", conditions:[],
+            dependsOn:[], constraints:[], sourceRefs:["ch001"]}],
+    characters:[{id:"actor-主角A", name:"主角A", aliases:["A哥"]}],
+    coverage:{complete:false, gaps:["缺口示例"]}, schemaVersion:1
+  }],
+  modules: []
+};`);
+run(ctx, pickFn("showWorldcard") + "\n" + pickFn("wcSearch"));
+run(ctx, `showWorldcard();`);
+const wcHtml = run(ctx, `view.innerHTML`);
+t("世界卡渲染", wcHtml.indexOf("测试小说（小说世界）") >= 0);
+t("世界卡核心冲突", wcHtml.indexOf("上山之争") >= 0);
+t("世界卡导演分幕", wcHtml.indexOf("开端") >= 0);
+t("世界卡缺口声明", wcHtml.indexOf("缺口示例") >= 0);
+t("世界卡检索框", wcHtml.indexOf('id="wc-q"') >= 0);
+t("世界卡NPC", wcHtml.indexOf("店小二C") >= 0);
+run(ctx, `document.getElementById("wc-q").value = "店小二"; wcSearch();`);
+const wcRes = run(ctx, `document.getElementById("wc-res").innerHTML`);
+t("世界卡检索命中", wcRes.indexOf("店小二C") >= 0);
+run(ctx, `document.getElementById("wc-q").value = "不存在xyz"; wcSearch();`);
+const wcRes2 = run(ctx, `document.getElementById("wc-res").innerHTML`);
+t("世界卡检索无匹配", wcRes2.indexOf("无匹配") >= 0);
+
 console.log("\\n" + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);
 })().catch(e=>{ console.error("ERROR", e); process.exit(1); });

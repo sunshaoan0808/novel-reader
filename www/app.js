@@ -98,7 +98,7 @@ view.innerHTML = INDEX.map(r=>`
 <div style="margin-top:8px">
 ${r.characters.map(c=>`<span class="badge">${esc(c)}</span>`).join("")}
 ${r.scope?`<span class="badge warn">范围蒸馏</span>`:""}
-${r.has_plot?`<span class="badge">有剧情层</span>`:""}
+${r.has_plot?`<span class="badge">有剧情层</span>`:""}${r.has_worldcard?`<span class="badge">有世界卡</span>`:""}
 </div>
 </div>`).join("") || `<div class="empty">暂无任务</div>`;
 }
@@ -121,6 +121,7 @@ if(t==="chars") showChars();
 else if(t==="outline") showOutline();
 else if(t==="relations") showRelations();
 else if(t==="storyline") showStoryline();
+else if(t==="world") showWorldcard();
 else showMore();
 }
 tabs.querySelectorAll("button").forEach(b=>
@@ -387,6 +388,78 @@ function showStoryline(){
   s.onload = function(){ var dag = window[gk] || null; _dagCache[runId] = dag; if(TAB === "storyline") render(dag); };
   s.onerror = function(){ if(TAB === "storyline") render(null); };
   document.head.appendChild(s);
+}
+
+/* 2026-10-07: 世界卡 (蒸馏管线 worldcard.json)。
+ * 懒加载 www/data/worldcard_<run_id>.js, 渲染世界概览/导演蓝图/世界书检索/次要人物/道具。 */
+let _wcCache = {};
+let _wcData = null;
+function showWorldcard(){
+  const runId = RUN.run_id;
+  _wcData = null;
+  view.innerHTML = `<div class="empty">世界卡加载中…</div>`;
+  const typeName = {setting:"世界概览",lore:"世界暗线",npcs:"次要人物",factions:"阵营",items:"道具",rules:"世界规则",economy:"经济",culture:"文化"};
+  const render = (wc)=>{
+    if(!wc || !wc.worldBookEntries){
+      view.innerHTML = `<div class="empty">暂无世界卡数据<br><span style="font-size:12px;color:var(--muted,#888)">管线执行 worldcard 阶段后自动出现</span></div>`; return;
+    }
+    _wcData = wc;
+    const entries = wc.worldBookEntries;
+    const dd = (wc.directorDefinitions||[])[0] || {};
+    const stages = dd.stages||[], nodes = dd.nodes||[], actors = dd.characters||[];
+    const gaps = (dd.coverage||{}).gaps||[];
+    const types = {};
+    entries.forEach(e=>{ (types[e.entryType]=types[e.entryType]||[]).push(e); });
+    const head = `<div class="card"><div class="kvline"><b>${esc(wc.name||"世界卡")}</b> `
+      + `<span class="badge">${wc.novelMaterialStatus==="complete"?"完整":"部分"}</span></div>`
+      + `<div class="kvline">世界书 ${entries.length} 条 · 导演 ${stages.length} 幕 / ${nodes.length} 节点 / ${actors.length} 演员</div>`
+      + (gaps.length?`<div class="kvline" style="color:var(--muted,#888);font-size:12px">缺口：${esc(gaps.slice(0,3).join("；"))}${gaps.length>3?"…":""}</div>`:"")
+      + `</div>`;
+    const conflict = dd.coreConflict
+      ? `<h2 class="sec">核心冲突</h2><div class="card"><div class="st">${esc(dd.coreConflict)}</div>`
+        + ((dd.anchors||[]).length?`<div class="wb-keys">${dd.anchors.map(a=>`<span class="badge">${esc(a)}</span>`).join("")}</div>`:"") + `</div>`
+      : "";
+    const stageHtml = stages.length ? `<h2 class="sec">导演分幕 · ${stages.length}</h2>` + stages.slice(0,40).map(s=>{
+      const ns = nodes.filter(n=>n.stageId===s.id);
+      return `<details class="card"><summary><b>${esc(s.title)}</b> <span class="badge">${ns.length} 节点</span></summary>`
+        + (s.description?`<div class="st" style="margin:6px 0">${esc(s.description)}</div>`:"")
+        + ns.slice(0,30).map(n=>`<div class="sec-item"><div class="t">${esc(n.title||"")}${n.execution==="foreground"?' <span class="badge">前台</span>':""}</div><div class="r">${esc((n.intent||"").slice(0,60))}</div></div>`).join("")
+        + (ns.length>30?`<div class="r">…还有 ${ns.length-30} 个节点</div>`:"") + `</details>`;
+    }).join("") : "";
+    const search = `<h2 class="sec">世界书检索</h2><div class="card">`
+      + `<div class="searchwrap"><input id="wc-q" placeholder="搜世界书…（如：伏魔殿）" oninput="wcSearch()"></div>`
+      + `<div class="wb-keys">` + Object.keys(types).map(k=>`<span class="badge">${esc(typeName[k]||k)} ${types[k].length}</span>`).join("") + `</div>`
+      + `<div id="wc-res" style="margin-top:8px"></div></div>`;
+    const npcList = types.npcs||[];
+    const npcHtml = npcList.length ? `<h2 class="sec">次要人物 · ${npcList.length}</h2>`
+      + npcList.slice(0,60).map(e=>`<div class="rel"><div class="pair">${esc((e.key||[])[0]||"")}</div><div class="st">${esc(e.content||"").replace(/\n/g,"<br>")}</div></div>`).join("")
+      + (npcList.length>60?`<div class="empty">…还有 ${npcList.length-60} 人，用上方检索查找</div>`:"") : "";
+    const itemList = types.items||[];
+    const itemHtml = itemList.length ? `<h2 class="sec">道具 · ${itemList.length}</h2>`
+      + itemList.map(e=>`<div class="sec-item"><div class="t">${esc(e.content||"")}</div></div>`).join("") : "";
+    view.innerHTML = head + conflict + stageHtml + search + npcHtml + itemHtml;
+    window.scrollTo(0,0);
+  };
+  if(_wcCache[runId]){ render(_wcCache[runId]); return; }
+  /* file:// 下 fetch 不可用, 用 script 标签动态加载 (export 写 window.__WORLDCARD_<run_id>) */
+  var gk = "__WORLDCARD_" + runId;
+  if(window[gk]){ _wcCache[runId] = window[gk]; render(window[gk]); return; }
+  var s = document.createElement("script");
+  s.src = "data/worldcard_" + encodeURIComponent(runId) + ".js";
+  s.onload = function(){ var wc = window[gk] || null; _wcCache[runId] = wc; if(TAB === "world") render(wc); };
+  s.onerror = function(){ if(TAB === "world") render(null); };
+  document.head.appendChild(s);
+}
+function wcSearch(){
+  const qEl = document.getElementById("wc-q"), box = document.getElementById("wc-res");
+  if(!box || !_wcData) return;
+  const kw = ((qEl&&qEl.value)||"").trim();
+  if(!kw){ box.innerHTML = ""; return; }
+  const hits = _wcData.worldBookEntries.filter(e=>
+    (e.content||"").indexOf(kw)>=0 || (e.comment||"").indexOf(kw)>=0 ||
+    (e.key||[]).join(" ").indexOf(kw)>=0).slice(0,50);
+  box.innerHTML = hits.map(e=>`<div class="rel"><div class="pair">${esc(e.comment||"")} <span class="badge">${esc(e.entryType||"")}</span></div><div class="st">${esc((e.content||"").slice(0,200))}</div></div>`).join("")
+    || `<div class="empty">无匹配</div>`;
 }
 
 function showMore(){

@@ -17,7 +17,8 @@
   "n_chunks": 224,
   "n_profiles": 10,
   "has_plot": true,
-  "scope": null
+  "scope": null,
+  "has_worldcard": true
  },
  {
   "run_id": "honglou_head10",
@@ -51,6 +52,7 @@
   "n_chunks": 220,
   "n_profiles": 10,
   "has_plot": true,
-  "scope": null
+  "scope": null,
+  "has_worldcard": true
  }
 ]
