@@ -68,30 +68,35 @@ function validateCitations(index, validChunkIds){
 }
 
 // 引用内容真实性校验 (dama-cyber 镜像翻转: 他的"防抄袭审计" → 我们的"引用真实性校验")
-// 对每条有 chunk_id 的事实，取 16 字滑窗在对应 chunk 原文里找
-// 找不到 = "无锚定引用" (引用了不存在的原文)
+// 档案是转述不是原文摘录，所以用关键词模式而非精确16字匹配：
+// 提取事实中的关键2字词，检查是否在对应 chunk 出现
+// 关键词全都不在 = "无锚定引用"
 // chunks: [{id, text}]
 // 返回: [{fact, reason}]
 function verifyCitationContent(index, chunks){
   var chunkMap = {};
   (chunks || []).forEach(function(c){ chunkMap[c.id] = c.text || ""; });
   var bad = [];
+  function norm(s){ return (s || "").replace(/[\s\p{P}]/gu, ""); }
+  // 停用词
+  var STOP = "的了着过和与在是有一不也都就才很更最这那哪什么怎么为什么可以应该能够需要进行成为作为以及或者但而因为所以如果虽然尽管";
   index.facts.forEach(function(f){
     if(!f.chunk_id || !chunkMap[f.chunk_id]) return;
     if(f.source === "unknown" || f.source === "inference") return; // 推断类不校验
-    var text = chunkMap[f.chunk_id];
-    // 取事实值的前16个有效字符做滑窗 (去标点)
-    function norm(s){ return (s || "").replace(/[\s\p{P}]/gu, ""); }
+    var normText = norm(chunkMap[f.chunk_id]);
     var val = norm(f.value);
-    if(val.length < 8) return; // 太短跳过
-    var window = val.slice(0, 16);
-    // 在 chunk 里找 (同样去标点)
-    var normText = norm(text);
-    if(normText.indexOf(window) < 0){
-      // 试第二窗 (8-24)
-      var window2 = val.slice(8, 24);
-      if(window2.length >= 8 && normText.indexOf(window2) >= 0) return;
-      bad.push({fact: f, reason: "16字滑窗未在原文找到匹配"});
+    if(val.length < 4) return;
+    // 提取2字关键词 (去停用)
+    var keywords = [];
+    for(var i = 0; i < val.length - 1; i++){
+      var w = val.slice(i, i + 2);
+      if(STOP.indexOf(w) < 0) keywords.push(w);
+    }
+    if(!keywords.length) return;
+    // 至少30%关键词命中才算有锚定
+    var hits = keywords.filter(function(w){ return normText.indexOf(w) >= 0; });
+    if(hits.length / keywords.length < 0.3){
+      bad.push({fact: f, reason: "关键词在原文命中率仅 " + Math.round(hits.length / keywords.length * 100) + "%"});
     }
   });
   return bad;
