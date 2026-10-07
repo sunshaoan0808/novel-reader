@@ -117,10 +117,11 @@ function enrichSourceLocation(index, chunks){
     // 找事实关键词在原文的位置
     var val = norm(f.value);
     var pos = -1, excerpt = "";
-    // 试8字滑窗找位置
-    for(var len = 16; len >= 8; len -= 4){
-      for(var s = 0; s <= val.length - len; s++){
+    // 试滑窗找位置 (16→4字)
+    for(var len = 16; len >= 4; len -= 4){
+      for(var s = 0; s <= val.length - len; s += 2){
         var w = val.slice(s, s + len);
+        if(w.length < 4) continue;
         var p = normText.indexOf(w);
         if(p >= 0){ pos = p; excerpt = w; break; }
       }
