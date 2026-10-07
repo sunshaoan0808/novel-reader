@@ -27,7 +27,12 @@ async function summarizeChunks(chunks, characters, aliasMap, opts){
       var obj = m ? JSON.parse(m[0]) : {events: [], turning_points: [], hooks: []};
       var summary = {chunk_id: ch.id, title: ch.title, events: obj.events || [],
                      turning_points: obj.turning_points || [], hooks: obj.hooks || []};
-      summary.hooks.forEach(function(h){ h.setup_chunk = ch.id; });
+      // 兼容 LLM 返回字符串数组的情况
+      summary.hooks = summary.hooks.map(function(h){
+        if(typeof h === "string") return {hook: h, setup_chunk: ch.id};
+        h.setup_chunk = ch.id;
+        return h;
+      });
       summaries.push(summary);
       checkpoint["sum_" + ch.id] = {summary: summary};
       if(opts.onCheckpoint) opts.onCheckpoint(checkpoint);
