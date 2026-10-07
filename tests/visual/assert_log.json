@@ -119,7 +119,7 @@
      "overlaps": 0,
      "overflows": 0,
      "pageOverflow": false,
-     "nLeaf": 109,
+     "nLeaf": 114,
      "overlapSample": [],
      "overflowSample": []
     },
@@ -127,7 +127,7 @@
      "overlaps": 0,
      "overflows": 0,
      "pageOverflow": false,
-     "nLeaf": 156,
+     "nLeaf": 161,
      "overlapSample": [],
      "overflowSample": []
     },
@@ -135,7 +135,7 @@
      "overlaps": 0,
      "overflows": 0,
      "pageOverflow": false,
-     "nLeaf": 27,
+     "nLeaf": 32,
      "overlapSample": [],
      "overflowSample": []
     }

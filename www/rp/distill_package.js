@@ -141,6 +141,10 @@ function exportPackage(id){
   pkg.characters.forEach(function(c){
     out.characters[c.name] = getCharacterCard(id, c.name);
   });
+  // T1: 标记已备份
+  try{
+    if(typeof DISTILL_BACKUP !== "undefined") DISTILL_BACKUP.markBackedUp(id);
+  }catch(e){}
   return out;
 }
 

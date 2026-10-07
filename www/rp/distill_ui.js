@@ -34,7 +34,13 @@ function stepDots(){
 
 function render(){
   var v = document.getElementById("view");
-  var html = `<h2 class="sec">手机蒸馏</h2>` + stepDots();
+  var banner = "";
+  try{
+    if(typeof DISTILL_BACKUP !== "undefined" && S.step === 0 && DISTILL_BACKUP.shouldShow()){
+      banner = DISTILL_BACKUP.renderBanner();
+    }
+  }catch(e){}
+  var html = `<h2 class="sec">手机蒸馏</h2>` + stepDots() + banner;
   if(S.step === 0) html += renderUpload();
   else if(S.step === 1) html += renderDiscover();
   else if(S.step === 2) html += renderConfig();
@@ -656,6 +662,24 @@ function openCharacter(pkgId, name, stage){
         <button class="btn" style="margin-top:8px" onclick="DISTILL_UI.regenOpenings('${pkgId}','${esc(name)}')">🔄 重新生成</button>
       </div>`;
     }()}
+    <div class="card" style="margin-top:12px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px">🎚️ 性格微调 (Tavo)</div>
+      ${["rigor", "breadth", "style"].map(function(axis){
+        var labels = {rigor: ["严谨", "想象"], breadth: ["单一", "多面"], style: ["固定", "多变"]};
+        var val = 50;
+        try{
+          var prefs = JSON.parse(localStorage.getItem("distill_axis_" + pkgId + "_" + name) || "{}");
+          val = prefs[axis] != null ? prefs[axis] : 50;
+        }catch(e){}
+        return `<div style="margin-bottom:8px">
+          <div style="font-size:12px;display:flex;justify-content:space-between">
+            <span>${labels[axis][0]}</span><span>${labels[axis][1]}</span>
+          </div>
+          <input type="range" min="0" max="100" value="${val}" data-axis="${axis}" data-pkg="${pkgId}" data-name="${esc(name)}"
+            onchange="DISTILL_UI.setAxis(this)" style="width:100%">
+        </div>`;
+      }).join("")}
+    </div>
     <div class="btnrow" style="margin-top:12px">
       <button class="btn" onclick="DISTILL_UI.show()">← 返回</button>
       <button class="btn" onclick="DISTILL_UI.requestChange('${pkgId}','${esc(name)}')">✏️ 改动</button>
@@ -964,6 +988,33 @@ return {show: show, openPackage: openPackage, openCharacter: openCharacter, show
   requestChange: requestChange, confirmChange: confirmChange,
   editFact: editFact, saveFact: saveFact, deleteFact: deleteFact, addFact: addFact, recompileCard: recompileCard,
   showWorldbook: showWorldbook,
+  setAxis: function(el){
+    var pkgId = el.getAttribute("data-pkg");
+    var name = el.getAttribute("data-name");
+    var axis = el.getAttribute("data-axis");
+    var val = parseInt(el.value);
+    try{
+      var prefs = JSON.parse(localStorage.getItem("distill_axis_" + pkgId + "_" + name) || "{}");
+      prefs[axis] = val;
+      localStorage.setItem("distill_axis_" + pkgId + "_" + name, JSON.stringify(prefs));
+    }catch(e){}
+  },
+  getAxisPrompt: function(pkgId, name){
+    // 返回三轴对应的 prompt 补充
+    var prefs = {};
+    try{ prefs = JSON.parse(localStorage.getItem("distill_axis_" + pkgId + "_" + name) || "{}"); }catch(e){}
+    var parts = [];
+    var rigor = prefs.rigor != null ? prefs.rigor : 50;
+    var breadth = prefs.breadth != null ? prefs.breadth : 50;
+    var style = prefs.style != null ? prefs.style : 50;
+    if(rigor < 30) parts.push("回答严谨克制，少发散");
+    else if(rigor > 70) parts.push("回答富有想象力，可适当发散");
+    if(breadth < 30) parts.push("性格表现单一集中");
+    else if(breadth > 70) parts.push("性格表现多面立体");
+    if(style < 30) parts.push("对话风格固定一致");
+    else if(style > 70) parts.push("对话风格灵活多变");
+    return parts.join("；");
+  },
   runProbes: async function(id){
     var cards = DISTILL_PACKAGE.listCharacterCards(id);
     if(!cards.length){ alert("没有角色卡"); return; }

@@ -8,11 +8,18 @@ var S = {pkgId: null, name: null, turns: [], maxTurns: 3};
 
 function buildPrompt(card){
 var d = card._distill || {};
+var axis = "";
+try{
+  if(typeof DISTILL_UI !== "undefined" && DISTILL_UI.getAxisPrompt){
+    axis = DISTILL_UI.getAxisPrompt(S.pkgId, S.name);
+  }
+}catch(e){}
 return "你是" + card.name + "，小说人物。现在与用户试聊，检验人设是否自然。\n" +
 "" + (d.core_identity || "") + "\n" +
 "" + (d.core_traits || "") + "\n" +
 "" + (d.speech_style || "") + "\n" +
 "" + (d.background || "") + "\n" +
+(axis ? "风格偏好：" + axis + "\n" : "") +
 "要求：用第一人称，按人设说话，不出戏，不透露你是AI。";
 }
 
@@ -28,7 +35,8 @@ v.innerHTML = `
 <div id="pgLog" style="min-height:200px;max-height:400px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:12px"></div>
 <div style="display:flex;gap:8px">
 <input id="pgInput" placeholder="说点什么..." style="flex:1;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg)">
-<button class="btn primary" onclick="DISTILL_PLAYGROUND.send()">发送</button>
+<button class="btn" onclick="DISTILL_MACRO.show(S.pkgId,'pgInput')">宏</button>
+      <button class="btn primary" onclick="DISTILL_PLAYGROUND.send()">发送</button>
 </div>
 <div class="btnrow" style="margin-top:12px">
 <button class="btn" onclick="DISTILL_UI.openCharacter('${pkgId}','${esc(name)}')">← 返回</button>
