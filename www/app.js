@@ -2890,8 +2890,26 @@ function renderSimBar(){
   /* 导演标识：只显示风格，不剧透具体指令 */
   var dirChip = "";
   try{ if(typeof RP_DIRECTOR!=="undefined") dirChip = RP_DIRECTOR.briefHTML(simChatKey()); }catch(e){}
-  bar.innerHTML = RP_WORLDSIM.briefHTML(simChatKey(), simHint()) + dirChip + `<span class="simgo">›</span>`;
+  /* 方向二：画像动态检索命中可见（点开展示本轮命中字段） */
+  var portChip = "";
+  try{
+    const _lp = window.__lastPortrait;
+    if(_lp && _lp.hits && _lp.hits.length && typeof RP_PORTRAIT!=="undefined")
+      portChip = `<span class="simchip" onclick="event.stopPropagation();portraitDebug()" title="本轮画像动态检索命中字段">🎭 画像·${_lp.hits.length}</span>`;
+  }catch(e){}
+  bar.innerHTML = RP_WORLDSIM.briefHTML(simChatKey(), simHint()) + dirChip + portChip + `<span class="simgo">›</span>`;
 }
+/* 画像命中调试弹窗（renderSimBar 的 simchip 入口） */
+window.portraitDebug = ()=>{
+  const bar = document.getElementById("simbar"); if(!bar || typeof RP_PORTRAIT==="undefined") return;
+  const old = document.getElementById("portraitdbg"); if(old){ old.remove(); return; }
+  const lp = window.__lastPortrait || {hits:[], banned:[]};
+  const d = document.createElement("div");
+  d.id = "portraitdbg"; d.className = "pdebug-pop";
+  d.innerHTML = `<div class="pdebug-head">本轮画像命中（点击关闭）</div>` + RP_PORTRAIT.renderDebug(lp.hits, lp.banned);
+  d.addEventListener("click", ()=>d.remove());
+  bar.parentNode.insertBefore(d, bar.nextSibling);
+};
 /* ============ 世界模拟编辑器（手动调整时间/天气/地点） ============ */
 window.simEditor = ()=>{
   if(typeof RP_WORLDSIM==="undefined"){ alert("世界模拟模块未加载"); return; }
@@ -3237,6 +3255,13 @@ onAligning: (on, finalText)=>{
   else { const a = document.getElementById("ppa-aligning"); if(a) a.remove(); if(live && finalText != null) live.textContent = finalText; }
 },
 };
+/* 走原著线：当前节点是前台决策点时，强制开启剧情选项卡（3 选项点选） */
+try{
+  if(isTrav && CHAT && CHAT.travId && typeof RP_PLOTRUN!=="undefined"
+    && RP_PLOTRUN.decisionNode(CHAT.travId)){
+    sendOpts.optCards = true; sendOpts.optCount = 3;
+  }
+}catch(e){}
 /* P1: 出戏值检测（穿越模式下每次玩家发言都算一次） */
 if(isTrav) travOocCheck(CHAT.travId, text);
 const r = isGroup
@@ -3258,7 +3283,11 @@ try{
     const _ts2 = RP_TRAVERSE.get(CHAT.travId);
     if(_ts2 && _ts2.plotrunId && typeof RP_PLOTRUN!=="undefined"){
       const _st2 = RP_PLOTRUN.load(_ts2.plotrunId);
-      if(_st2 && _st2.currentNodeId) RP_PLOTRUN.completeNode(_st2, _st2.currentNodeId, text);
+      if(_st2 && _st2.currentNodeId){
+        const _wasFin = RP_PLOTRUN.isFinished(_st2);
+        RP_PLOTRUN.completeNode(_st2, _st2.currentNodeId, text);
+        if(!_wasFin && RP_PLOTRUN.isFinished(_st2)) achvUnlock("plotline_1");
+      }
     }
   }
 }catch(e){}
@@ -6201,6 +6230,7 @@ function plotlinePickBook(){
   window.scrollTo(0,0);
 }
 function plotlinePickStage(runId){
+  titleEl.innerHTML = icon("clapperboard")+" 走原著线"; subEl.textContent = "选一幕";
   view.innerHTML = `<div class="empty">世界卡加载中…</div>`;
   loadWorldcard(runId).then(()=>{
     const stages = (typeof RP_PLOTRUN!=="undefined") ? RP_PLOTRUN.listStages(runId) : [];

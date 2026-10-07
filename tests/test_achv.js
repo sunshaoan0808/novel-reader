@@ -17,7 +17,8 @@ ctx.window = ctx; ctx.globalThis = ctx;
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(WWW + "/rp/achieve.js", "utf8"), ctx, {filename: "achieve.js"});
 const E = (c)=>vm.runInContext(c, ctx);
-t("成就8-10个", E("RP_ACHV.DEFS.length") >= 8 && E("RP_ACHV.DEFS.length") <= 10);
+t("成就8个以上", E("RP_ACHV.DEFS.length") >= 8);
+t("有循线者成就", E("RP_ACHV.list()").some(a=>a.id==="plotline_1" && a.name==="循线者"));
 t("首次unlock返回true", E("RP_ACHV.unlock('first_chat')") === true);
 t("重复unlock幂等false", E("RP_ACHV.unlock('first_chat')") === false);
 t("未知id返回false", E("RP_ACHV.unlock('nope')") === false);
@@ -91,11 +92,13 @@ const htmlBefore = toastEl.innerHTML;
 vm.runInContext("achvUnlock('tts_1')", ctx);
 t("重复解锁不重复弹toast", els["achvToast"].innerHTML === htmlBefore);
 // 成就页
+const E2 = (c)=>vm.runInContext(c, ctx);
+const defsLen = E2("RP_ACHV.DEFS.length");
 vm.runInContext("showAchv()", ctx);
 const html = els["view"].innerHTML;
 t("成就页有标题", els["title"].textContent === "成就");
-t("成就页有计数", els["sub"].textContent.indexOf("1/10") >= 0);
-t("成就页列出全部", (html.match(/class="card/g) || []).length === 10);
+t("成就页有计数", els["sub"].textContent.indexOf("1/"+defsLen) >= 0);
+t("成就页列出全部", (html.match(/class="card/g) || []).length === defsLen);
 t("未解锁标未解锁", html.indexOf("未解锁") >= 0);
 
 console.log(`achv: ${pass} pass, ${fail} fail`);

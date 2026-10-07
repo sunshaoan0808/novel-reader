@@ -13,6 +13,7 @@ var DEFS = [
 {id:"card_1",     name:"造物主",   desc:"生成或导入第一张角色卡", icon:"user"},
 {id:"lore_1",     name:"世界建筑师", desc:"创建一条世界书", icon:"book-open"},
 {id:"traverse_1", name:"穿越者",   desc:"完成一次穿越开局", icon:"scroll"},
+{id:"plotline_1", name:"循线者",   desc:"走完一幕原著剧情线", icon:"clapperboard"},
 {id:"edit_1",     name:"精雕细琢", desc:"编辑一条聊天消息", icon:"edit"},
 {id:"swipe_1",    name:"再来一次", desc:"使用重生/换一条回答", icon:"dice"},
 ];

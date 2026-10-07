@@ -39,7 +39,10 @@ sandbox.window.__WORLDCARD_test = {
 };
 sandbox.getWorldcard = function(runId){ return sandbox.window["__WORLDCARD_" + runId] || null; };
 
-for(const f of ["www/rp/plotrun.js", "www/rp/portrait.js"]){
+/* decisionNode 需要的 traverse 会话 stub */
+const travSessions = {};
+sandbox.RP_TRAVERSE = { get: (id) => travSessions[id] || null };
+for(const f of ["www/rp/plotrun.js", "www/rp/portrait.js", "www/rp/achieve.js"]){
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", f), "utf8"), sandbox, {filename: f});
 }
 const PR = sandbox.RP_PLOTRUN, PT = sandbox.RP_PORTRAIT;
@@ -94,6 +97,25 @@ ok(dbg.includes("硬禁令") && dbg.includes("决策准则"), "renderDebug 可�
 let threw = false;
 try{ PT.enrich(null, null, null); PT.enrich({fields:{ooc_redline: 123}}, "杀", []); }catch(e){ threw = true; }
 ok(!threw, "enrich 容错不抛错");
+
+/* ---- decisionNode：决策点判定（供发送链路强制选项卡） ---- */
+let dst = PR.start("test", "s1"); /* n1 background */
+travSessions["t1"] = {id: "t1", plotrunId: dst.id};
+ok(PR.decisionNode("t1") === null, "background 节点不强制选项卡");
+PR.completeNode(dst, dst.currentNodeId, "走"); /* -> n2 foreground */
+const dn = PR.decisionNode("t1");
+ok(dn && dn.id === "n2", "foreground 决策点返回节点");
+ok(PR.decisionNode("unknown") === null, "未知会话返回 null");
+ok(PR.decisionNode(null) === null, "空 id 返回 null");
+PR.completeNode(dst, dst.currentNodeId, "选左");
+PR.completeNode(dst, dst.currentNodeId, "继续");
+ok(PR.decisionNode("t1") === null, "走完后返回 null");
+
+/* ---- 成就 plotline_1 ---- */
+const ACHV = vm.runInContext("RP_ACHV", sandbox);
+ok(ACHV && ACHV.unlock("plotline_1") === true, "走完一幕解锁成就");
+ok(ACHV.unlock("plotline_1") === false, "成就解锁幂等");
+ok(ACHV.has("plotline_1"), "成就已记录");
 
 console.log(`\n${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);

@@ -1172,3 +1172,11 @@ body.chatmode.immersive #scenbar{ min-height:0; }
   background:linear-gradient(135deg,#7c5cff,#b14dff)}
 .plotchip{background:rgba(108,77,255,.16)!important;color:#c9bcff!important;
   border:1px solid rgba(108,77,255,.45)}
+
+/* ===== 画像命中调试弹窗 ===== */
+.pdebug-pop{margin:6px 12px 0;padding:10px 12px;border-radius:12px;cursor:pointer;
+  background:var(--card);border:1px solid var(--line);font-size:13px}
+.pdebug-head{font-size:12px;opacity:.6;margin-bottom:4px}
+.pdebug-sec{font-weight:700;margin:8px 0 4px}
+.pdebug-item{margin:6px 0}
+.pdebug-item .badge{margin-bottom:2px}

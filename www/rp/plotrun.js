@@ -162,7 +162,8 @@ function directorBlock(state){
   if(bans.length) lines.push("禁令：" + bans.join("；"));
   if(node.execution === "foreground"){
     lines.push("本节点为【前台决策点】：呈现事件后必须停下，把选择权交给玩家；"
-      + "按事件概要生成 2~3 个合理选项（或接受玩家自由行动）；绝不替玩家做决定、不写正文。");
+      + "选项走【剧情选项】卡输出（不要在正文里重复列选项）；也接受玩家自由行动；"
+      + "绝不替玩家做决定、不写正文。");
   }else{
     lines.push("本节点为【后台事件】：自然织入叙事，不打断玩家。");
   }
@@ -189,6 +190,18 @@ function listStages(runId){
   return out;
 }
 
+/* ---------- 决策点判定（供发送链路强制选项卡） ---------- */
+function decisionNode(travId){
+  /* traverse 会话当前剧情节点若为前台决策点则返回节点，否则 null */
+  try{
+    if(typeof RP_TRAVERSE === "undefined") return null;
+    var t = RP_TRAVERSE.get(travId);
+    var st = (t && t.plotrunId) ? load(t.plotrunId) : null;
+    var n = (st && st.currentNodeId) ? nodeById(st.runId, st.currentNodeId) : null;
+    return (n && n.execution === "foreground") ? n : null;
+  }catch(e){ return null; }
+}
+
 /* ---------- HUD ---------- */
 function hudHTML(state){
   if(!state) return "";
@@ -202,6 +215,7 @@ var api = {
   start:start, load:load, reset:reset,
   nextNode:nextNode, completeNode:completeNode, progress:progress, isFinished:isFinished,
   directorBlock:directorBlock, choicesFor:choicesFor, bansFor:bansFor,
+  decisionNode:decisionNode,
   hudHTML:hudHTML, listStages:listStages, latestFor:latestFor, allStates:allStates,
   nodeById:nodeById, stageById:stageById,
   _cut:cut
