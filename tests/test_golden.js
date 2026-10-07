@@ -8,6 +8,7 @@ classList: {add(){}, remove(){}, toggle(){}, contains(){ return false;}},
 style: {}, dataset: {},
 querySelector(){ return null;}, querySelectorAll(){ return [];},
 addEventListener(){}, removeEventListener(){}, appendChild(){}, remove(){},
+insertAdjacentHTML(pos, html){ if(pos === "afterbegin") this.innerHTML = html + this.innerHTML; else this.innerHTML += html; },
 setAttribute(){}, getAttribute(){ return null;}, removeAttribute(){},
 closest(){ return null;}, scrollTo(){}, focus(){}, click(){},
 getBoundingClientRect(){ return {left:0,top:0,right:0,bottom:0,width:0,height:0};}};
@@ -154,6 +155,16 @@ vm.runInContext("showRuns()", ctx);
 h = viewHTML();
 t("有封面的书渲染img", h.indexOf('class="bookcover"') >= 0 && h.indexOf("data/covers/honglou.jpg") >= 0);
 t("无封面的书回退avatar", (h.match(/class="avatar"/g) || []).length === 1); /* r2 三国演义无封面 */
+
+/* ---- run 详情页封面横幅 ---- */
+vm.runInContext("RUN = {run_id:'r1', novel:'红楼梦', n_chunks:224, profiles:[], sections:[]}; setTab('chars')", ctx);
+h = viewHTML();
+t("详情页有封面横幅", h.indexOf('class="runbanner"') >= 0 && h.indexOf("data/covers/honglou.jpg") >= 0);
+vm.runInContext("setTab('outline')", ctx);
+t("切换tab横幅不重复", (viewHTML().match(/class="runbanner"/g) || []).length === 1);
+vm.runInContext("RUN = {run_id:'r2', novel:'三国演义', n_chunks:100, profiles:[]}; setTab('chars')", ctx);
+t("无封面的书不展示横幅", viewHTML().indexOf('class="runbanner"') < 0);
+t("横幅CSS存在", /\.runbanner[\s\S]{0,200}?border-radius:14px/.test(css));
 
 console.log(`\ngolden: ${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);

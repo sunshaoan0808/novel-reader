@@ -125,6 +125,17 @@ else if(t==="relations") showRelations();
 else if(t==="storyline") showStoryline();
 else if(t==="world") showWorldcard();
 else showMore();
+prependRunBanner();
+}
+/* 书封面横幅：run 详情各 tab 顶部统一展示（无封面则不展示） */
+function prependRunBanner(){
+try{
+const cover = (window.BOOKCOVER||{})[RUN.novel];
+if(!cover || !view) return;
+if(view.firstElementChild && view.firstElementChild.classList.contains("runbanner")) return;
+view.insertAdjacentHTML("afterbegin",
+`<div class="runbanner"><img src="${esc(cover)}" alt="${esc(RUN.novel)}封面" loading="lazy" onerror="this.closest('.runbanner').remove()"></div>`);
+}catch(e){}
 }
 tabs.querySelectorAll("button").forEach(b=>
 b.addEventListener("click", ()=>setTab(b.dataset.tab)));
@@ -432,7 +443,9 @@ function showWorldcard(){
   const typeName = {setting:"世界概览",lore:"世界暗线",npcs:"次要人物",factions:"阵营",items:"道具",rules:"世界规则",economy:"经济",culture:"文化"};
   const render = (wc)=>{
     if(!wc || !wc.worldBookEntries){
-      view.innerHTML = `<div class="empty">暂无世界卡数据<br><span style="font-size:12px;color:var(--muted,#888)">管线执行 worldcard 阶段后自动出现</span></div>`; return;
+      view.innerHTML = `<div class="empty">暂无世界卡数据<br><span style="font-size:12px;color:var(--muted,#888)">管线执行 worldcard 阶段后自动出现</span></div>`;
+      prependRunBanner();
+      return;
     }
     _wcData = wc;
     const entries = wc.worldBookEntries;
@@ -469,6 +482,7 @@ function showWorldcard(){
     const itemHtml = itemList.length ? `<h2 class="sec">道具 · ${itemList.length}</h2>`
       + itemList.map(e=>`<div class="sec-item"><div class="t">${esc(e.content||"")}</div></div>`).join("") : "";
     view.innerHTML = head + conflict + stageHtml + search + npcHtml + itemHtml;
+    prependRunBanner();
     window.scrollTo(0,0);
   };
   loadWorldcard(runId).then(function(wc){ if(TAB === "world") render(wc); });
