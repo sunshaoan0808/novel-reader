@@ -6,11 +6,15 @@ var DISTILL_CHANGE = (function(){
 "use strict";
 
 // 可改动的字段
-var EDITABLE_FIELDS = ["core_identity", "core_traits", "appearance", "speech_style",
-  "background", "relationships_summary", "key_events", "arc_summary"];
+var EDITABLE_FIELDS = ["core_identity", "brief_intro", "core_traits", "appearance", "speech_style",
+  "background", "relationships_summary", "key_events", "arc_summary",
+  "age", "gender", "height", "ethnicity", "likes", "dislikes", "interests", "fears"];
 
 var FIELD_LABEL = {
   core_identity: "身份",
+  brief_intro: "简介",
+  age: "年龄", gender: "性别", height: "身高", ethnicity: "民族",
+  likes: "喜好", dislikes: "厌恶", interests: "兴趣", fears: "恐惧",
   core_traits: "性格",
   appearance: "外貌",
   speech_style: "说话风格",

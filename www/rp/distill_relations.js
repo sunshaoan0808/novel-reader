@@ -23,7 +23,7 @@ function extractPairs(chunks, characters, aliasMap, opts){
   opts = opts || {};
   var window = opts.forwardWindow || 3;
   var minCo = opts.minCooccur || 2;
-  var minCh = opts.minChapters || 2;
+  var minCh = opts.minChapters || 3;  // C2: ≥3 chunk 才算 strong
 
   var nameToCanon = {};
   Object.keys(aliasMap || {}).forEach(function(a){ nameToCanon[a] = aliasMap[a]; });
@@ -69,6 +69,17 @@ function extractPairs(chunks, characters, aliasMap, opts){
     }
   });
 
+  // D2: 计算阶段边界 (按chunk位置三等分)
+  var chunkIds = chunks.map(function(c){ return c.id; });
+  var n = chunkIds.length;
+  function stageOf(chunkId){
+    var i = chunkIds.indexOf(chunkId);
+    if(i < 0) return "unknown";
+    if(i < n / 3) return "early";
+    if(i < n * 2 / 3) return "mid";
+    return "late";
+  }
+
   var edges = [];
   Object.keys(pairHits).sort(function(a, b){ return pairHits[b].count - pairHits[a].count; }).forEach(function(key){
     var parts = key.split("|");
@@ -77,15 +88,26 @@ function extractPairs(chunks, characters, aliasMap, opts){
     var bothCore = core[a] && core[b];
     if(!bothCore && e.count < minCo) return;
     var chaps = Object.keys(e.chapters).sort();
-    var corroborated = chaps.length >= minCh;
+    // C2: 三档佐证 (dama-cyber: 单chunk孤证降级)
+    var level = "isolated";
+    if(chaps.length >= minCh) level = "strong";
+    else if(chaps.length >= 2) level = "weak";
     edges.push({
       source_character: a,
       target_character: b,
       co_occurrence_count: e.count,
       valid_chapters: chaps.length ? [chaps[0], chaps[chaps.length - 1]] : [],
-      corroboration: {chapters: chaps.length, level: corroborated ? "strong" : "weak"},
+      corroboration: {chapters: chaps.length, level: level},
       _evidence: e.evidence,
-      _both_core: bothCore
+      _both_core: bothCore,
+      _isolated: level === "isolated",  // C2: 孤证标记
+      // D2: 有效阶段
+      valid_stages: (function(){
+        var s = {};
+        chaps.forEach(function(c){ s[stageOf(c)] = 1; });
+        delete s.unknown;
+        return Object.keys(s).sort();
+      })()
     });
   });
   return edges;

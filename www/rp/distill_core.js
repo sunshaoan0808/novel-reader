@@ -71,8 +71,10 @@ function mergeProfiles(profileList){
     var st = p.stage || "mid";
     if(byStage[st]) byStage[st].push(p);
   });
-  var keys = ["core_identity", "core_traits", "speech_style", "typical_lines",
-              "background", "soul_goal", "key_bonds", "evidence"];
+  var keys = ["core_identity", "brief_intro", "core_traits", "speech_style", "typical_lines",
+              "background", "soul_goal", "key_bonds", "evidence",
+              "age", "gender", "height", "ethnicity",
+              "likes", "dislikes", "interests", "fears"];
   ["early", "mid", "late"].forEach(function(st){
     merged[st] = {};
     keys.forEach(function(k){

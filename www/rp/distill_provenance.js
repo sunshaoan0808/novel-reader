@@ -67,6 +67,74 @@ function validateCitations(index, validChunkIds){
   });
 }
 
+// 来源哈希+字符位置 (TavernWeave B1)
+// 每条事实记录冻结摘录+字符位置+哈希，chunk重切后仍可定位，防LLM篡改引用
+function simpleHash(s){
+  var h = 0;
+  s = String(s || "");
+  for(var i = 0; i < s.length; i++){
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  return (h >>> 0).toString(36);
+}
+
+// 证据确定性分级 (TavernWeave B2)
+// confirmed: 同一事实在≥2个chunk独立出现 (多源互证)
+// single: 单源
+// uncertain: 存疑 (source为unknown/inference)
+function gradeCertainty(index){
+  // 按 (character, field, 归一化value) 分组
+  function norm(s){ return (s || "").replace(/[\s\p{P}]/gu, "").slice(0, 20); }
+  var groups = {};
+  index.facts.forEach(function(f){
+    var key = f.character + "|" + f.field + "|" + norm(f.value);
+    if(!groups[key]) groups[key] = [];
+    groups[key].push(f);
+  });
+  Object.keys(groups).forEach(function(k){
+    var fs = groups[k];
+    var chunks = {};
+    fs.forEach(function(f){ if(f.chunk_id) chunks[f.chunk_id] = 1; });
+    var n = Object.keys(chunks).length;
+    var certainty = "single";
+    if(fs[0].source === "unknown" || fs[0].source === "inference") certainty = "uncertain";
+    else if(n >= 2) certainty = "confirmed";
+    fs.forEach(function(f){ f.certainty = certainty; });
+  });
+  return index;
+}
+
+// 为出处索引补充来源定位信息
+// chunks: [{id, text}]
+function enrichSourceLocation(index, chunks){
+  var chunkMap = {};
+  (chunks || []).forEach(function(c){ chunkMap[c.id] = c.text || ""; });
+  function norm(s){ return (s || "").replace(/[\s\p{P}]/gu, ""); }
+  index.facts.forEach(function(f){
+    if(!f.chunk_id || !chunkMap[f.chunk_id]) return;
+    var text = chunkMap[f.chunk_id];
+    var normText = norm(text);
+    // 找事实关键词在原文的位置
+    var val = norm(f.value);
+    var pos = -1, excerpt = "";
+    // 试8字滑窗找位置
+    for(var len = 16; len >= 8; len -= 4){
+      for(var s = 0; s <= val.length - len; s++){
+        var w = val.slice(s, s + len);
+        var p = normText.indexOf(w);
+        if(p >= 0){ pos = p; excerpt = w; break; }
+      }
+      if(pos >= 0) break;
+    }
+    if(pos >= 0){
+      f.char_pos = pos;
+      f.excerpt = excerpt;
+      f.excerpt_hash = simpleHash(excerpt);
+    }
+  });
+  return index;
+}
+
 // 引用内容真实性校验 (dama-cyber 镜像翻转: 他的"防抄袭审计" → 我们的"引用真实性校验")
 // 档案是转述不是原文摘录，所以用关键词模式而非精确16字匹配：
 // 提取事实中的关键2字词，检查是否在对应 chunk 出现
@@ -122,6 +190,9 @@ return {
   stats: stats,
   validateCitations: validateCitations,
   verifyCitationContent: verifyCitationContent,
+  enrichSourceLocation: enrichSourceLocation,
+  simpleHash: simpleHash,
+  gradeCertainty: gradeCertainty,
   SOURCE_LABEL: SOURCE_LABEL,
   SOURCE_COLOR: SOURCE_COLOR
 };

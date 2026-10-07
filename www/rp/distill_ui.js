@@ -483,6 +483,10 @@ async function onStartDistill(){
     try{
       var chars = Object.keys(S.selected).filter(function(k){ return S.selected[k]; });
       var idx = DISTILL_PROVENANCE.buildIndex(S.pkg.id, chars);
+      // B1: 补充来源哈希+字符位置
+      try{ DISTILL_PROVENANCE.enrichSourceLocation(idx, S.chunks); }catch(e){}
+      // B2: 证据确定性分级
+      try{ DISTILL_PROVENANCE.gradeCertainty(idx); }catch(e){}
       var chunkIds = (S.chunks || []).map(function(c){ return c.id; });
       var badId = DISTILL_PROVENANCE.validateCitations(idx, chunkIds);
       var badContent = DISTILL_PROVENANCE.verifyCitationContent(idx, S.chunks);
@@ -520,6 +524,7 @@ function openPackage(id){
     <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">剧本包 · ${cards.length} 个角色${wbCount ? " · " + wbCount + " 条世界书" : ""}</div>
     ${qualityHtml}
     ${wbCount ? `<button class="btn" style="margin-bottom:12px" onclick="DISTILL_UI.showWorldbook('${id}')">📖 世界书 (${wbCount})</button>` : ""}
+    <button class="btn" style="margin-bottom:12px;margin-left:8px" onclick="DISTILL_UI.runAudit('${id}')">🔍 审计员</button>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
     ${cards.map(function(c){
       return `<div class="card" style="padding:12px" onclick="DISTILL_UI.openCharacter('${id}','${esc(c.name)}')">
@@ -579,11 +584,15 @@ function openCharacter(pkgId, name, stage){
     <div style="font-size:11px;color:var(--ink-faint);margin-bottom:8px">当前查看: ${stage === "early" ? "前期 (防剧透)" : stage === "mid" ? "中期" : "后期 (全量)"}</div>
     <div class="card">
       ${stageData.core_identity ? `<div class="kvline"><b>身份</b>：${renderAnnotated(stageData.core_identity)}</div>` : ""}
+      ${stageData.brief_intro ? `<div class="kvline"><b>简介</b>：${renderAnnotated(stageData.brief_intro)}</div>` : ""}
       ${stageData.core_traits ? `<div class="kvline"><b>性格</b>：${renderAnnotated(stageData.core_traits)}</div>` : ""}
       ${stageData.speech_style ? `<div class="kvline"><b>说话</b>：${renderAnnotated(stageData.speech_style)}</div>` : ""}
       ${stageData.soul_goal ? `<div class="kvline"><b>追求</b>：${renderAnnotated(stageData.soul_goal)}</div>` : ""}
       ${stageData.background ? `<div class="kvline"><b>背景</b>：${renderAnnotated(stageData.background)}</div>` : ""}
       ${stageData.key_bonds ? `<div class="kvline"><b>关系</b>：${renderAnnotated(stageData.key_bonds)}</div>` : ""}
+      ${(stageData.age || stageData.gender || stageData.height) ? `<div class="kvline"><b>人口</b>：${[stageData.age, stageData.gender, stageData.height].filter(Boolean).join(" · ")}</div>` : ""}
+      ${(stageData.likes || stageData.dislikes) ? `<div class="kvline"><b>好恶</b>：${stageData.likes ? "喜 " + renderAnnotated(stageData.likes) : ""}${stageData.dislikes ? " / 厌 " + renderAnnotated(stageData.dislikes) : ""}</div>` : ""}
+      ${(stageData.interests || stageData.fears) ? `<div class="kvline"><b>心理</b>：${stageData.interests ? "趣 " + renderAnnotated(stageData.interests) : ""}${stageData.fears ? " / 惧 " + renderAnnotated(stageData.fears) : ""}</div>` : ""}
     </div>
     ${provStats ? `<div class="card" style="margin-top:12px">
       <div style="font-size:13px;font-weight:600;margin-bottom:8px">出处统计</div>
@@ -917,5 +926,31 @@ async function regenOpenings(pkgId, charName){
 return {show: show, openPackage: openPackage, openCharacter: openCharacter, showProvenance: showProvenance,
   requestChange: requestChange, confirmChange: confirmChange,
   editFact: editFact, saveFact: saveFact, deleteFact: deleteFact, addFact: addFact, recompileCard: recompileCard,
-  showWorldbook: showWorldbook, exportPkg: exportPkg, regenOpenings: regenOpenings};
+  showWorldbook: showWorldbook,
+  runAudit: async function(id){
+    var cards = DISTILL_PACKAGE.listCharacterCards(id);
+    if(!cards.length){ alert("没有角色卡"); return; }
+    if(!confirm("审计 " + cards.length + " 个角色? (每人1次LLM调用)")) return;
+    var v = document.getElementById("view");
+    v.innerHTML = `<h2 class="sec">🔍 审计中...</h2><div id="auditProg" style="font-size:14px"></div>`;
+    var results = await DISTILL_AUDITOR.auditAll(id, cards.map(function(c){ return c.name; }), {
+      onProgress: function(i, n, msg){
+        var el = document.getElementById("auditProg");
+        if(el) el.textContent = i + "/" + n + " " + msg;
+      }
+    });
+    var html = `<h2 class="sec">🔍 审计结果</h2>`;
+    Object.keys(results).forEach(function(name){
+      var r = results[name];
+      var badge = r.pass ? "✅" : "⚠️";
+      html += `<div class="card" style="margin-bottom:8px"><div style="font-weight:600">${badge} ${esc(name)}</div>`;
+      (r.issues || []).forEach(function(iss){
+        html += `<div style="font-size:13px;color:var(--ink-faint);margin-top:4px">• [${iss.severity}] ${esc(iss.desc)}</div>`;
+      });
+      if(!(r.issues || []).length) html += `<div style="font-size:13px;color:var(--ink-faint)">无问题</div>`;
+      html += `</div>`;
+    });
+    html += `<button class="btn" onclick="DISTILL_UI.openPackage('${id}')">返回</button>`;
+    v.innerHTML = html;
+  }, exportPkg: exportPkg, regenOpenings: regenOpenings};
 })();

@@ -6,8 +6,9 @@ var DISTILL_QUALITY = (function(){
 "use strict";
 
 // 画像期望字段 (distill_core.js 的 8 字段)
-var PROFILE_FIELDS = ["core_identity", "core_traits", "appearance", "speech_style",
-  "background", "relationships_summary", "key_events", "arc_summary"];
+var PROFILE_FIELDS = ["core_identity", "brief_intro", "core_traits", "appearance", "speech_style",
+  "background", "relationships_summary", "key_events", "arc_summary",
+  "age", "gender", "height", "ethnicity", "likes", "dislikes", "interests", "fears"];
 
 // AI 腔禁用模式 (dama-cyber 镜像翻转: 他的"去AI味" → 我们的"档案去AI腔")
 var AI_CLICHE_PATTERNS = [
@@ -138,6 +139,13 @@ function check(pkgId){
       checks.push({id: "density", level: "fail",
         msg: "引用密度仅 " + density.toFixed(1) + "/百字，多为无依据论述"});
     }
+  }
+
+  // 3.7 孤证关系 (C2)
+  var isolatedRels = rels.filter(function(e){ return e._isolated; });
+  if(isolatedRels.length){
+    checks.push({id: "isolated_rels", level: "warn",
+      msg: isolatedRels.length + " 条关系为单chunk孤证 (可能为幻觉)"});
   }
 
   // 4. 关系覆盖率
