@@ -453,6 +453,14 @@ async function onStartDistill(){
       var arcs = await DISTILL_PLOT.extractArcs(chars, summaries, {});
       var pairs = DISTILL_PLOT.pairForeshadowing(summaries, {});
       DISTILL_PACKAGE.saveData(S.pkg.id, "plot", {sections: sections, conflicts: conflicts, arcs: arcs, pairs: pairs});
+
+      // 世界书
+      prog("[世界书] 提取世界观...", 88);
+      var worldbook = await DISTILL_WORLDBOOK.extractWorldbook(summaries, chars, {
+        shouldPause: function(){ return S.paused; },
+        onProgress: function(m){ prog("[世界书] " + m, 88); }
+      });
+      DISTILL_PACKAGE.saveData(S.pkg.id, "worldbook", worldbook);
       setStage("plot", "done");
     }
 
@@ -489,9 +497,12 @@ function openPackage(id){
       qualityHtml = DISTILL_QUALITY.renderReport(DISTILL_QUALITY.check(id));
     }
   }catch(e){}
+  var wb = DISTILL_PACKAGE.getData(id, "worldbook");
+  var wbCount = wb ? (wb.rules || []).length + (wb.locations || []).length + (wb.factions || []).length : 0;
   v.innerHTML = `<h2 class="sec">${esc(pkg.novel)}</h2>
-    <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">剧本包 · ${cards.length} 个角色</div>
+    <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">剧本包 · ${cards.length} 个角色${wbCount ? " · " + wbCount + " 条世界书" : ""}</div>
     ${qualityHtml}
+    ${wbCount ? `<button class="btn" style="margin-bottom:12px" onclick="DISTILL_UI.showWorldbook('${id}')">📖 世界书 (${wbCount})</button>` : ""}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
     ${cards.map(function(c){
       return `<div class="card" style="padding:12px" onclick="DISTILL_UI.openCharacter('${id}','${esc(c.name)}')">
@@ -678,6 +689,44 @@ function confirmChange(){
   }
 }
 
+// 世界书展示
+function showWorldbook(pkgId){
+  var wb = DISTILL_PACKAGE.getData(pkgId, "worldbook");
+  var v = document.getElementById("view");
+  if(!wb || (!(wb.rules || []).length && !(wb.locations || []).length && !(wb.factions || []).length)){
+    v.innerHTML = `<div class="empty">暂无世界书</div><button class="btn" onclick="DISTILL_UI.openPackage('${pkgId}')">← 返回</button>`;
+    return;
+  }
+  function ruleCard(r){
+    return `<div class="card" style="padding:10px;margin-bottom:8px">
+      <div style="font-weight:600;font-size:13px">📜 ${esc(r.name)}${r.source ? ` <span style="font-size:11px;color:var(--ink-faint)">[${esc(r.source)}]</span>` : ""}</div>
+      <div style="font-size:13px;margin-top:4px">${esc(r.rule)}</div>
+      ${r.cost ? `<div style="font-size:12px;margin-top:4px"><b>代价:</b> ${esc(r.cost)}</div>` : ""}
+      ${r.limit ? `<div style="font-size:12px"><b>限制:</b> ${esc(r.limit)}</div>` : ""}
+      ${r.exception ? `<div style="font-size:12px"><b>例外:</b> ${esc(r.exception)}</div>` : ""}
+      ${r.conflict_hook ? `<div style="font-size:12px;color:#f0ad4e"><b>⚔️ 冲突钩子:</b> ${esc(r.conflict_hook)}</div>` : ""}
+    </div>`;
+  }
+  v.innerHTML = `<h2 class="sec">📖 世界书</h2>
+    ${(wb.rules || []).length ? `<div style="font-weight:600;margin:12px 0 8px">世界规则 (${wb.rules.length})</div>` + wb.rules.map(ruleCard).join("") : ""}
+    ${(wb.locations || []).length ? `<div style="font-weight:600;margin:12px 0 8px">重要场景 (${wb.locations.length})</div>` + wb.locations.map(function(l){
+      return `<div class="card" style="padding:10px;margin-bottom:8px">
+        <div style="font-weight:600;font-size:13px">📍 ${esc(l.name)}</div>
+        <div style="font-size:13px;margin-top:4px">${esc(l.desc)}</div>
+      </div>`;
+    }).join("") : ""}
+    ${(wb.factions || []).length ? `<div style="font-weight:600;margin:12px 0 8px">势力组织 (${wb.factions.length})</div>` + wb.factions.map(function(f){
+      return `<div class="card" style="padding:10px;margin-bottom:8px">
+        <div style="font-weight:600;font-size:13px">🏰 ${esc(f.name)}</div>
+        <div style="font-size:13px;margin-top:4px">${esc(f.desc)}</div>
+        ${(f.members || []).length ? `<div style="font-size:12px;color:var(--ink-faint)">成员: ${f.members.map(esc).join("、")}</div>` : ""}
+      </div>`;
+    }).join("") : ""}
+    <div class="btnrow" style="margin-top:12px">
+      <button class="btn" onclick="DISTILL_UI.openPackage('${pkgId}')">← 返回</button>
+    </div>`;
+}
+
 // 资料库操作
 function editFact(pkgId, charName, factIndex){
   var facts = DISTILL_LIBRARY.getFacts(pkgId, charName);
@@ -746,5 +795,6 @@ function recompileCard(pkgId, charName){
 
 return {show: show, openPackage: openPackage, openCharacter: openCharacter, showProvenance: showProvenance,
   requestChange: requestChange, confirmChange: confirmChange,
-  editFact: editFact, saveFact: saveFact, deleteFact: deleteFact, addFact: addFact, recompileCard: recompileCard};
+  editFact: editFact, saveFact: saveFact, deleteFact: deleteFact, addFact: addFact, recompileCard: recompileCard,
+  showWorldbook: showWorldbook};
 })();
