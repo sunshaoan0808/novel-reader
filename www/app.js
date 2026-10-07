@@ -5865,7 +5865,8 @@ input.value = "";
 if(!f || typeof RP_PRESET === "undefined") return;
 const rd = new FileReader();
 rd.onload = ()=>{
-const r = RP_PRESET.parseFile(rd.result);
+const fname = (f.name || "").replace(/\.json$/i, "");
+const r = RP_PRESET.parseFile(rd.result, fname);
 if(!r.ok){
 alert(r.err==="noprompts" ? "这不是 ST 预设文件（缺少 prompts 数组）。" :
       r.err==="empty" ? "预设里没有可用的条目。" : "JSON 解析失败。");

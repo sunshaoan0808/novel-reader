@@ -63,7 +63,7 @@ function _setGlobals(g){ try{ localStorage.setItem(GLOBALS_KEY, JSON.stringify(g
 
 /* 解析 ST 预设文件 JSON。保留全部条目(含 disabled)与 enabled 状态, 供逐条开关。
  * 成功返回 {ok:true, preset}; 失败 {ok:false, err} */
-function parseFile(json){
+function parseFile(json, fallbackName){
   var d;
   try{ d = (typeof json === "string") ? JSON.parse(json) : json; }
   catch(e){ return {ok: false, err: "json"}; }
@@ -94,7 +94,7 @@ function parseFile(json){
   if(d.top_p != null && isFinite(+d.top_p)) params.top_p = +d.top_p;
   var preset = {
     id: "st" + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36),
-    name: String(d.name || "未命名预设").slice(0, 60),
+    name: String(d.name || fallbackName || "未命名预设").slice(0, 60),
     at: Date.now(),
     params: params,
     prompts: prompts
