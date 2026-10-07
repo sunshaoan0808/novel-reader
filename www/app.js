@@ -119,6 +119,7 @@ subEl.textContent = `${RUN.run_id} · ${RUN.n_chunks} 块`;
 if(t==="chars") showChars();
 else if(t==="outline") showOutline();
 else if(t==="relations") showRelations();
+else if(t==="storyline") showStoryline();
 else showMore();
 }
 tabs.querySelectorAll("button").forEach(b=>
@@ -341,6 +342,50 @@ return `<h2 class="sec">判词·红楼梦曲</h2>` + mine.map(it=>
 `<div class="card"><div class="name">${esc(it.title||"")}</div>`
 + `<div class="wb-keys"><span class="badge">${esc(it.type||"")}</span><span class="badge">${esc(it.collection||"")}</span></div>`
 + `<div class="st">${esc(it.text||"").replace(/\n/g,"<br>")}</div></div>`).join("");
+}
+
+/* 2026-10-07: 因果事件 DAG 剧情线 (蒸馏管线 event_dag.json, 启发式)。
+ * 懒加载 www/data/event_dag_<run_id>.js, 主干路径渲染为时间线。 */
+let _dagCache = {};
+function showStoryline(){
+  const runId = RUN.run_id;
+  view.innerHTML = `<div class="empty">剧情线加载中…</div>`;
+  const render = (dag)=>{
+    if(!dag || !dag.nodes || !dag.nodes.length){
+      view.innerHTML = `<div class="empty">暂无剧情线数据</div>`; return;
+    }
+    const byId = {};
+    dag.nodes.forEach(n=>{ byId[n.id] = n; });
+    const paths = (dag.main_paths || []).slice(0, 3);
+    const head = `<div class="card"><div class="kvline"><b>事件节点</b>：${dag.nodes.length} 个</div>`
+      + `<div class="kvline"><b>因果边</b>：${(dag.edges || []).length} 条</div>`
+      + `<div class="kvline"><b>主干剧情线</b>：${paths.length} 条</div>`
+      + `<div style="color:var(--muted,#888);font-size:12px;margin-top:6px">启发式因果图（关键词重叠+转折点加成），非人工定稿</div></div>`;
+    const body = paths.map((p, pi)=>{
+      const items = p.node_ids.map((nid)=>{
+        const n = byId[nid] || {};
+        const tp = n.kind === "turning_point";
+        return `<div class="tl-item${tp ? " tp" : ""}">`
+          + `<div class="tl-dot">${tp ? "◆" : "●"}</div>`
+          + `<div class="tl-body"><div class="tl-text">${esc(n.text || "")}</div>`
+          + `<div class="tl-meta">${esc(n.chunk_id || "")}${tp ? ' <span class="badge">转折点</span>' : ""}</div>`
+          + `</div></div>`;
+      }).join("");
+      return `<h2 class="sec">主干 ${["一","二","三"][pi] || (pi+1)} · ${p.length} 个事件</h2>`
+        + `<div class="tl">${items}</div>`;
+    }).join("");
+    view.innerHTML = head + body;
+    window.scrollTo(0, 0);
+  };
+  if(_dagCache[runId]){ render(_dagCache[runId]); return; }
+  /* file:// 下 fetch 不可用, 用 script 标签动态加载 (export 写 window.__DAG_<run_id>) */
+  var gk = "__DAG_" + runId;
+  if(window[gk]){ _dagCache[runId] = window[gk]; render(window[gk]); return; }
+  var s = document.createElement("script");
+  s.src = "data/event_dag_" + encodeURIComponent(runId) + ".js";
+  s.onload = function(){ var dag = window[gk] || null; _dagCache[runId] = dag; if(TAB === "storyline") render(dag); };
+  s.onerror = function(){ if(TAB === "storyline") render(null); };
+  document.head.appendChild(s);
 }
 
 function showMore(){
@@ -1284,7 +1329,7 @@ try{ if(typeof RP_STATS !== "undefined") RP_STATS.recordSession(CHAT.runId, CHAT
 const _po = window.__pendingOpening; window.__pendingOpening = null;
 const _ops = (typeof cardOpenings === "function") ? cardOpenings(CHAT.runId, CHAT.name) : [];
 if(_po != null && _ops[_po]){
-saveHist(k, [{mid:(typeof nextMsgId==="function"?nextMsgId():"m"+Date.now().toString(36)), role:"assistant", content:_ops[_po], ts:Date.now()}]); renderChat();
+saveHist(k, [{mid:(typeof nextMsgId==="function"?nextMsgId():"m"+Date.now().toString(36)), role:"assistant", content:_ops[_po].text, ts:Date.now()}]); renderChat();
 }else{
 RP.greeting(CHAT.runId, CHAT.name, cfg, run.novel).then(g=>{
 if(getHist(k).length) return;
@@ -4145,11 +4190,24 @@ function cardOpenings(runId, name){
   let card = null;
   try{ card = (typeof RP !== "undefined" && RP.findCard) ? RP.findCard(runId, name) : null; }catch(e){}
   const out = [];
-  if(!card) return out;
-  const g0 = (card.greeting && String(card.greeting).trim()) || "";
-  if(g0) out.push(g0);
-  (card.altGreetings || []).forEach(g=>{ g = String(g == null ? "" : g).trim(); if(g && out.indexOf(g) < 0) out.push(g); });
-  return out.slice(0, 8);
+  const push = (t, label)=>{
+    t = String(t == null ? "" : t).trim();
+    if(t && !out.some(o=>o.text === t)) out.push({text: t, label: String(label || "")});
+  };
+  if(card){
+    const g0 = (card.greeting && String(card.greeting).trim()) || "";
+    if(g0) push(g0, "");
+    (card.altGreetings || []).forEach(g=>push(g, ""));
+  }
+  /* 2026-10-07: 管线 openings.json (蒸馏产物, 带情境标签), 卡片开场之后追加 */
+  try{
+    var run = (window.__DATA__ && window.__DATA__.runs || {})[runId] || {};
+    var pops = (run.openings || {})[name] || [];
+    pops.forEach(function(p){
+      push(p && (p.text || p), p && p.situation);
+    });
+  }catch(e){}
+  return out.slice(0, 12);
 }
 function cardSettingChars(card){
   let n = 0;
@@ -4234,8 +4292,9 @@ const qn = name.replace(/'/g, "\\'");
 const nums = ["一","二","三","四","五","六","七","八"];
 sh.innerHTML = `<div class="mshandle"></div><div class="msprev">选个开场，和 ${esc(name)} 开聊</div>`
 + ops.map((g, i)=>{
-const prev = g.length > 64 ? g.slice(0, 64) + "…" : g;
-return `<button class="msitem opitem" onclick="pickOpening('${runId}','${qn}',${i})"><span class="opn">开场${nums[i] || (i+1)}</span><span class="opp">${esc(prev)}</span></button>`;
+const prev = g.text.length > 64 ? g.text.slice(0, 64) + "…" : g.text;
+const lab = g.label || ("开场" + (nums[i] || (i+1)));
+return `<button class="msitem opitem" onclick="pickOpening('${runId}','${qn}',${i})"><span class="opn">${esc(lab)}</span><span class="opp">${esc(prev)}</span></button>`;
 }).join("")
 + `<button class="msitem" onclick="pickOpening('${runId}','${qn}',-1)">🎲 随机开场</button>`;
 sc.classList.add("on"); sh.classList.add("on");
@@ -4365,7 +4424,7 @@ let h = `<button class="back" onclick="charDetail('${runId}','${q}')">${icon("ba
 const ops = cardOpenings(runId, name);
 if(ops.length){
 h += `<h2 class="sec">开场白 · ${ops.length}</h2><div class="card">`
-+ ops.map((g, i)=>`<div class="kvline"><b>开场${["一","二","三","四","五","六","七","八"][i] || (i+1)}</b>：${esc(g)}</div>`).join("") + `</div>`;
++ ops.map((g, i)=>`<div class="kvline"><b>${esc(g.label || ("开场" + (["一","二","三","四","五","六","七","八"][i] || (i+1))))}</b>：${esc(g.text)}</div>`).join("") + `</div>`;
 }
 if(fkeys.length){
 h += `<h2 class="sec">人设字段 · ${fkeys.length}</h2><div class="card">`

@@ -265,16 +265,16 @@ var NARRATOR_INSTR = "【叙事者模式】你同时承担叙事与扮演双重�
 /* P1-1 预设: 分段顺序/开关/预算比例可配置 (Risu 式预设, 不做 ST 拖拽) */
 var PRESETS = {
   classic: {name: "经典序", desc: "完整人设，适合长上下文",
-    order: {identity: 5, scene: 5.5, persona: 6, sysprompt: 7, tags: 8, core: 10, arc: 15, memory: 20, speech: 30, flair: 35, examples: 40, background: 50, relations: 60, lore: 70},
+    order: {identity: 5, scene: 5.5, persona: 6, sysprompt: 7, ooc: 9, tags: 8, core: 10, arc: 15, memory: 20, speech: 30, flair: 35, examples: 40, background: 50, relations: 60, lore: 70},
     loreRatio: 0.2},
   lite: {name: "精简序", desc: "去背景/示例，省 token，适合小上下文",
-    order: {identity: 5, scene: 5.5, persona: 6, sysprompt: 7, tags: 8, core: 10, arc: 15, memory: 15, speech: 20, flair: 35, relations: 30, lore: 40},
+    order: {identity: 5, scene: 5.5, persona: 6, sysprompt: 7, ooc: 9, tags: 8, core: 10, arc: 15, memory: 15, speech: 20, flair: 35, relations: 30, lore: 40},
     loreRatio: 0.12},
   immers: {name: "沉浸序", desc: "说话方式优先，代入感最强",
-    order: {identity: 5, scene: 5.5, persona: 6, sysprompt: 7, tags: 8, speech: 10, flair: 35, examples: 15, core: 20, arc: 22, memory: 25, background: 40, relations: 50, lore: 60},
+    order: {identity: 5, scene: 5.5, persona: 6, sysprompt: 7, ooc: 9, tags: 8, speech: 10, flair: 35, examples: 15, core: 20, arc: 22, memory: 25, background: 40, relations: 50, lore: 60},
     loreRatio: 0.15},
   narr: {name: "叙事者", desc: "双线叙事+角色主动推进剧情，适合跑剧情",
-    order: {identity: 5, scene: 5.5, persona: 6, sysprompt: 7, tags: 8, narrator: 8, core: 10, speech: 15, flair: 35, arc: 18, memory: 20, examples: 30, relations: 40, background: 50, lore: 60},
+    order: {identity: 5, scene: 5.5, persona: 6, sysprompt: 7, ooc: 9, tags: 8, narrator: 8, core: 10, speech: 15, flair: 35, arc: 18, memory: 20, examples: 30, relations: 40, background: 50, lore: 60},
     loreRatio: 0.15},
 };
 
@@ -338,6 +338,16 @@ function buildMessages(card, ctx, budget){
   var sysPromptSeg = "";
   if(card.systemPrompt) sysPromptSeg += String(card.systemPrompt).trim();
   if(card.creatorNotes) sysPromptSeg += (sysPromptSeg ? "\n" : "") + "【作者注】\n" + String(card.creatorNotes).trim();
+  /* 2026-10-07: 管线反 OOC 纠错 (probe→judge→correction), 高优先级注入。
+   * card.oocCorrections 由 findCard 从 run.corrections 按人物名过滤挂载。 */
+  var oocSeg = "";
+  var oocs = (card && card.oocCorrections) || [];
+  if(oocs.length){
+    oocSeg = "【OOC 纠错（最高优先级，严格遵守）】\n" + oocs.map(function(c, i){
+      return (i + 1) + ". " + String((c && c.prompt_injection_rule) || "").trim();
+    }).filter(function(s){ return s.replace(/^\d+\.\s*/, ""); }).join("\n");
+  }
+  add("ooc", oocSeg);
   add("sysprompt", sysPromptSeg);
   /* S-9 行为标签 (对标 PolyBuzz #tsundere): 轻量行为调参, 比写整段 prompt 门槛低 */
   var tagList = (card.tags || []).map(function(t){ return String(t == null ? "" : t).trim(); }).filter(Boolean).slice(0, 12);

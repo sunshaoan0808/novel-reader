@@ -78,7 +78,7 @@ const C = (n)=>vm.runInContext(n, ctx);
 /* cardOpenings */
 let ops = C("cardOpenings('imported','白月光')");
 t("开场去重", ops.length === 3);                       // greeting + 2 条不重复 alt（"你来了。"去重，空白丢弃）
-t("开场首条是greeting", ops[0] === "你来了。");
+t("开场首条是greeting", ops[0].text === "你来了。");  // 2026-10-07: cardOpenings 改返回 {text,label}
 t("内置卡无开场", C("cardOpenings('builtin','林黛玉')").length === 0);
 t("找不到卡返回空", C("cardOpenings('x','不存在')").length === 0);
 

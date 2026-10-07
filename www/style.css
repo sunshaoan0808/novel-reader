@@ -1125,3 +1125,17 @@ body.chatmode.immersive #scenbar{ min-height:0; }
   border:1px solid var(--line); color:var(--ink-dim); border-radius:999px;
   padding:5px 12px; font-size:12px; outline:none; }
 .scenetext::placeholder{ color:var(--ink-dim); opacity:.65; }
+
+/* 2026-10-07 剧情线时间线 (event_dag) */
+.tl{position:relative; margin:4px 0 18px 8px; padding-left:22px;}
+.tl::before{content:""; position:absolute; left:7px; top:6px; bottom:6px; width:2px;
+  background:var(--line); border-radius:2px;}
+.tl-item{position:relative; padding:7px 0;}
+.tl-dot{position:absolute; left:-22px; top:11px; width:16px; text-align:center;
+  font-size:11px; color:var(--gold-soft, #c9a86a);}
+.tl-item.tp .tl-dot{color:#d4695e; font-size:13px;}
+.tl-body{background:var(--card); border:1px solid var(--line);
+  border-radius:var(--r-s); padding:8px 10px;}
+.tl-item.tp .tl-body{border-color:#d4695e55;}
+.tl-text{font-size:13.5px; color:var(--ink); line-height:1.65;}
+.tl-meta{font-size:11.5px; color:var(--ink-faint); margin-top:4px;}

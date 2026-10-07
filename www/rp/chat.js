@@ -347,7 +347,16 @@ function findCard(runId, name){
       altGreetings: ic.altGreetings || [], exampleDialogue: ic.exampleDialogue || ""};
   }
   var cards = (window.__DATA__ && window.__DATA__.rp_cards || {})[runId] || [];
-  for(var i = 0; i < cards.length; i++) if(cards[i].name === name) return cards[i];
+  for(var i = 0; i < cards.length; i++) if(cards[i].name === name){
+    var cd = cards[i];
+    /* 2026-10-07: 挂载管线反 OOC 纠错条目 (run.corrections 按人物过滤) */
+    try{
+      var run = (window.__DATA__ && window.__DATA__.runs || {})[runId] || {};
+      var corrs = run.corrections || [];
+      cd.oocCorrections = corrs.filter(function(c){ return c && c.character === name && c.prompt_injection_rule; });
+    }catch(e){ cd.oocCorrections = []; }
+    return cd;
+  }
   return null;
 }
 
@@ -430,6 +439,15 @@ async function greeting(runId, name, cfg, novel){
     });
     if(pool.length) return pool[Math.floor(Math.random() * pool.length)];
   }
+  /* 2026-10-07: 管线 openings (蒸馏产物, 按档案生成), 优先于现场 LLM 生成, 省调用且稳定 */
+  try{
+    var prun = (window.__DATA__ && window.__DATA__.runs || {})[runId] || {};
+    var pops = (prun.openings || {})[name] || [];
+    if(pops.length){
+      var pt = String((pops[0] && pops[0].text) || pops[0] || "").trim();
+      if(pt) return pt;
+    }
+  }catch(e){}
   if(!cfg || !cfg.key){
     var lines = card ? RP_PROMPT.renderFields(card, ["typical_lines"]) : "";
     var first = (lines.split("\n")[0] || "").replace(/^- [^：]+：/, "").slice(0, 60);

@@ -20,13 +20,19 @@ function b64ToUtf8(b64){
   return new TextDecoder().decode(bytes);
 }
 
-/* 从 PNG ArrayBuffer 里提取 chara JSON 字符串；失败抛错 */
+/* 从 PNG ArrayBuffer 里提取 chara JSON 字符串；失败抛错。
+ * v3 双 chunk 卡: 同时收集 chara/ccv3, 优先返回 ccv3(v3 reader 优先读取,
+ * 2026-10-07 接入 novel-distill chara_card_v3)。返回类型保持字符串。 */
 function extractChara(pngBuf){
   var png = new Uint8Array(pngBuf);
   var sig = [137, 80, 78, 71, 13, 10, 26, 10], i;
   if(png.length < 20) throw new Error("不是 PNG 文件");
   for(i = 0; i < 8; i++) if(png[i] !== sig[i]) throw new Error("不是 PNG 文件");
-  var pos = 8;
+  var pos = 8, charaText = null, ccv3Text = null;
+  function grab(keyword, text){
+    if(keyword === "ccv3"){ if(ccv3Text == null) ccv3Text = text; }
+    else if(charaText == null) charaText = text;
+  }
   while(pos + 12 <= png.length){
     var len = (png[pos] << 24) | (png[pos + 1] << 16) | (png[pos + 2] << 8) | png[pos + 3];
     if(len < 0 || pos + 12 + len > png.length) break;
@@ -34,12 +40,14 @@ function extractChara(pngBuf){
     var data = png.subarray(pos + 8, pos + 8 + len);
     if(type === "tEXt"){
       var z = data.indexOf(0);
-      if(z > 0 && ascii(data.subarray(0, z)) === "chara"){
-        return b64ToUtf8(ascii(data.subarray(z + 1)));
+      var kw = z > 0 ? ascii(data.subarray(0, z)) : "";
+      if(kw === "chara" || kw === "ccv3"){
+        grab(kw, b64ToUtf8(ascii(data.subarray(z + 1))));
       }
     } else if(type === "iTXt"){
       var p = data.indexOf(0);
-      if(p > 0 && ascii(data.subarray(0, p)) === "chara"){
+      var kw2 = p > 0 ? ascii(data.subarray(0, p)) : "";
+      if(kw2 === "chara" || kw2 === "ccv3"){
         var compFlag = data[p + 1], compMethod = data[p + 2];
         if(compFlag === 0 && compMethod === 0){
           var q = p + 3, lz = data.indexOf(0, q);
@@ -50,7 +58,7 @@ function extractChara(pngBuf){
           q = tz + 1;
           // iTXt 文本段为 UTF-8；酒馆卡此处仍常放 base64 JSON
           var txt = new TextDecoder().decode(data.subarray(q));
-          try { return b64ToUtf8(txt); } catch(e){ return txt; }
+          try { grab(kw2, b64ToUtf8(txt)); } catch(e){ grab(kw2, txt); }
         }
         // 压缩过的 iTXt 罕见，跳过
       }
@@ -59,13 +67,18 @@ function extractChara(pngBuf){
     }
     pos += 12 + len;
   }
+  if(ccv3Text != null) return ccv3Text;
+  if(charaText != null) return charaText;
   throw new Error("这张 PNG 里没有找到角色卡数据（需要酒馆导出的卡片图）");
 }
 
 function parseCardJson(text){
   var t = String(text || "").trim().replace(/^\uFEFF/, "");
   var o = JSON.parse(t);
-  if(o && o.data) return o.data;      // chara_card_v2
+  if(o && o.data){                     // chara_card_v2 / chara_card_v3
+    if(o.spec) o.data.spec = o.spec;   // v3 标记透传, normalizeTavern 可用
+    return o.data;
+  }
   if(o && (o.name || o.description)) return o;  // v1 扁平
   throw new Error("JSON 里没有角色卡字段");
 }
@@ -187,6 +200,10 @@ function normalizeTavern(d){
     groupOnlyGreetings: groupOnlyGreetings,
     characterVersion: String(d.character_version == null ? "" : d.character_version).trim(),
     creator: String(d.creator == null ? "" : d.creator).trim(),
+    /* v3 新字段 (2026-10-07): nickname / assets, ccv3 优先读取后透传 */
+    cardSpec: String(d.spec == null ? "" : d.spec).trim(),
+    nickname: String(d.nickname == null ? "" : d.nickname).trim(),
+    assets: Array.isArray(d.assets) ? d.assets.filter(function(a){ return a != null; }) : [],
     bookMeta: bookMeta,
     sysNote: sysNote.join("\n"),
     worldbook: worldbook,
