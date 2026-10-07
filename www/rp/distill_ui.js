@@ -217,12 +217,31 @@ async function onGenPlan(){
 }
 
 function renderDistill(){
+  var pauseBtn = S.running ?
+    (S.paused ?
+      `<button class="btn primary" id="d_resume" style="flex:1">▶ 继续</button>` :
+      `<button class="btn" id="d_pause" style="flex:1">⏸ 暂停</button>`) : "";
   return `<div class="card">
     <div id="d_stages"></div>
     <div id="d_bar" style="height:8px;background:var(--line);border-radius:4px;margin-top:12px">
       <i style="display:block;height:100%;width:0;background:var(--gold);border-radius:4px"></i></div>
     <div id="d_msg" style="font-size:12px;margin-top:8px">准备...</div>
+    ${pauseBtn ? `<div class="btnrow" style="margin-top:12px">${pauseBtn}</div>` : ""}
   </div><div id="d_results"></div>`;
+}
+
+function togglePause(){
+  S.paused = !S.paused;
+  render();
+  // 恢复渲染后需要重建 stages 显示
+  if(S.running) restoreStages();
+}
+// 暂停后重渲染会清空 stages，用 S._stageState 恢复
+function restoreStages(){
+  // 由 onStartDistill 维护 S._stageState
+  var stEl = document.getElementById("d_stages");
+  if(!stEl || !S._stageState) return;
+  stEl.innerHTML = S._stageState;
 }
 
 function renderPackages(){
@@ -238,6 +257,11 @@ function renderPackages(){
 }
 
 function wire(){
+  // 暂停/恢复用事件委托 (render 会重建 DOM)
+  document.addEventListener("click", function(e){
+    if(e.target && e.target.id === "d_pause"){ togglePause(); }
+    if(e.target && e.target.id === "d_resume"){ togglePause(); }
+  });
   var f = document.getElementById("d_file");
   if(f) f.addEventListener("change", onFile);
 
@@ -320,7 +344,18 @@ async function onStartDistill(){
 
   S.step = 4; render();
   S.running = true;
+  S.paused = false;
+  S._stageState = "";
   if(window.DISTILL_LLM && DISTILL_LLM.resetStats) DISTILL_LLM.resetStats();
+
+  // 暂停检查: 在每个 await 前调用，暂停时阻塞
+  async function waitIfPaused(){
+    while(S.paused && S.running){
+      var m = document.getElementById("d_msg");
+      if(m) m.textContent = "已暂停，点击继续恢复…";
+      await new Promise(function(r){ setTimeout(r, 500); });
+    }
+  }
 
   var stages = [
     {id: "alias", label: "别名消解"},
@@ -339,6 +374,8 @@ async function onStartDistill(){
     if(!el) return;
     el.innerHTML = (st === "run" ? "◉ " : st === "done" ? "● " : "○ ") + el.textContent.slice(2);
     el.style.color = st === "run" ? "var(--gold)" : st === "done" ? "var(--ink)" : "var(--ink-faint)";
+    var stEl = document.getElementById("d_stages");
+    if(stEl) S._stageState = stEl.innerHTML;
   }
   function prog(msg, pct){
     var stat = (window.DISTILL_LLM && DISTILL_LLM.fmtStats) ? DISTILL_LLM.fmtStats() : "";
@@ -352,6 +389,7 @@ async function onStartDistill(){
 
   try{
     // 别名
+    await waitIfPaused();
     setStage("alias", "run");
     var aliasMap = checkpoint.aliasMap || {};
     if(!checkpoint.aliasMap){
@@ -368,9 +406,11 @@ async function onStartDistill(){
     setStage("alias", "done");
 
     // 画像
+    await waitIfPaused();
     setStage("profile", "run");
     var profiles = await DISTILL_CORE.distillNovel(S.chunks, chars, {
       checkpoint: checkpoint,
+      shouldPause: function(){ return S.paused; },
       onProgress: function(d, t, m){ prog("[画像] " + m, 20 + d / t * 30); },
       onCheckpoint: function(cp){ try{ localStorage.setItem(ckptKey, JSON.stringify(cp)); }catch(e){} }
     });
@@ -390,17 +430,20 @@ async function onStartDistill(){
     setStage("profile", "done");
 
     // 关系
+    await waitIfPaused();
     setStage("relations", "run");
     var edges = DISTILL_RELATIONS.extractPairs(S.chunks, chars, aliasMap, {});
-    await DISTILL_RELATIONS.enrichEdges(edges, function(d, t, m){ prog("[关系] " + m, 50 + d / t * 15); });
+    await DISTILL_RELATIONS.enrichEdges(edges, function(d, t, m){ prog("[关系] " + m, 50 + d / t * 15); }, {shouldPause: function(){ return S.paused; }});
     DISTILL_PACKAGE.saveData(S.pkg.id, "relations", edges);
     setStage("relations", "done");
 
     // 剧情 (完整模式)
     if(depth === "full"){
+      await waitIfPaused();
       setStage("plot", "run");
       var summaries = await DISTILL_PLOT.summarizeChunks(S.chunks, chars, aliasMap, {
         checkpoint: checkpoint,
+        shouldPause: function(){ return S.paused; },
         onProgress: function(d, t, m){ prog("[剧情] " + m, 65 + d / t * 20); },
         onCheckpoint: function(cp){ try{ localStorage.setItem(ckptKey, JSON.stringify(cp)); }catch(e){} }
       });

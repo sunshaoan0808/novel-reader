@@ -91,10 +91,16 @@ function extractPairs(chunks, characters, aliasMap, opts){
   return edges;
 }
 
-async function enrichEdges(edges, onProgress){
+async function enrichEdges(edges, onProgress, opts){
   // LLM 丰富化核心角色对
+  opts = opts || {};
+  var shouldPause = opts.shouldPause || function(){ return false; };
   var coreEdges = edges.filter(function(e){ return e._both_core; });
   for(var i = 0; i < coreEdges.length; i++){
+    while(shouldPause()){
+      if(onProgress) onProgress(i, coreEdges.length, "已暂停…");
+      await new Promise(function(r){ setTimeout(r, 500); });
+    }
     var e = coreEdges[i];
     if(onProgress) onProgress(i + 1, coreEdges.length, "丰富关系 " + e.source_character + "-" + e.target_character);
     try{

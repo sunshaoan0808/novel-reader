@@ -9,8 +9,13 @@ async function summarizeChunks(chunks, characters, aliasMap, opts){
   opts = opts || {};
   var onProgress = opts.onProgress || function(){};
   var checkpoint = opts.checkpoint || {};
+  var shouldPause = opts.shouldPause || function(){ return false; };
   var summaries = [];
   for(var i = 0; i < chunks.length; i++){
+    while(shouldPause()){
+      onProgress(i, chunks.length, "已暂停…");
+      await new Promise(function(r){ setTimeout(r, 500); });
+    }
     var ch = chunks[i];
     if(checkpoint["sum_" + ch.id]){
       if(checkpoint["sum_" + ch.id].summary) summaries.push(checkpoint["sum_" + ch.id].summary);

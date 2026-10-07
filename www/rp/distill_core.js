@@ -93,6 +93,13 @@ async function distillNovel(chunks, characters, opts){
   opts = opts || {};
   var onProgress = opts.onProgress || function(){};
   var checkpoint = opts.checkpoint || {};
+  var shouldPause = opts.shouldPause || function(){ return false; };
+  async function waitPause(){
+    while(shouldPause()){
+      onProgress(done, total, "已暂停…");
+      await new Promise(function(r){ setTimeout(r, 500); });
+    }
+  }
   var results = {};
   var total = chunks.length * characters.length;
   var done = 0;
@@ -100,6 +107,7 @@ async function distillNovel(chunks, characters, opts){
   for(var ci = 0; ci < chunks.length; ci++){
     var chunk = chunks[ci];
     for(var hi = 0; hi < characters.length; hi++){
+      await waitPause();
       var ch = characters[hi];
       var key = chunk.id + "|" + ch;
       if(checkpoint[key]){
