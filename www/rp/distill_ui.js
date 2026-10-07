@@ -92,6 +92,7 @@ function renderDiscover(){
             <span style="font-size:11px;color:var(--gold)">★${c.importance}</span></div>
           <div style="font-size:11px;color:var(--ink-faint)">
             出现 ${c.count} 次${c.aliases.length ? " · 别名: " + c.aliases.map(esc).join("、") : ""}</div>
+          ${c.reason ? `<div style="font-size:11px;color:var(--gold);margin-top:2px">💡 ${esc(c.reason)}</div>` : ""}
         </div>
       </label>`;
     }).join("")}

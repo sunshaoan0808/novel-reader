@@ -97,7 +97,7 @@ async function confirmCharacters(candidates, text, opts, warnings){
   onProgress(0, 1, "LLM 确认角色...");
   try{
     var r = await DISTILL_LLM.chat([
-      {role: "system", content: "你是小说角色识别器。从候选名单中确认哪些是真实人物角色，合并别名。返回 JSON: {\"characters\": [{\"name\": \"正名\", \"aliases\": [\"别名\"], \"importance\": 1-10}]}。importance 按戏份打分。"},
+      {role: "system", content: "你是小说角色识别器。从候选名单中确认哪些是真实人物角色，合并别名。返回 JSON: {\"characters\": [{\"name\": \"正名\", \"aliases\": [\"别名\"], \"importance\": 1-10, \"reason\": \"一句话推荐理由\"}]}。importance 按戏份打分，reason 说明为什么值得蒸馏（如：主角/关键情节推动者/有完整成长弧）。"},
       {role: "user", content: JSON.stringify({
         candidates: top.map(function(c){ return {name: c.name, count: c.count}; }),
         sample: text.slice(0, 2000)
@@ -119,7 +119,8 @@ async function confirmCharacters(candidates, text, opts, warnings){
           name: c.name,
           aliases: aliases,
           importance: c.importance || 5,
-          count: cand ? cand.count : 0
+          count: cand ? cand.count : 0,
+          reason: c.reason || ""
         };
       }).filter(Boolean).sort(function(a, b){ return b.importance - a.importance || b.count - a.count; });
     }
@@ -130,7 +131,8 @@ async function confirmCharacters(candidates, text, opts, warnings){
   }
   // 降级: 直接用规则结果
   return top.slice(0, 20).map(function(c){
-    return {name: c.name, aliases: [], importance: 5, count: c.count};
+    return {name: c.name, aliases: [], importance: 5, count: c.count,
+      reason: "规则提取 (出现 " + c.count + " 次)"};
   });
 }
 
