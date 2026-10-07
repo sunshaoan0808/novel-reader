@@ -482,8 +482,15 @@ function openPackage(id){
   if(!pkg) return;
   var cards = DISTILL_PACKAGE.listCharacterCards(id);
   var v = document.getElementById("view");
+  var qualityHtml = "";
+  try{
+    if(typeof DISTILL_QUALITY !== "undefined"){
+      qualityHtml = DISTILL_QUALITY.renderReport(DISTILL_QUALITY.check(id));
+    }
+  }catch(e){}
   v.innerHTML = `<h2 class="sec">${esc(pkg.novel)}</h2>
     <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">剧本包 · ${cards.length} 个角色</div>
+    ${qualityHtml}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
     ${cards.map(function(c){
       return `<div class="card" style="padding:12px" onclick="DISTILL_UI.openCharacter('${id}','${esc(c.name)}')">
