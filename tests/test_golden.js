@@ -120,6 +120,22 @@ t("开场白种子进历史", hist.length === 1 && hist[0].content.indexOf("花�
 const cfg = JSON.parse(ls.getItem("nd_rp_cfg_v1") || "{}");
 t("导演风格落盘", cfg.directorStyle === "plotdriver");
 
+/* ---- 易用性/美观度修复回归 ---- */
+t("缺口文案人话", vm.runInContext("humanizeGap('主题层未命中经济/文化关键词：未生成 economy/culture 条目')", ctx)
+  === "经济、文化相关描写较少，世界书暂未收录");
+t("chunk转段文本", vm.runInContext("humanizeGap('10 个 chunk 无主角出场未参与蒸馏')", ctx)
+  === "10 段文本 无主角出场未参与蒸馏");
+t("空缺口不崩", vm.runInContext("humanizeGap(null)", ctx) === "");
+/* 产物页：状态徽章降调 */
+vm.runInContext("showRuns()", ctx);
+h = viewHTML();
+t("状态徽章用stat", h.indexOf("badge stat") >= 0);
+t("人物名保持主徽章", (h.match(/<span class="badge">林黛玉<\/span>/) || []).length === 1);
+/* 主题感知：无硬编码紫色 */
+const css = fs.readFileSync(WWW + "/style.css", "utf8");
+t("样式无紫色硬编码", !/(6c4dff|7c5cff|b14dff|a78bfa)/i.test(css));
+t("开场页跟随主题", css.indexOf(".gopening") >= 0 && /\.gopening[\s\S]{0,400}?var\(--bg\)/.test(css));
+
 console.log(`\ngolden: ${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);
 })().catch(e=>{ console.log("ERROR", e); process.exit(1); });

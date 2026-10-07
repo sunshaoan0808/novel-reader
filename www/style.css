@@ -1140,38 +1140,40 @@ body.chatmode.immersive #scenbar{ min-height:0; }
 .tl-text{font-size:13.5px; color:var(--ink); line-height:1.65;}
 .tl-meta{font-size:11.5px; color:var(--ink-faint); margin-top:4px;}
 
-/* ===== 方向三/四：黄金路径 & 走原著线 ===== */
+/* ===== 方向三/四：黄金路径 & 走原著线（主题感知：金色系，跟随 --gold） ===== */
 .golden-hero{display:flex;align-items:center;justify-content:space-between;gap:10px;
-  padding:14px 16px;border-radius:14px;margin-bottom:12px;cursor:pointer;color:#fff;
-  background:linear-gradient(135deg,#2b1a4d,#5b2350)}
+  padding:14px 16px;border-radius:14px;margin-bottom:12px;cursor:pointer;color:var(--ink);
+  background:linear-gradient(135deg,var(--card),var(--bg2));border:1px solid var(--line)}
+.golden-hero .gh-title{color:var(--gold-soft)}
 .gh-title{font-size:16px;font-weight:700}
-.gh-desc{font-size:12px;opacity:.75;margin-top:3px}
+.gh-desc{font-size:12px;opacity:.75;margin-top:3px;color:var(--ink-dim)}
 .gchars{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}
 .gchip{padding:8px 14px;border-radius:999px;border:1px solid var(--line);
-  font-size:14px;cursor:pointer;background:var(--card)}
-.gchip.sel{background:#6c4dff;color:#fff;border-color:#6c4dff}
+  font-size:14px;cursor:pointer;background:var(--card);color:var(--ink)}
+.gchip.sel{background:var(--gold);color:#1c1407;border-color:var(--gold);font-weight:700}
 .gstyles{display:grid;gap:8px;margin-bottom:6px}
 .gstyle{padding:10px 12px;border:1px solid var(--line);border-radius:12px;
   cursor:pointer;background:var(--card)}
-.gstyle.sel{border-color:#6c4dff;background:rgba(108,77,255,.1)}
-.gopening{min-height:62vh;padding:16px 14px 22px;border-radius:16px;color:#f2edff;
-  background:linear-gradient(180deg,#171226 0%,#251a44 70%,#2e1f52 100%)}
-.gopening .back{color:#cfc4f5}
-.go-kicker{font-size:12px;opacity:.65;letter-spacing:.08em;margin:12px 0 8px}
+.gstyle.sel{border-color:var(--gold)}
+.gstyle.sel .name{color:var(--gold-soft)}
+.gopening{min-height:62vh;padding:16px 14px 22px;border-radius:16px;color:var(--ink);
+  background:linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%);border:1px solid var(--line)}
+.gopening .back{color:var(--ink-dim)}
+.go-kicker{font-size:12px;opacity:.65;letter-spacing:.08em;margin:12px 0 8px;color:var(--ink-dim)}
 .go-anchors{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px}
-.go-anchors .badge{background:rgba(255,255,255,.14);color:#fff;border:none}
 .go-ops{display:grid;gap:10px;margin:8px 0}
-.go-op{padding:12px;border-radius:12px;background:rgba(255,255,255,.06);
-  cursor:pointer;border:1px solid transparent}
-.go-op.sel{border-color:#a78bfa;background:rgba(167,139,250,.14)}
-.go-op .badge{background:rgba(167,139,250,.28);color:#ece5ff;border:none;margin-bottom:6px}
+.go-op{padding:12px;border-radius:12px;background:var(--card);
+  cursor:pointer;border:1px solid var(--line)}
+.go-op.sel{border-color:var(--gold)}
 .go-text{font-size:15px;line-height:1.75}
-.go-stage{font-size:13px;opacity:.8;margin:12px 0 4px}
-.go-enter{display:block;width:100%;margin-top:14px;padding:15px;border:none;border-radius:14px;
-  font-size:16px;font-weight:700;color:#fff;cursor:pointer;
-  background:linear-gradient(135deg,#7c5cff,#b14dff)}
-.plotchip{background:rgba(108,77,255,.16)!important;color:#c9bcff!important;
-  border:1px solid rgba(108,77,255,.45)}
+.go-stage{font-size:13px;opacity:.8;margin:12px 0 4px;color:var(--ink-dim)}
+.go-enter{display:block;width:100%;margin-top:14px;padding:15px;border-radius:14px;
+  font-size:16px;font-weight:700;letter-spacing:.06em;cursor:pointer;
+  border:1px solid var(--gold-deep);color:#1c1407;
+  background:linear-gradient(180deg,#e0b45e,#c9973f);box-shadow:0 3px 14px rgba(212,162,78,.28)}
+.go-enter:active{transform:scale(.97)}
+.plotchip{background:rgba(212,162,78,.13)!important;color:var(--gold-soft)!important;
+  border:1px solid var(--gold-deep)}
 
 /* ===== 画像命中调试弹窗 ===== */
 .pdebug-pop{margin:6px 12px 0;padding:10px 12px;border-radius:12px;cursor:pointer;
@@ -1180,3 +1182,6 @@ body.chatmode.immersive #scenbar{ min-height:0; }
 .pdebug-sec{font-weight:700;margin:8px 0 4px}
 .pdebug-item{margin:6px 0}
 .pdebug-item .badge{margin-bottom:2px}
+
+/* ===== 产物页：状态徽章降调（人物名是主信息） ===== */
+.badge.stat{color:var(--ink-faint);border-color:var(--line);background:transparent}

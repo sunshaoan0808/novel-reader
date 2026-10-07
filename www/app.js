@@ -98,7 +98,7 @@ view.innerHTML = INDEX.map(r=>`
 <div style="margin-top:8px">
 ${r.characters.map(c=>`<span class="badge">${esc(c)}</span>`).join("")}
 ${r.scope?`<span class="badge warn">范围蒸馏</span>`:""}
-${r.has_plot?`<span class="badge">有剧情层</span>`:""}${r.has_worldcard?`<span class="badge">有世界卡</span>`:""}
+${r.has_plot?`<span class="badge stat">有剧情层</span>`:""}${r.has_worldcard?`<span class="badge stat">有世界卡</span>`:""}
 </div>
 </div>`).join("") || `<div class="empty">暂无任务</div>`;
 }
@@ -412,6 +412,17 @@ function getWorldcard(runId){
   if(!runId) return null;
   return _wcCache[runId] || window["__WORLDCARD_" + runId] || null;
 }
+/* 世界卡 coverage.gaps 管线黑话 → 用户可读文案 */
+function humanizeGap(g){
+  let s = String(g == null ? "" : g);
+  const m = s.match(/主题层未命中(.+?)关键词/);
+  if(m){
+    const kinds = m[1].replace(/economy\/culture/g, "经济/文化").replace(/\//g, "、");
+    return kinds + "相关描写较少，世界书暂未收录";
+  }
+  s = s.replace(/(\d+)\s*个?\s*chunk/gi, "$1 段文本");
+  return s;
+}
 function showWorldcard(){
   const runId = RUN.run_id;
   _wcData = null;
@@ -429,9 +440,9 @@ function showWorldcard(){
     const types = {};
     entries.forEach(e=>{ (types[e.entryType]=types[e.entryType]||[]).push(e); });
     const head = `<div class="card"><div class="kvline"><b>${esc(wc.name||"世界卡")}</b> `
-      + `<span class="badge">${wc.novelMaterialStatus==="complete"?"完整":"部分"}</span></div>`
+      + `<span class="badge" title="世界卡对原著内容的覆盖情况">${wc.novelMaterialStatus==="complete"?"完整":"部分覆盖"}</span></div>`
       + `<div class="kvline">世界书 ${entries.length} 条 · 导演 ${stages.length} 幕 / ${nodes.length} 节点 / ${actors.length} 演员</div>`
-      + (gaps.length?`<div class="kvline" style="color:var(--muted,#888);font-size:12px">缺口：${esc(gaps.slice(0,3).join("；"))}${gaps.length>3?"…":""}</div>`:"")
+      + (gaps.length?`<div class="kvline" style="color:var(--muted,#888);font-size:12px">待补：${esc(gaps.slice(0,3).map(humanizeGap).join("；"))}${gaps.length>3?"…":""}</div>`:"")
       + `</div>`;
     const conflict = dd.coreConflict
       ? `<h2 class="sec">核心冲突</h2><div class="card"><div class="st">${esc(dd.coreConflict)}</div>`
@@ -6327,7 +6338,7 @@ window.goldenOpening = ()=>{
       <button class="back" onclick="goldenPickChar(${g.bookIdx})">‹ 返回</button>
       <div class="go-kicker">《${esc(g.novel)}》 · ${charName ? "魂穿"+esc(charName) : "路人开局"} · ${esc(styleName)}</div>
       ${anchors.length ? `<div class="go-anchors">${anchors.map(a=>`<span class="badge">${esc(String(a).slice(0,18))}</span>`).join("")}</div>` : ""}
-      <h2 class="sec" style="color:#f2edff;border:none">选一个开场</h2>
+      <h2 class="sec" style="color:var(--ink);border:none">选一个开场</h2>
       <div class="go-ops">${g.ops.length ? g.ops.map((o,oi)=>`
         <div class="go-op${oi===0?" sel":""}" data-oi="${oi}" onclick="goldenSetOpening(${oi})">
           ${o.label?`<span class="badge">${esc(o.label)}</span>`:""}
