@@ -3221,7 +3221,8 @@ const spk = CHAT.mode==="group"
 /* Tier3-22: 群聊输入区点头像 @ 指定角色（@ 后本轮点名该角色先回） */
 const atb = CHAT.mode==="group"
 ? `<button id="atbtn" class="atbtn" onclick="toggleAtMenu(event)" title="＠ 指定角色：本轮点名 TA 先回">＠</button>` : "";
-return `<button id="narrbtn" class="narrbtn${CHAT.narrMode?" on":""}" onclick="toggleNarr()" title="旁白模式：发送场景/动作描写">${icon("scroll")}</button>`
+return `<button id="pushbtn" class="narrbtn" onclick="togglePushStory(event)" title="推剧情：下一条回复自动推进">🚀</button>`
++ `<button id="narrbtn" class="narrbtn${CHAT.narrMode?" on":""}" onclick="toggleNarr()" title="旁白模式：发送场景/动作描写">${icon("scroll")}</button>`
 + `${atb}${spk}<input id="chat_in" placeholder="${CHAT.narrMode?"📜 旁白：写场景/动作/心理描写…":ph}" onkeydown="if(event.key==='Enter')sendChat()">`
 + `<button class="aifillbtn chatfill" onclick="RP_AIFILL.fillChat(this)" title="AI 帮我说一句（只填入，不发送）">✨</button>`
 + `<button class="sendbtn" onclick="sendChat()" title="发送">${icon("send")}</button>`;
@@ -3246,6 +3247,21 @@ inp.value = ((inp.value||"").replace(/\s+$/,"") + " @" + name + " ").replace(/^ 
 inp.focus();
 }
 const m = document.getElementById("atmenu"); if(m) m.remove();
+};
+/* Push Story: 一键推剧情 (Marinara Narrative Director 思路) */
+window.togglePushStory = (ev)=>{
+  if(ev && ev.stopPropagation) ev.stopPropagation();
+  var chatId = (typeof chatKey !== "undefined" && CHAT.runId) ? chatKey(CHAT.runId, CHAT.name) : "";
+  // 已武装则解除
+  if(typeof AGENT_PUSHSTORY !== "undefined" && AGENT_PUSHSTORY.isArmed(chatId)){
+    AGENT_PUSHSTORY.disarm(chatId);
+    var b0 = document.getElementById("pushbtn"); if(b0) b0.classList.remove("on");
+    return;
+  }
+  // 选模式
+  var mode = confirm("点确定=顺推剧情，点取消=加意外转折") ? "natural" : "event";
+  if(typeof AGENT_PUSHSTORY !== "undefined") AGENT_PUSHSTORY.arm(chatId, mode);
+  var b = document.getElementById("pushbtn"); if(b) b.classList.add("on");
 };
 window.toggleNarr = ()=>{
 CHAT.narrMode = !CHAT.narrMode;
