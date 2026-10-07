@@ -13,7 +13,7 @@ var THEMES = [
     "--ink":"#ece4d3","--ink-dim":"#b3a88f","--ink-faint":"#9a917e",
     "--gold":"#d4a24e","--gold-deep":"#a97c2e","--gold-soft":"#f2ddab",
     "--red":"#d07864","--green":"#8fb573",
-    "--topbar-bg":"#12100d","--glow":"#1e1913",
+    "--topbar-bg":"#12100d","--glow":"#1e1913","--nav-bg":"rgba(23,20,17,.92)",
     "--shadow":"0 6px 24px rgba(0,0,0,.45)","--shadow-s":"0 2px 10px rgba(0,0,0,.28)"
    }},
   {id:"songyan", name:"松烟", desc:"松烟入墨 · 青黑底 + 石青，冷峻书卷气",
@@ -23,7 +23,7 @@ var THEMES = [
     "--ink":"#e3e9ea","--ink-dim":"#a7b5b9","--ink-faint":"#87959a",
     "--gold":"#7fb0a5","--gold-deep":"#5b8a80","--gold-soft":"#c2ded5",
     "--red":"#c98a7e","--green":"#93b586",
-    "--topbar-bg":"#0e1418","--glow":"#14202a",
+    "--topbar-bg":"#0e1418","--glow":"#14202a","--nav-bg":"rgba(18,26,32,.92)",
     "--shadow":"0 6px 24px rgba(0,0,0,.5)","--shadow-s":"0 2px 10px rgba(0,0,0,.32)"
    }},
   {id:"jiangxia", name:"绛霞", desc:"暮色绛紫 · 黛紫底 + 绛红，浓烈戏剧感",
@@ -33,7 +33,7 @@ var THEMES = [
     "--ink":"#f0e6e2","--ink-dim":"#bda7a2","--ink-faint":"#99817e",
     "--gold":"#d08a7e","--gold-deep":"#a26357","--gold-soft":"#f2c6b8",
     "--red":"#d07864","--green":"#9db383",
-    "--topbar-bg":"#161114","--glow":"#241a20",
+    "--topbar-bg":"#161114","--glow":"#241a20","--nav-bg":"rgba(27,20,24,.92)",
     "--shadow":"0 6px 24px rgba(0,0,0,.5)","--shadow-s":"0 2px 10px rgba(0,0,0,.32)"
    }},
 ];

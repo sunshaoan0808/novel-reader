@@ -5,7 +5,7 @@
   --ink:#ece4d3; --ink-dim:#b3a88f; --ink-faint:#9a917e; /* faint 提亮：WCAG 4.5:1 底线 */
   --gold:#d4a24e; --gold-deep:#a97c2e; --gold-soft:#f2ddab;
   --red:#d07864; --green:#8fb573;
-  --topbar-bg:#12100d; --glow:#1e1913; /* P2 命名主题跟随 */
+  --topbar-bg:#12100d; --glow:#1e1913; --nav-bg:rgba(23,20,17,.92); /* P2 命名主题跟随 */
   --r:16px; --r-s:12px;
   --shadow:0 6px 24px rgba(0,0,0,.45);
   --shadow-s:0 2px 10px rgba(0,0,0,.28);
@@ -21,10 +21,11 @@ body{
 #app{max-width:640px; margin:0 auto; min-height:100%; display:flex; flex-direction:column;
   background:radial-gradient(120% 40% at 50% 0%, var(--glow) 0%, var(--bg) 60%);}
 
-/* 顶栏 */
+/* 顶栏：透明化，透出 #app 的顶部 glow，与中间融为一体；滚动时毛玻璃 frost */
 #topbar{
   position:sticky; top:0; z-index:20; padding:14px 18px 12px;
-  background:var(--topbar-bg);
+  background:transparent;
+  backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
   border-bottom:1px solid var(--line-soft);
 }
 #title{font-family:var(--serif); font-size:21px; letter-spacing:.14em; color:var(--gold-soft); font-weight:700;}
@@ -35,7 +36,7 @@ body{
 /* 底部导航 */
 #mainnav{
   position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:640px;
-  display:flex; background:rgba(23,20,17,.92); backdrop-filter:blur(16px);
+  display:flex; background:var(--nav-bg); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
   border-top:1px solid var(--line-soft); padding:8px 6px calc(8px + env(safe-area-inset-bottom)); z-index:20;
 }
 #mainnav button{
@@ -172,7 +173,7 @@ body{
 .typing{align-self:flex-start; font-size:12px; color:var(--ink-faint); padding:6px 4px;
   animation:pulse 1.2s infinite;}
 @keyframes pulse{0%,100%{opacity:.5;} 50%{opacity:1;}}
-.chatbar{display:flex; gap:8px; padding:10px; background:rgba(20,17,13,.9);
+.chatbar{display:flex; gap:8px; padding:10px; background:var(--nav-bg);
   border-top:1px solid var(--line-soft);}
 .chatbar input{
   flex:1; background:#100e0b; border:1px solid var(--line); color:var(--ink);
@@ -218,7 +219,7 @@ body.chatmode #app{ background:var(--bg); }
   z-index:30;
   display:flex; align-items:center; gap:10px;
   padding:10px 12px;
-  background:rgba(18,16,13,.92); backdrop-filter:blur(14px);
+  background:var(--nav-bg); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
   border-bottom:1px solid var(--line-soft);
   /* 沉浸式显隐：布局变化(marginTop)由 JS 即时切换+同步补偿 scrollTop；
      只给 transform 加 .3s 过渡做滑入滑出，纯视觉、不碰布局，所以补偿精确、
@@ -487,7 +488,7 @@ mark{ background:rgba(212,162,78,.45); color:inherit; border-radius:2px; padding
 .actionbar{
   position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:640px;
   display:flex; gap:10px; padding:12px 16px calc(12px + env(safe-area-inset-bottom));
-  background:rgba(18,16,13,.94); backdrop-filter:blur(14px);
+  background:var(--nav-bg); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
   border-top:1px solid var(--line-soft); z-index:20;
 }
 .wb-cat{ font-size:12px; color:var(--ink-faint); letter-spacing:.12em; margin:16px 0 6px; }
@@ -845,7 +846,7 @@ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow
 .drawer .ditem .ic{width:26px; text-align:center;}
 
 /* --- 输入栏精修 --- */
-.chatbar{border-top:1px solid var(--line); background:rgba(24,20,15,.96);}
+.chatbar{border-top:1px solid var(--line); background:var(--nav-bg);}
 .chatbar input{padding:12px 18px; box-shadow:inset 0 2px 6px rgba(0,0,0,.4); min-width:0;}
 .chatbar button{flex:none; white-space:nowrap; padding:12px 22px;}
 .chatbar input:focus{border-color:var(--gold-deep); box-shadow:inset 0 2px 6px rgba(0,0,0,.4), 0 0 0 3px rgba(212,162,78,.12);}

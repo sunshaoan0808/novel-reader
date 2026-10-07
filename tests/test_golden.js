@@ -136,6 +136,16 @@ const css = fs.readFileSync(WWW + "/style.css", "utf8");
 t("样式无紫色硬编码", !/(6c4dff|7c5cff|b14dff|a78bfa)/i.test(css));
 t("开场页跟随主题", css.indexOf(".gopening") >= 0 && /\.gopening[\s\S]{0,400}?var\(--bg\)/.test(css));
 
+/* ---- 顶栏底栏与中间统一 ---- */
+t("顶栏透明", /#topbar[\s\S]{0,300}?background:\s*transparent/.test(css));
+t("底栏走主题变量", /#mainnav[\s\S]{0,400}?background:\s*var\(--nav-bg\)/.test(css));
+t("聊天顶栏走主题变量", /\.chathead[\s\S]{0,400}?background:\s*var\(--nav-bg\)/.test(css));
+t("聊天底栏走主题变量", /\.chatbar\{[^}]*background:\s*var\(--nav-bg\)/.test(css));
+t("actionbar走主题变量", /\.actionbar[\s\S]{0,400}?background:\s*var\(--nav-bg\)/.test(css));
+const themeJs = fs.readFileSync(WWW + "/rp/theme.js", "utf8");
+t("三主题都有nav-bg", (themeJs.match(/"--nav-bg"/g) || []).length === 3);
+t("栏位无硬编码棕色", !/#topbar[\s\S]{0,300}?rgba\(2[034],1[678],[01][357]/.test(css));
+
 console.log(`\ngolden: ${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);
 })().catch(e=>{ console.log("ERROR", e); process.exit(1); });
