@@ -538,7 +538,7 @@ async function send(runId, name, text, opts){
   var dirText = "";
   try{
     if(typeof RP_DIRECTOR !== "undefined")
-      dirText = await RP_DIRECTOR.onUserMessage(wsId, {cfg: cfg, history: h,
+      dirText = await RP_DIRECTOR.onUserMessage(wsId, {cfg: cfg, history: h, runId: runId,
         hint: wsHint, cardBrief: cardBriefOf(card)});
   }catch(e){}
   var temporal = await temporalFor(wsId, card, run.novel, h);
@@ -780,7 +780,7 @@ async function sendGroup(runId, members, speakers, text, opts){
   /* 导演系统：群聊每轮只跑一次导演（不是每位发言人一次），指令分发给各发言人 */
   try{
     if(typeof RP_DIRECTOR !== "undefined" && typeof groupKey !== "undefined")
-      opts._dirText = await RP_DIRECTOR.onUserMessage(groupKey(runId, members), {cfg: cfg, history: h,
+      opts._dirText = await RP_DIRECTOR.onUserMessage(groupKey(runId, members), {cfg: cfg, history: h, runId: runId,
         hint: {novel: run.novel}, cardBrief: "群聊：" + members.join("、")});
   }catch(e){}
 

@@ -394,6 +394,24 @@ function showStoryline(){
  * 懒加载 www/data/worldcard_<run_id>.js, 渲染世界概览/导演蓝图/世界书检索/次要人物/道具。 */
 let _wcCache = {};
 let _wcData = null;
+/* 世界卡懒加载（file:// 下用 script 标签），世界 tab 与导演系统共用 */
+function loadWorldcard(runId){
+  if(!runId) return Promise.resolve(null);
+  if(_wcCache[runId]) return Promise.resolve(_wcCache[runId]);
+  var gk = "__WORLDCARD_" + runId;
+  if(window[gk]){ _wcCache[runId] = window[gk]; return Promise.resolve(window[gk]); }
+  return new Promise(function(res){
+    var s = document.createElement("script");
+    s.src = "data/worldcard_" + encodeURIComponent(runId) + ".js";
+    s.onload = function(){ var wc = window[gk] || null; _wcCache[runId] = wc; res(wc); };
+    s.onerror = function(){ res(null); };
+    document.head.appendChild(s);
+  });
+}
+function getWorldcard(runId){
+  if(!runId) return null;
+  return _wcCache[runId] || window["__WORLDCARD_" + runId] || null;
+}
 function showWorldcard(){
   const runId = RUN.run_id;
   _wcData = null;
@@ -440,15 +458,7 @@ function showWorldcard(){
     view.innerHTML = head + conflict + stageHtml + search + npcHtml + itemHtml;
     window.scrollTo(0,0);
   };
-  if(_wcCache[runId]){ render(_wcCache[runId]); return; }
-  /* file:// 下 fetch 不可用, 用 script 标签动态加载 (export 写 window.__WORLDCARD_<run_id>) */
-  var gk = "__WORLDCARD_" + runId;
-  if(window[gk]){ _wcCache[runId] = window[gk]; render(window[gk]); return; }
-  var s = document.createElement("script");
-  s.src = "data/worldcard_" + encodeURIComponent(runId) + ".js";
-  s.onload = function(){ var wc = window[gk] || null; _wcCache[runId] = wc; if(TAB === "world") render(wc); };
-  s.onerror = function(){ if(TAB === "world") render(null); };
-  document.head.appendChild(s);
+  loadWorldcard(runId).then(function(wc){ if(TAB === "world") render(wc); });
 }
 function wcSearch(){
   const qEl = document.getElementById("wc-q"), box = document.getElementById("wc-res");
@@ -1338,6 +1348,7 @@ const f = cs.find(c=>`${c.runId}|${c.name}`===last) || cs[0];
 CHAT = {runId:f.runId, name:f.name};
 }
 const run = (window.__DATA__.runs||{})[CHAT.runId] || {};
+try{ if(CHAT.runId) loadWorldcard(CHAT.runId); }catch(e){} /* 世界卡预热：导演编排可用原著蓝图，fire-and-forget */
 let memN = 0;
 try{ const mst = RP_MEM.get(CHAT.runId, CHAT.name); memN = (mst && mst.short ? mst.short.length : 0); }catch(e){}
 await warmWallpaper(); /* 先读用户壁纸，避免先闪默认图 */
@@ -1416,6 +1427,7 @@ saveHist(k, [{mid:(typeof nextMsgId==="function"?nextMsgId():"m"+Date.now().toSt
 /* ================= 群聊 ================= */
 async function showGroupChat(cfg){
 __backAction = ()=>exitChat();
+try{ if(CHAT.runId) loadWorldcard(CHAT.runId); }catch(e){} /* 世界卡预热，fire-and-forget */
 const ms = CHAT.members;
 const k = chatHistKey();
 const gkey = ms.slice().sort().join("_");

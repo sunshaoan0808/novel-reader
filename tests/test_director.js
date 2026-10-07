@@ -167,5 +167,27 @@ assert.ok(h.indexOf("clapperboard") >= 0);
 await t("五套风格齐全", ()=>{
 assert.deepStrictEqual(Object.keys(D.STYLES).sort(), ["mystery","plotdriver","slowburn","warm","wildcard"]);
 });
+await t("世界卡蓝图注入：有 worldcard 时进 prompt", ()=>{
+ctx.getWorldcard = ()=>({directorDefinitions:[{coreConflict:"上山之争——被逼上山",
+anchors:["官逼民反","忠义难全"],
+nodes:[{title:"风雪山神庙", execution:"foreground"},{title:"日常闲逛", execution:"background"}]}]});
+const p = D.buildPrompt("c1", D.ensure("c1"), O({runId:"shuihu_full"}));
+assert.ok(p.indexOf("【原著因果蓝图】") >= 0, "有蓝图标题");
+assert.ok(p.indexOf("上山之争") >= 0, "有核心冲突");
+assert.ok(p.indexOf("官逼民反") >= 0, "有锚点");
+assert.ok(p.indexOf("风雪山神庙") >= 0, "转折点进事件池");
+assert.ok(p.indexOf("日常闲逛") < 0, "background 不进事件池");
+assert.ok(p.indexOf("绝不剧透") >= 0, "有防剧透约束");
+delete ctx.getWorldcard;
+});
+await t("世界卡蓝图注入：无 worldcard 时静默跳过", ()=>{
+const p = D.buildPrompt("c1", D.ensure("c1"), O({runId:"shuihu_full"}));
+assert.ok(p.indexOf("【原著因果蓝图】") < 0, "无蓝图段");
+assert.ok(p.indexOf("幕后导演") >= 0, "主体 prompt 不受影响");
+});
+await t("世界卡蓝图注入：o 无 runId 时不崩", ()=>{
+const p = D.buildPrompt("c1", D.ensure("c1"), O());
+assert.ok(p.indexOf("【原著因果蓝图】") < 0);
+});
 console.log("\n" + n + " pass, 0 fail");
 })().catch(e=>{ console.error("FAIL:", e); process.exit(1);});

@@ -128,6 +128,26 @@ return RP_WORLDSIM.fmtTime(ws) + " / " + RP_WORLDSIM.weatherName(ws.wx) +
 }catch(e){}
 return "未知";
 }
+/* ---------- 原著因果蓝图（蒸馏管线 worldcard.json，供导演作编排灵感） ----------
+ * 世界卡由 App 在聊天开始时预加载；buildPrompt 是同步的，只读缓存，
+ * 未加载完成时静默跳过（不阻塞导演）。铁律：只可改编化用，绝不剧透原文。 */
+function worldcardBrief(runId){
+try{
+if(!runId || typeof getWorldcard !== "function") return "";
+var wc = getWorldcard(runId);
+if(!wc || !wc.directorDefinitions || !wc.directorDefinitions.length) return "";
+var dd = wc.directorDefinitions[0];
+var lines = [];
+if(dd.coreConflict) lines.push("核心冲突：" + String(dd.coreConflict).slice(0, 120));
+if(dd.anchors && dd.anchors.length) lines.push("世界锚点：" + dd.anchors.slice(0, 4).join("、"));
+var tps = (dd.nodes || []).filter(function(n){ return n && n.execution === "foreground"; }).slice(0, 6);
+if(tps.length) lines.push("原著转折事件池（只可改编化用，绝不直接复述、绝不剧透）：" +
+tps.map(function(n){ return n.title; }).join("；"));
+if(!lines.length) return "";
+return "【原著因果蓝图】以下来自原著蒸馏，可作编排灵感：\n" + lines.join("\n") + "\n";
+}catch(e){ return ""; }
+}
+
 function buildPrompt(chatId, st, o, forceStale){
 var c = gcfg();
 var style = STYLES[c.directorStyle] || STYLES.slowburn;
@@ -142,6 +162,7 @@ return "你是这场角色扮演聊天的幕后导演（Director），不是演�
 "4. 不许剧透玩家不应知道的隐藏信息。\n" +
 "导演风格：" + style.name + "——" + style.desc + "\n" +
 "当前世界状态（时间 / 天气 / 地点）：" + simLine(chatId, o.hint) + "\n" +
+worldcardBrief(o.runId) +
 "角色：" + (o.cardBrief || "未知") + "\n" +
 (st.lastBeat? "上次导演指令：" + st.lastBeat + "（" + (PACING_CN[st.lastPacing] || "保持") + "）\n": "") +
 "最近对话：\n" + (recentText(o.history, 8) || "（开场）") + "\n" +

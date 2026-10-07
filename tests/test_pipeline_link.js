@@ -133,8 +133,10 @@ run(ctx, `window.__WORLDCARD_wctest = {
   }],
   modules: []
 };`);
+run(ctx, pickFn("loadWorldcard") + "\n" + pickFn("getWorldcard"));
 run(ctx, pickFn("showWorldcard") + "\n" + pickFn("wcSearch"));
 run(ctx, `showWorldcard();`);
+await new Promise(r=>setTimeout(r, 30)); /* loadWorldcard 走 Promise，等微任务落定 */
 const wcHtml = run(ctx, `view.innerHTML`);
 t("世界卡渲染", wcHtml.indexOf("测试小说（小说世界）") >= 0);
 t("世界卡核心冲突", wcHtml.indexOf("上山之争") >= 0);
