@@ -29,6 +29,35 @@ function detectAiCliche(text){
   return hits;
 }
 
+// C1: polish 自动修复 (dama-cyber: 只报警→能修)
+var AI_CLICHE_FIXES = [
+  ["眼中闪过一丝", ""],
+  ["眼中闪过", ""],
+  ["眼底闪过", ""],
+  ["嘴角勾起一抹", ""],
+  ["嘴角勾起", ""],
+  ["眼眶微红", "眼圈发红"],
+  ["咬了咬唇", "抿了抿嘴"],
+  ["冷冷地说", "说道"],
+  ["不可置信地", "难以置信地"],
+  ["一种说不出的", ""]
+];
+
+function polishAiCliche(text){
+  var fixed = String(text || "");
+  var count = 0;
+  AI_CLICHE_FIXES.forEach(function(pair){
+    try{
+      var re = new RegExp(pair[0], "g");
+      var before = fixed;
+      fixed = fixed.replace(re, pair[1]);
+      if(fixed !== before) count++;
+    }catch(e){}
+  });
+  fixed = fixed.replace(/\s{2,}/g, " ").trim();
+  return {text: fixed, fixed: count};
+}
+
 function check(pkgId){
   var checks = [];
   var pkg = DISTILL_PACKAGE.getPackage(pkgId);
@@ -224,6 +253,7 @@ return {
   check: check,
   renderReport: renderReport,
   detectAiCliche: detectAiCliche,
+  polishAiCliche: polishAiCliche,
   LEVEL_ICON: LEVEL_ICON,
   PROFILE_FIELDS: PROFILE_FIELDS
 };

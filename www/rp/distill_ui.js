@@ -104,11 +104,29 @@ function renderDiscover(){
   </div>`;
 }
 
+// A1: 问答式配置 (Cardwright: 按轮提问替代表单)
+var QA_QUESTIONS = [
+  {id: "depth", q: "这次想蒸多深？", options: [
+    {v: "quick", t: "快速", d: "只蒸画像+关系，省 token", rec: false},
+    {v: "full", t: "完整", d: "画像+关系+剧情+世界书，全都要", rec: true}
+  ]},
+  {id: "confirm", q: "确认开始？", options: [
+    {v: "yes", t: "开始蒸馏", d: "", rec: true},
+    {v: "back", t: "返回修改", d: "", rec: false}
+  ]}
+];
+var QA_STATE = {step: 0, answers: {}};
+
 function renderConfig(){
   var llmCfg = DISTILL_LLM.cfg();
+  // 问答模式
+  if(S.qaMode){
+    return renderConfigQA();
+  }
   var selCount = Object.keys(S.selected).filter(function(k){ return S.selected[k]; }).length;
   return `<div class="card">
-    <div style="font-size:13px;margin-bottom:12px">已选 <b>${selCount}</b> 个角色</div>
+    <div style="font-size:13px;margin-bottom:12px">已选 <b>${selCount}</b> 个角色
+      <a href="javascript:void(0)" onclick="DISTILL_UI.qaMode(true)" style="font-size:12px;margin-left:8px">💬 换问答式</a></div>
     <div class="field">
       <label>LLM API Key</label>
       <input type="password" id="d_key" value="${esc(llmCfg.key || "")}" placeholder="OpenAI 兼容接口 Key" style="width:100%">
@@ -126,6 +144,22 @@ function renderConfig(){
       <button class="btn primary" id="d_plan">生成计划书 →</button>
     </div>
   </div>`;
+}
+
+function renderConfigQA(){
+  var q = QA_QUESTIONS[QA_STATE.step];
+  if(!q) return "";
+  var html = `<div class="card">
+    <div style="font-size:13px;margin-bottom:12px">💬 ${esc(q.q)}
+      <a href="javascript:void(0)" onclick="DISTILL_UI.qaMode(false)" style="font-size:12px;margin-left:8px">切回表单</a></div>`;
+  q.options.forEach(function(o){
+    html += `<button class="btn" style="width:100%;margin-bottom:8px;text-align:left" onclick="DISTILL_UI.qaAnswer('${q.id}','${o.v}')">
+      <b>${esc(o.t)}</b>${o.rec ? ' <span style="color:var(--gold);font-size:11px">推荐</span>' : ""}
+      ${o.d ? `<div style="font-size:12px;color:var(--ink-faint)">${esc(o.d)}</div>` : ""}
+    </button>`;
+  });
+  html += `</div>`;
+  return html;
 }
 
 function renderPlan(){
@@ -525,6 +559,7 @@ function openPackage(id){
     ${qualityHtml}
     ${wbCount ? `<button class="btn" style="margin-bottom:12px" onclick="DISTILL_UI.showWorldbook('${id}')">📖 世界书 (${wbCount})</button>` : ""}
     <button class="btn" style="margin-bottom:12px;margin-left:8px" onclick="DISTILL_UI.runAudit('${id}')">🔍 审计员</button>
+    <button class="btn" style="margin-bottom:12px;margin-left:8px" onclick="DISTILL_UI.runProbes('${id}')">🎭 人格探针</button>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
     ${cards.map(function(c){
       return `<div class="card" style="padding:12px" onclick="DISTILL_UI.openCharacter('${id}','${esc(c.name)}')">
@@ -624,6 +659,8 @@ function openCharacter(pkgId, name, stage){
     <div class="btnrow" style="margin-top:12px">
       <button class="btn" onclick="DISTILL_UI.show()">← 返回</button>
       <button class="btn" onclick="DISTILL_UI.requestChange('${pkgId}','${esc(name)}')">✏️ 改动</button>
+      <button class="btn" onclick="DISTILL_UI.polishCard('${pkgId}','${esc(name)}')">✨ 去AI腔</button>
+      <button class="btn" onclick="DISTILL_PLAYGROUND.open('${pkgId}','${esc(name)}')">🎮 试玩</button>
       <button class="btn primary" onclick="chatWith('distill_${pkgId}','${esc(name)}')">开聊</button>
     </div>`;
 }
@@ -927,6 +964,78 @@ return {show: show, openPackage: openPackage, openCharacter: openCharacter, show
   requestChange: requestChange, confirmChange: confirmChange,
   editFact: editFact, saveFact: saveFact, deleteFact: deleteFact, addFact: addFact, recompileCard: recompileCard,
   showWorldbook: showWorldbook,
+  runProbes: async function(id){
+    var cards = DISTILL_PACKAGE.listCharacterCards(id);
+    if(!cards.length){ alert("没有角色卡"); return; }
+    // 选一个人
+    var name = cards[0].name;
+    if(cards.length > 1){
+      var sel = prompt("探针哪个人物？\n" + cards.map(function(c){ return c.name; }).join("\n"), name);
+      if(!sel) return;
+      name = sel;
+    }
+    if(!confirm("对 " + name + " 运行9道人格探针？(约18次LLM调用)")) return;
+    var v = document.getElementById("view");
+    v.innerHTML = `<h2 class="sec">🎭 人格探针 · ${esc(name)}</h2><div id="probeProg" style="font-size:14px"></div><div id="probeLog"></div>`;
+    var result = await DISTILL_PROBES.probe(id, name, {
+      onProgress: function(i, n, msg){
+        var el = document.getElementById("probeProg");
+        if(el) el.textContent = msg;
+      }
+    });
+    var html = `<h2 class="sec">🎭 探针结果 · ${esc(name)}</h2>
+      <div style="font-size:13px;margin-bottom:12px">${result.pass ? "✅ 通过" : "⚠️ 存疑"} (${result.ooc_count}/9 题 OOC)</div>`;
+    result.results.forEach(function(r, i){
+      var icon = r.ooc ? "🔴" : "🟢";
+      html += `<div class="card" style="margin-bottom:8px">
+        <div style="font-size:13px;font-weight:600">${icon} Q${i+1}: ${esc(r.question)}</div>
+        <div style="font-size:13px;margin-top:4px">答：${esc(r.answer.slice(0, 100))}</div>
+        ${r.ooc ? `<div style="font-size:12px;color:#f0ad4e;margin-top:4px">OOC: ${esc(r.reason)}</div>` : ""}
+      </div>`;
+    });
+    html += `<button class="btn" onclick="DISTILL_UI.openPackage('${id}')">返回</button>`;
+    v.innerHTML = html;
+  },
+  qaMode: function(on){
+    S.qaMode = on;
+    if(on){ QA_STATE.step = 0; QA_STATE.answers = {}; }
+    render();
+  },
+  qaAnswer: function(qid, val){
+    if(qid === "depth"){
+      QA_STATE.answers.depth = val;
+      // 直接设到 S
+      S.depth = val;
+      QA_STATE.step = 1;
+      render();
+    }else if(qid === "confirm"){
+      if(val === "yes"){
+        S.qaMode = false;
+        onPlan();  // 生成计划书
+      }else{
+        QA_STATE.step = 0;
+        render();
+      }
+    }
+  },
+  polishCard: function(pkgId, name){
+    var card = DISTILL_PACKAGE.getCharacterCard(pkgId, name);
+    if(!card || !card._distill) return;
+    var total = 0;
+    Object.keys(card._distill).forEach(function(k){
+      var v = card._distill[k];
+      if(typeof v !== "string") return;
+      var r = DISTILL_QUALITY.polishAiCliche(v);
+      if(r.fixed > 0){ card._distill[k] = r.text; total += r.fixed; }
+    });
+    if(total > 0){
+      DISTILL_PACKAGE.saveCharacterCard(pkgId, name, card);
+      alert("修复了 " + total + " 处 AI 腔表达");
+      DISTILL_UI.openCharacter(pkgId, name);
+    }else{
+      alert("没有发现 AI 腔，无需修复");
+    }
+  },
   runAudit: async function(id){
     var cards = DISTILL_PACKAGE.listCharacterCards(id);
     if(!cards.length){ alert("没有角色卡"); return; }
