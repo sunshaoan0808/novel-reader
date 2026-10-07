@@ -40,7 +40,7 @@ var r = await DISTILL_LLM.chat([
 "2. creativity(创意)：意象/比喻特点\n" +
 "3. development(发展)：人物/主题展开方式\n" +
 "4. language(语言)：句式/词汇/节奏特点\n" +
-"另抽：signature_lines(标志性句式，最多5条原文引用)，taboos(应避免的AI腔模仿误区)\n" +
+"另抽：signature_lines(标志性句式，最多5条原文引用)，taboos(应避免的AI腔模仿误区，必含一条：不要使用markdown格式)\n" +
 "返回 JSON: {\"plot\":[{\"claim\":\"\",\"evidence\":\"\"}],\"creativity\":[...],\"development\":[...],\"language\":[...],\"signature_lines\":[],\"taboos\":[]}"},
 {role: "user", content: "\n" + combined}
 ]);
