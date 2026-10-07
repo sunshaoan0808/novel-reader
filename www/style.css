@@ -1041,12 +1041,13 @@ input::-webkit-input-placeholder, textarea::-webkit-input-placeholder{color:#9a9
 .travmode{background:#1a1611;border:1px solid var(--line);border-radius:12px;padding:14px 12px;display:flex;gap:10px;align-items:center;cursor:pointer;transition:transform .15s ease,border-color .15s ease;animation:cardin .45s ease both;position:relative;overflow:hidden}
 .travmode:nth-child(2){animation-delay:.06s}.travmode:nth-child(3){animation-delay:.12s}.travmode:nth-child(4){animation-delay:.18s}
 /* 模式印章：一字 seal，选身份的仪式感 */
-.tm-seal{position:absolute;top:8px;right:10px;width:30px;height:30px;border-radius:7px;
+.tm-seal{position:absolute;top:10px;right:40px;width:26px;height:26px;border-radius:7px;
   background:linear-gradient(160deg,#b54634,#8e2f1e);color:#fdf3e7;
-  font-family:var(--serif);font-size:17px;font-weight:700;line-height:1;
+  font-family:var(--serif);font-size:15px;font-weight:700;line-height:1;
   display:flex;align-items:center;justify-content:center;transform:rotate(-5deg);
   box-shadow:0 2px 8px rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.14);
   opacity:.94;pointer-events:none}
+.travmode .tm-body{padding-right:32px} /* 给右上角印章让位 */
 .travmode:active{transform:scale(.97)}
 .travmode.locked{opacity:.55;cursor:default}
 .tm-icon{color:var(--gold);flex:none}
