@@ -100,8 +100,17 @@ function chunkNovel(text, opts){
       });
     }
   }
+  // 知情阶段: 按全书进度切 early/mid/late (防剧透)
+  out.forEach(function(c, i){
+    var ratio = out.length > 1 ? i / (out.length - 1) : 0;
+    c.stage = ratio < 0.33 ? "early" : ratio < 0.66 ? "mid" : "late";
+  });
   return out;
 }
 
-return {chunkNovel: chunkNovel, splitChapters: splitChapters, chunkText: chunkText};
+function stageLabel(s){
+  return s === "early" ? "前期" : s === "mid" ? "中期" : "后期";
+}
+
+return {chunkNovel: chunkNovel, stageLabel: stageLabel, splitChapters: splitChapters, chunkText: chunkText};
 })();

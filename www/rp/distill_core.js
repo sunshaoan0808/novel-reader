@@ -17,11 +17,18 @@ var SYSTEM_PROMPT = `你是小说人物档案蒸馏器。从小说正文片段�
 - key_bonds: 关键人物关系 (逗号分隔)
 - evidence: 关键证据原文引用 (最多3条)
 
+## 来源标注 (四态, 借鉴 TavernWeave)
+每个事实后必须标注来源状态:
+- [canon:chunk_id] 原文有直接证据 (如: "黛玉葬花" [canon:ch003])
+- [ref:chunk_id] 间接/旁证 (他人转述、侧面描写)
+- [inference:chunk_id] 基于原文的合理推断 (需有依据, 不能凭空编)
+- [unknown] 原文无依据, 不写内容, 字段留空
+
 ## 规则
-1. 只写正文中有直接依据的内容, 禁止编造、脑补
+1. 优先写 [canon], 其次 [ref], 谨慎用 [inference]
 2. 证据不足的字段留空, 不写"未知"等占位词
-3. 每个事实后标注来源 [chunk_id]
-4. 无原文依据的内容标注 [推测]
+3. 禁止编造原文没有的情节、人名、对话
+4. 引用核验只能证明原句存在, 不能自动证明结论正确 —— 推断要保守
 `;
 
 async function distillOne(chunk, character, onProgress){
@@ -34,7 +41,7 @@ async function distillOne(chunk, character, onProgress){
     {role: "system", content: SYSTEM_PROMPT},
     {role: "user", content: user}
   ]);
-  return {md: r.content, chunkId: chunk.id, character: character};
+  return {md: r.content, chunkId: chunk.id, character: character, stage: chunk.stage || "mid"};
 }
 
 function parseProfile(md){
@@ -56,18 +63,28 @@ function parseProfile(md){
 }
 
 function mergeProfiles(profileList){
-  // 合并多块的档案: 简单策略, 取最长的非空值
+  // 合并多块的档案: 按阶段分组, 每阶段取最长非空值 (防剧透)
   var merged = {};
+  var byStage = {early: [], mid: [], late: []};
+  profileList.forEach(function(p){
+    var st = p.stage || "mid";
+    if(byStage[st]) byStage[st].push(p);
+  });
   var keys = ["core_identity", "core_traits", "speech_style", "typical_lines",
               "background", "soul_goal", "key_bonds", "evidence"];
-  keys.forEach(function(k){
-    var best = "";
-    profileList.forEach(function(p){
-      var v = (p.fields[k] || "").trim();
-      if(v.length > best.length) best = v;
+  ["early", "mid", "late"].forEach(function(st){
+    merged[st] = {};
+    keys.forEach(function(k){
+      var best = "";
+      byStage[st].forEach(function(p){
+        var v = (p.fields[k] || "").trim();
+        if(v.length > best.length) best = v;
+      });
+      merged[st][k] = best;
     });
-    merged[k] = best;
   });
+  // 兼容: 顶层为全量合并 (取 late)
+  keys.forEach(function(k){ merged[k] = merged.late[k] || merged.mid[k] || merged.early[k] || ""; });
   return merged;
 }
 
@@ -99,7 +116,7 @@ async function distillNovel(chunks, characters, opts){
         var r = await distillOne(chunk, ch);
         var fields = parseProfile(r.md);
         if(!results[ch]) results[ch] = [];
-        results[ch].push({fields: fields, chunkId: chunk.id, md: r.md});
+        results[ch].push({fields: fields, chunkId: chunk.id, md: r.md, stage: r.stage});
         checkpoint[key] = true;
         if(opts.onCheckpoint) opts.onCheckpoint(checkpoint);
       }catch(e){

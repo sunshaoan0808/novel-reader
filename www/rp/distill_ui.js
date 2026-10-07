@@ -314,6 +314,11 @@ async function onStartDistill(){
 
     S.running = false;
     try{ localStorage.removeItem(ckptKey); }catch(e){}
+    // 构建出处索引
+    try{
+      var chars = Object.keys(S.selected).filter(function(k){ return S.selected[k]; });
+      DISTILL_PROVENANCE.buildIndex(S.pkg.id, chars);
+    }catch(e){}
     prog("完成! 剧本包已生成", 100);
     setTimeout(function(){ S.step = 4; render(); }, 1500);
   }catch(e){
@@ -342,7 +347,23 @@ function openPackage(id){
     </div>`;
 }
 
-function openCharacter(pkgId, name){
+var _charStage = "late"; // 当前查看阶段
+
+function renderAnnotated(text){
+  // 渲染带四态标注的文本
+  if(!text) return "";
+  return esc(text).replace(/\[(canon|ref|inference|unknown)(?::([a-z0-9_\-]+))?\]/gi,
+    function(m, s, c){
+      var label = DISTILL_PROVENANCE.SOURCE_LABEL[s.toLowerCase()] || s;
+      var color = DISTILL_PROVENANCE.SOURCE_COLOR[s.toLowerCase()] || "var(--ink-faint)";
+      var title = c ? "来源: " + c : label;
+      return `<span style="font-size:10px;color:${color};border:1px solid ${color};border-radius:3px;padding:0 4px;margin-left:4px" title="${esc(title)}">${label}</span>`;
+    });
+}
+
+function openCharacter(pkgId, name, stage){
+  stage = stage || _charStage;
+  _charStage = stage;
   var card = DISTILL_PACKAGE.getCharacterCard(pkgId, name);
   var v = document.getElementById("view");
   if(!card){
@@ -350,20 +371,67 @@ function openCharacter(pkgId, name){
     return;
   }
   var d = card._distill || {};
+  // 按阶段取 (防剧透: early 只看 early, mid 看 early+mid, late 全看)
+  var stageData = d[stage] || {};
+  if(stage === "mid") stageData = Object.assign({}, d.early, d.mid);
+  if(stage === "late") stageData = d; // 顶层为全量
+
+  var prov = DISTILL_PACKAGE.getData(pkgId, "provenance");
+  var provStats = prov ? DISTILL_PROVENANCE.stats(prov) : null;
+
   v.innerHTML = `<h2 class="sec">${esc(name)}</h2>
-    <div class="card">
-      ${d.core_identity ? `<div class="kvline"><b>身份</b>：${esc(d.core_identity)}</div>` : ""}
-      ${d.core_traits ? `<div class="kvline"><b>性格</b>：${esc(d.core_traits)}</div>` : ""}
-      ${d.speech_style ? `<div class="kvline"><b>说话</b>：${esc(d.speech_style)}</div>` : ""}
-      ${d.soul_goal ? `<div class="kvline"><b>追求</b>：${esc(d.soul_goal)}</div>` : ""}
-      ${d.background ? `<div class="kvline"><b>背景</b>：${esc(d.background)}</div>` : ""}
-      ${d.key_bonds ? `<div class="kvline"><b>关系</b>：${esc(d.key_bonds)}</div>` : ""}
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      ${["early","mid","late"].map(function(s){
+        var label = s === "early" ? "前期" : s === "mid" ? "中期" : "后期";
+        var active = s === stage ? "var(--gold)" : "var(--line)";
+        return `<button class="btn" style="flex:1;border-color:${active}" onclick="DISTILL_UI.openCharacter('${pkgId}','${esc(name)}','${s}')">${label}</button>`;
+      }).join("")}
     </div>
+    <div style="font-size:11px;color:var(--ink-faint);margin-bottom:8px">当前查看: ${stage === "early" ? "前期 (防剧透)" : stage === "mid" ? "中期" : "后期 (全量)"}</div>
+    <div class="card">
+      ${stageData.core_identity ? `<div class="kvline"><b>身份</b>：${renderAnnotated(stageData.core_identity)}</div>` : ""}
+      ${stageData.core_traits ? `<div class="kvline"><b>性格</b>：${renderAnnotated(stageData.core_traits)}</div>` : ""}
+      ${stageData.speech_style ? `<div class="kvline"><b>说话</b>：${renderAnnotated(stageData.speech_style)}</div>` : ""}
+      ${stageData.soul_goal ? `<div class="kvline"><b>追求</b>：${renderAnnotated(stageData.soul_goal)}</div>` : ""}
+      ${stageData.background ? `<div class="kvline"><b>背景</b>：${renderAnnotated(stageData.background)}</div>` : ""}
+      ${stageData.key_bonds ? `<div class="kvline"><b>关系</b>：${renderAnnotated(stageData.key_bonds)}</div>` : ""}
+    </div>
+    ${provStats ? `<div class="card" style="margin-top:12px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px">出处统计</div>
+      <div style="font-size:12px">
+        <span style="color:${DISTILL_PROVENANCE.SOURCE_COLOR.canon}">●</span> 原文实证 ${provStats.canon || 0}
+        <span style="color:${DISTILL_PROVENANCE.SOURCE_COLOR.ref};margin-left:8px">●</span> 间接旁证 ${provStats.ref || 0}
+        <span style="color:${DISTILL_PROVENANCE.SOURCE_COLOR.inference};margin-left:8px">●</span> 合理推断 ${provStats.inference || 0}
+      </div>
+      <button class="btn" style="margin-top:8px" onclick="DISTILL_UI.showProvenance('${pkgId}','${esc(name)}')">查看出处索引</button>
+    </div>` : ""}
     <div class="btnrow" style="margin-top:12px">
       <button class="btn" onclick="DISTILL_UI.show()">← 返回</button>
       <button class="btn primary" onclick="chatWith('${esc(name)}')">开聊</button>
     </div>`;
 }
 
-return {show: show, openPackage: openPackage, openCharacter: openCharacter};
+function showProvenance(pkgId, name){
+  var prov = DISTILL_PACKAGE.getData(pkgId, "provenance");
+  var v = document.getElementById("view");
+  if(!prov){
+    v.innerHTML = `<div class="empty">暂无出处索引</div>`;
+    return;
+  }
+  var facts = prov.facts.filter(function(f){ return !name || f.character === name; });
+  v.innerHTML = `<h2 class="sec">出处索引 ${name ? "· " + esc(name) : ""}</h2>
+    <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">${facts.length} 条事实</div>
+    ${facts.map(function(f){
+      var color = DISTILL_PROVENANCE.SOURCE_COLOR[f.source] || "var(--ink-faint)";
+      var label = DISTILL_PROVENANCE.SOURCE_LABEL[f.source] || f.source;
+      return `<div class="card" style="padding:10px;margin-bottom:8px">
+        <div style="font-size:12px"><b>${esc(f.field)}</b>:
+          <span style="color:${color};font-size:11px;margin-left:6px">${label}${f.chunk_id ? " · " + esc(f.chunk_id) : ""}</span></div>
+        <div style="font-size:13px;margin-top:4px">${esc(f.value)}</div>
+      </div>`;
+    }).join("")}
+    <button class="btn" onclick="DISTILL_UI.openCharacter('${pkgId}','${esc(name || "")}')">← 返回</button>`;
+}
+
+return {show: show, openPackage: openPackage, openCharacter: openCharacter, showProvenance: showProvenance};
 })();
