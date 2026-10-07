@@ -334,6 +334,31 @@ const RP = (function(){
 "use strict";
 
 function findCard(runId, name){
+  // 蒸馏包: runId 为 "distill_<pkgId>"
+  if(runId && runId.indexOf("distill_") === 0 && typeof DISTILL_PACKAGE !== "undefined"){
+    try{
+      var pkgId = runId.slice(8);
+      var card = DISTILL_PACKAGE.getCharacterCard(pkgId, name);
+      if(card){
+        var openings = [];
+        try{
+          var all = DISTILL_PACKAGE.getData(pkgId, "openings") || {};
+          openings = all[name] || [];
+        }catch(e){}
+        return {
+          name: card.name,
+          fields: card._distill || {},
+          description: card.description || "",
+          personality: card.personality || "",
+          greeting: (openings[0] && openings[0].text) || card.first_mes || "",
+          altGreetings: openings.slice(1).map(function(o){ return o.text; }),
+          scenario: "",
+          exampleDialogue: ""
+        };
+      }
+    }catch(e){}
+    return null;
+  }
   if(runId === "custom" && typeof RP_WRITER !== "undefined"){
     var cc = RP_WRITER.findCustom(name);
     if(cc) return {name: cc.name, fields: cc.fields || {},

@@ -615,7 +615,7 @@ function openCharacter(pkgId, name, stage){
     <div class="btnrow" style="margin-top:12px">
       <button class="btn" onclick="DISTILL_UI.show()">← 返回</button>
       <button class="btn" onclick="DISTILL_UI.requestChange('${pkgId}','${esc(name)}')">✏️ 改动</button>
-      <button class="btn primary" onclick="chatWith('${esc(name)}')">开聊</button>
+      <button class="btn primary" onclick="chatWith('distill_${pkgId}','${esc(name)}')">开聊</button>
     </div>`;
 }
 
