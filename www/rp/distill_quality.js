@@ -165,6 +165,18 @@ function check(pkgId){
       msg: unanchored.length + " 条引用内容在原文找不到 (幻觉嫌疑)"});
   }
 
+  // 4.7 时序泄漏 (需要 chunks 数据，包内不存时跳过)
+  try{
+    if(typeof DISTILL_TIMELEAK !== "undefined" && window._distillChunks){
+      var leaks = DISTILL_TIMELEAK.detect(pkgId, window._distillChunks);
+      if(leaks.length){
+        checks.push({id: "timeleak", level: "fail",
+          msg: leaks.length + " 处疑似时序泄漏 (前期档案含后期信息: " +
+            leaks.slice(0, 2).map(function(l){ return l.character + ":" + l.term; }).join("、") + ")"});
+      }
+    }
+  }catch(e){}
+
   // 5. 剧情完整度 (完整模式)
   var plot = DISTILL_PACKAGE.getData(pkgId, "plot");
   if(plot){

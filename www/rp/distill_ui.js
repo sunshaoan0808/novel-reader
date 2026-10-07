@@ -466,6 +466,12 @@ async function onStartDistill(){
 
     S.running = false;
     try{ localStorage.removeItem(ckptKey); }catch(e){}
+    // 保存 chunks 轻量引用供时序泄漏检测
+    try{
+      window._distillChunks = (S.chunks || []).map(function(c){
+        return {id: c.id, text: (c.text || "").slice(0, 2000)};
+      });
+    }catch(e){}
     // 构建出处索引 + 引用校验 (存在性 + 内容真实性)
     try{
       var chars = Object.keys(S.selected).filter(function(k){ return S.selected[k]; });
@@ -517,6 +523,9 @@ function openPackage(id){
     </div>
     <div class="btnrow" style="margin-top:16px">
       <button class="btn" onclick="DISTILL_UI.show()">← 返回</button>
+      <button class="btn" onclick="DISTILL_UI.exportPkg('${id}')">📤 导出</button>
+      <button class="btn" onclick="document.getElementById('d_import_pkg').click()">📥 导入</button>
+      <input type="file" id="d_import_pkg" accept=".json" style="display:none">
     </div>`;
 }
 
@@ -696,6 +705,66 @@ function confirmChange(){
   }
 }
 
+// 导出分享
+function exportPkg(pkgId){
+  try{
+    var data = DISTILL_PACKAGE.exportPackage(pkgId);
+    if(!data){ alert("导出失败"); return; }
+    var blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "剧本包_" + (data.meta.novel || pkgId) + ".json";
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 5000);
+  }catch(e){
+    alert("导出失败: " + e.message);
+  }
+}
+
+function importPkg(file){
+  var rd = new FileReader();
+  rd.onload = function(){
+    try{
+      var data = JSON.parse(rd.result);
+      if(!data.meta || !data.meta.novel) throw new Error("格式错误");
+      // 创建新包
+      var pkg = DISTILL_PACKAGE.createPackage(data.meta.novel + "(导入)");
+      // 导入角色
+      (data.meta.characters || []).forEach(function(c){
+        pkg.characters.push(c);
+      });
+      DISTILL_PACKAGE.updatePackage(pkg);
+      // 导入角色卡
+      Object.keys(data.characters || {}).forEach(function(name){
+        if(data.characters[name]){
+          DISTILL_PACKAGE.saveCharacterCard(pkg.id, name, data.characters[name]);
+        }
+      });
+      // 导入关系/剧情/世界书/出处
+      ["relations", "plot", "worldbook", "provenance"].forEach(function(k){
+        if(data[k]) DISTILL_PACKAGE.saveData(pkg.id, k, data[k]);
+      });
+      alert("导入成功: " + data.meta.novel);
+      show();
+    }catch(e){
+      alert("导入失败: " + e.message);
+    }
+  };
+  rd.readAsText(file, "utf-8");
+}
+
+// wire 导入文件选择
+var _origWire = wire;
+wire = function(){
+  _origWire();
+  document.addEventListener("change", function(e){
+    if(e.target && e.target.id === "d_import_pkg" && e.target.files[0]){
+      importPkg(e.target.files[0]);
+      e.target.value = "";
+    }
+  });
+};
+
 // 世界书展示
 function showWorldbook(pkgId){
   var wb = DISTILL_PACKAGE.getData(pkgId, "worldbook");
@@ -803,5 +872,5 @@ function recompileCard(pkgId, charName){
 return {show: show, openPackage: openPackage, openCharacter: openCharacter, showProvenance: showProvenance,
   requestChange: requestChange, confirmChange: confirmChange,
   editFact: editFact, saveFact: saveFact, deleteFact: deleteFact, addFact: addFact, recompileCard: recompileCard,
-  showWorldbook: showWorldbook};
+  showWorldbook: showWorldbook, exportPkg: exportPkg};
 })();
