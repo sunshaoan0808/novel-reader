@@ -3252,6 +3252,16 @@ const r = isGroup
   extraPrompt: travExtraPrompt(CHAT.travId, text)})
 : await RP.send(CHAT.runId, CHAT.name, text, sendOpts);
 saveHist(k, r.history);
+/* 走原著线：本轮结束后推进剧情节点（幂等；发送失败/中断不推进） */
+try{
+  if(!r.aborted && !r.failed && CHAT && CHAT.travId && typeof RP_TRAVERSE!=="undefined"){
+    const _ts2 = RP_TRAVERSE.get(CHAT.travId);
+    if(_ts2 && _ts2.plotrunId && typeof RP_PLOTRUN!=="undefined"){
+      const _st2 = RP_PLOTRUN.load(_ts2.plotrunId);
+      if(_st2 && _st2.currentNodeId) RP_PLOTRUN.completeNode(_st2, _st2.currentNodeId, text);
+    }
+  }
+}catch(e){}
 achvUnlock("first_chat");
 try{ hbAfterSend(); }catch(e){} /* Tier3-25: 心跳轮次计数（仅前台，不阻塞） */
 if(r.aborted){
@@ -6102,6 +6112,7 @@ function travPlayerName(){
   if(CHAT.mode === "traverse"){
     const trav = RP_TRAVERSE.get(CHAT.travId);
     if(trav){
+      if(trav.mode === "plotline") return "旅人";
       if(trav.mode === "soul" || trav.mode === "isekai" || trav.mode === "party") return trav.charName || "我";
       const idt = RP_TRAVERSE.getIdentity(trav.identityId);
       return (idt && idt.name) || "我";
@@ -6122,6 +6133,7 @@ function showTraverse(){
   document.body.classList.remove("chatmode");
   titleEl.innerHTML = icon("book-open")+" 穿越"; subEl.textContent = "进入书里活";
   const modes = [
+    {id:"plotline", ic:"clapperboard", name:"走原著线", desc:"沿导演因果蓝图推进剧情，在决策点做选择", ok:true},
     {id:"soul", ic:"user", name:"魂穿", desc:"成为TA：扮演原著角色，走进TA的人生", ok:true},
     {id:"body", ic:"users", name:"肉身穿越", desc:"成为自己：现代人直穿，或捏一个古代身份", ok:true},
     {id:"isekai", ic:"repeat", name:"异世界穿越", desc:"把角色送进另一部作品（林黛玉去水浒）", ok:true, badge:"P2"},
@@ -6129,6 +6141,11 @@ function showTraverse(){
   ];
   const recents = RP_TRAVERSE.recent();
   view.innerHTML = `
+  <div class="golden-hero" onclick="goldenPickBook()">
+    <div><div class="gh-title">✨ 一键魂穿开局</div>
+    <div class="gh-desc">选书 → 选人 → 选开场，3 步直入原著因果线</div></div>
+    <div class="tm-go">›</div>
+  </div>
   <div class="travmodes">${modes.map(m=>`
     <div class="travmode${m.ok?"":" locked"}" ${m.ok?`onclick="travMode('${m.id}')"`:""}>
       <div class="tm-icon">${icon(m.ic,26)}</div>
@@ -6158,7 +6175,7 @@ function importedListHTML(){
   <button class="btn ghost sm" onclick="event.stopPropagation();travDelImport('${c.id}')">删除</button></div>`).join("");
 }
 function travRecentHTML(t){
-  const who = t.mode==="soul" ? t.charName : ((RP_TRAVERSE.getIdentity(t.identityId)||{}).name || "无名氏");
+  const who = t.mode==="plotline" ? "旅人" : t.mode==="soul" ? t.charName : ((RP_TRAVERSE.getIdentity(t.identityId)||{}).name || "无名氏");
   const d = new Date(t.updatedAt).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
   return `<div class="card" onclick="travResume('${t.id}')">
   <div class="row"><div class="avatar">${esc(who[0]||"穿")}</div>
@@ -6170,6 +6187,154 @@ window.travMode = (m)=>{
   else if(m==="body") bodyPickWorld();
   else if(m==="isekai") isekaiPickSrc();
   else if(m==="party") partySetup();
+  else if(m==="plotline") plotlinePickBook();
+};
+/* 走原著线：选书 → 选幕（断点续玩）→ 开局 */
+function plotlinePickBook(){
+  const idx = (window.__DATA__ && window.__DATA__.index) || [];
+  const runs = idx.filter(r => r.has_worldcard);
+  titleEl.innerHTML = icon("clapperboard")+" 走原著线"; subEl.textContent = "选一本书，沿原著因果线推进";
+  view.innerHTML = `<button class="back" onclick="showTraverse()">‹ 返回穿越</button>`
+    + (runs.length ? runs.map(r=>`<div class="card" onclick="plotlinePickStage('${r.run_id}')">
+      <div class="name">${esc(r.novel)}</div><div class="meta">${esc(r.run_id)} · <span class="badge">有世界卡</span></div></div>`).join("")
+      : `<div class="empty">暂无带世界卡的书<br><span style="font-size:12px">管线执行 worldcard 阶段后自动出现</span></div>`);
+  window.scrollTo(0,0);
+}
+function plotlinePickStage(runId){
+  view.innerHTML = `<div class="empty">世界卡加载中…</div>`;
+  loadWorldcard(runId).then(()=>{
+    const stages = (typeof RP_PLOTRUN!=="undefined") ? RP_PLOTRUN.listStages(runId) : [];
+    view.innerHTML = `<button class="back" onclick="plotlinePickBook()">‹ 返回选书</button>`
+      + `<h2 class="sec">选一幕 · ${stages.length} 幕</h2>`
+      + (stages.length ? stages.map(s=>`<div class="card" onclick="plotlineStart('${runId}','${s.id}','${s.plotrunId||""}')">
+        <div class="row"><div><div class="name">${esc(s.title)}</div>
+        <div class="meta">${s.done}/${s.total} 节点（${s.pct}%）${s.finished?' · <span class="badge">已走完</span>':(s.resumable?' · <span class="badge">继续</span>':"")}</div>
+        ${s.description?`<div class="st">${esc(s.description)}</div>`:""}</div><div class="tm-go">›</div></div></div>`).join("")
+        : `<div class="empty">该书暂无导演分幕数据</div>`);
+    window.scrollTo(0,0);
+  });
+}
+function plotlineStart(runId, stageId, plotrunId){
+  let st = plotrunId ? RP_PLOTRUN.load(plotrunId) : null;
+  if(!st) st = RP_PLOTRUN.start(runId, stageId);
+  const idx = (window.__DATA__ && window.__DATA__.index) || [];
+  const r = idx.find(x=>x.run_id===runId) || {};
+  const sess = RP_TRAVERSE.newSession({mode:"plotline", worldKind:"book", worldId:runId,
+    worldName:r.novel||runId, charName:"", anchorTitle:"走原著线", plotrunId:st.id});
+  CHAT = {mode:"traverse", travId:sess.id};
+  setNav("chat");
+}
+/* ============ 方向三：黄金路径 · 一键魂穿开局 ============
+ * 3 屏：选书 → 选人+导演风格 → 选开场（沉浸式），直入 plotrun 剧情运行时。 */
+function goldenPickBook(){
+  const idx = (window.__DATA__ && window.__DATA__.index) || [];
+  const runs = idx.filter(r => r.has_worldcard);
+  let resumable = {};
+  try{ (RP_PLOTRUN.allStates()||[]).forEach(s=>{ resumable[s.runId] = true; }); }catch(e){}
+  titleEl.innerHTML = "✨ 一键魂穿开局"; subEl.textContent = "3 步进入原著因果线";
+  view.innerHTML = `<button class="back" onclick="showTraverse()">‹ 返回穿越</button>
+  <div class="hint" style="margin:8px 2px">选一本书 → 选魂穿人物与导演风格 → 选开场，直入原著剧情线</div>`
+    + (runs.length ? runs.map((r,i)=>`<div class="card" onclick="goldenPickChar(${i})">
+      <div class="row"><div><div class="name">《${esc(r.novel)}》</div>
+      <div class="meta">${esc(r.run_id)}${resumable[r.run_id]?' · <span class="badge">可继续</span>':""}</div>
+      </div><div class="tm-go">›</div></div></div>`).join("")
+      : `<div class="empty">暂无带世界卡的书<br><span style="font-size:12px">管线执行 worldcard 阶段后自动出现</span></div>`);
+  window._goldenRuns = runs;
+  window.scrollTo(0,0);
+}
+window.goldenPickChar = (i)=>{
+  const r = (window._goldenRuns||[])[i]; if(!r) return;
+  const run = (window.__DATA__.runs||{})[r.run_id] || {};
+  const chars = (run.characters && run.characters.length ? run.characters : (r.characters||[])).slice(0, 24);
+  window._golden = {bookIdx:i, runId:r.run_id, novel:r.novel, chars:chars, charIdx:-1, style:"slowburn", openingIdx:0};
+  const styles = (typeof RP_DIRECTOR!=="undefined" && RP_DIRECTOR.STYLES) ? RP_DIRECTOR.STYLES : {slowburn:{name:"慢热",desc:""}};
+  window._goldenStyles = Object.keys(styles);
+  titleEl.innerHTML = "✨ 一键魂穿开局"; subEl.textContent = "第 2 步 · 选人与风格";
+  view.innerHTML = `<button class="back" onclick="goldenPickBook()">‹ 返回选书</button>
+  <h2 class="sec">魂穿成谁？《${esc(r.novel)}》</h2>
+  <div class="gchars">
+    <div class="gchip sel" data-ci="-1" onclick="goldenSetChar(-1)">路人</div>
+    ${chars.map((c,ci)=>`<div class="gchip" data-ci="${ci}" onclick="goldenSetChar(${ci})">${esc(c)}</div>`).join("")}
+  </div>
+  <h2 class="sec">导演风格</h2>
+  <div class="gstyles">${Object.keys(styles).map((k,si)=>`
+    <div class="gstyle${k==="slowburn"?" sel":""}" data-si="${si}" onclick="goldenSetStyle(${si})">
+      <div class="name">${esc(styles[k].name)}</div><div class="st">${esc(styles[k].desc||"")}</div>
+    </div>`).join("")}</div>
+  <div class="btnrow" style="margin-top:14px"><button class="btn primary" onclick="goldenOpening()">下一步 · 选开场 ›</button></div>`;
+  window.scrollTo(0,0);
+};
+window.goldenSetChar = (ci)=>{
+  const g = window._golden; if(!g) return; g.charIdx = ci;
+  document.querySelectorAll(".gchip").forEach(el=>el.classList.toggle("sel", +el.dataset.ci===ci));
+};
+window.goldenSetStyle = (si)=>{
+  const g = window._golden; if(!g) return;
+  g.style = (window._goldenStyles||[])[si] || g.style;
+  document.querySelectorAll(".gstyle").forEach(el=>el.classList.toggle("sel", +el.dataset.si===si));
+};
+window.goldenOpening = ()=>{
+  const g = window._golden; if(!g) return;
+  titleEl.innerHTML = "✨ 一键魂穿开局"; subEl.textContent = "第 3 步 · 选开场";
+  view.innerHTML = `<div class="empty">开场加载中…</div>`;
+  window.scrollTo(0,0);
+  loadWorldcard(g.runId).then(()=>{
+    const charName = g.charIdx >= 0 ? g.chars[g.charIdx] : "";
+    let ops = [];
+    try{ ops = cardOpenings(g.runId, charName) || []; }catch(e){}
+    if(!ops.length && g.chars.length){ try{ ops = cardOpenings(g.runId, g.chars[0]) || []; }catch(e){} }
+    g.ops = ops.slice(0, 6);
+    let anchors = [], stageTitle = "", stageTotal = 0;
+    try{
+      const wc = getWorldcard(g.runId);
+      const dd = wc && wc.directorDefinitions && wc.directorDefinitions[0];
+      anchors = (dd && dd.anchors || []).slice(0, 6);
+      const stages = RP_PLOTRUN.listStages(g.runId);
+      if(stages.length){ stageTitle = stages[0].title; stageTotal = stages[0].total; }
+    }catch(e){}
+    const styleName = ((typeof RP_DIRECTOR!=="undefined" && RP_DIRECTOR.STYLES && RP_DIRECTOR.STYLES[g.style]) || {}).name || g.style;
+    view.innerHTML = `<div class="gopening">
+      <button class="back" onclick="goldenPickChar(${g.bookIdx})">‹ 返回</button>
+      <div class="go-kicker">《${esc(g.novel)}》 · ${charName ? "魂穿"+esc(charName) : "路人开局"} · ${esc(styleName)}</div>
+      ${anchors.length ? `<div class="go-anchors">${anchors.map(a=>`<span class="badge">${esc(String(a).slice(0,18))}</span>`).join("")}</div>` : ""}
+      <h2 class="sec" style="color:#f2edff;border:none">选一个开场</h2>
+      <div class="go-ops">${g.ops.length ? g.ops.map((o,oi)=>`
+        <div class="go-op${oi===0?" sel":""}" data-oi="${oi}" onclick="goldenSetOpening(${oi})">
+          ${o.label?`<span class="badge">${esc(o.label)}</span>`:""}
+          <div class="go-text">${esc(String(o.text||"").slice(0,160))}${String(o.text||"").length>160?"…":""}</div>
+        </div>`).join("") : `<div class="empty">暂无管线开场白，将由 AI 现场生成</div>`}</div>
+      ${stageTitle?`<div class="go-stage">📜 第一幕 · ${esc(stageTitle)}（${stageTotal} 节点）</div>`:""}
+      <button class="go-enter" onclick="goldenStart()">进入原著线 →</button>
+    </div>`;
+    window.scrollTo(0,0);
+  });
+};
+window.goldenSetOpening = (oi)=>{
+  const g = window._golden; if(!g) return; g.openingIdx = oi;
+  document.querySelectorAll(".go-op").forEach(el=>el.classList.toggle("sel", +el.dataset.oi===oi));
+};
+window.goldenStart = ()=>{
+  const g = window._golden; if(!g || !g.runId) return;
+  loadWorldcard(g.runId).then(()=>{
+    try{ const c = getRpCfg(); c.directorStyle = g.style || c.directorStyle; saveRpCfg(c); }catch(e){}
+    let st = null;
+    try{
+      const stages = RP_PLOTRUN.listStages(g.runId);
+      for(const s of stages){ if(s.resumable){ st = RP_PLOTRUN.load(s.plotrunId); break; } }
+      if(!st && stages.length) st = RP_PLOTRUN.start(g.runId, stages[0].id);
+    }catch(e){}
+    const idx = (window.__DATA__ && window.__DATA__.index) || [];
+    const r = idx.find(x=>x.run_id===g.runId) || {};
+    const charName = g.charIdx >= 0 ? g.chars[g.charIdx] : "";
+    const sess = RP_TRAVERSE.newSession({mode:"soul", worldKind:"book", worldId:g.runId,
+      worldName:r.novel||g.runId, charName:charName, anchorTitle:"一键魂穿", plotrunId: st?st.id:null});
+    try{
+      const op = (g.ops||[])[g.openingIdx||0];
+      if(op && op.text) saveHist("nd_travchat_"+sess.id, [{role:"assistant", content:op.text, ts:Date.now()}]);
+    }catch(e){}
+    CHAT = {mode:"traverse", travId:sess.id};
+    setNav("chat");
+  });
 };
 window.travResume = (id)=>{
   const t = RP_TRAVERSE.get(id); if(!t){ alert("会话已删除"); showTraverse(); return; }
@@ -6608,6 +6773,7 @@ async function showTraverseChat(cfg){
   if(!trav){ setNav("traverse"); return; }
   const _comps0 = (typeof RP_TRAVERSE2!=="undefined")? RP_TRAVERSE2.getCompanions(trav.id):[];
   const modeName = _comps0.length? "组团穿越" : trav.mode==="isekai"? "异世界" : (RP_TRAVERSE.MODES[trav.mode]||"穿越");
+  const _plotHud = (trav.plotrunId && typeof RP_PLOTRUN!=="undefined") ? RP_PLOTRUN.hudHTML(RP_PLOTRUN.load(trav.plotrunId)) : "";
   const title = travPlayerName();
   await warmWallpaper(); /* 先读用户壁纸，避免先闪默认图 */
   view.innerHTML = `
@@ -6615,7 +6781,7 @@ async function showTraverseChat(cfg){
   <div class="chathead" id="chathead">
   <button class="backbtn" onclick="exitChat()">‹</button>
   <div class="avatar">${esc((title||"穿")[0])}</div>
-  <div class="chead-main"><div class="cname">${esc(title)} <span class="badge">${modeName}</span><span class="aimark">AI</span></div>
+  <div class="chead-main"><div class="cname">${esc(title)} <span class="badge">${modeName}</span>${_plotHud}<span class="aimark">AI</span></div>
   <div class="cstat"><span>${esc(trav.worldName)}</span></div></div>
   <button class="menubtn" onclick="toggleChatSearch()" title="搜索聊天记录">${icon("search")}</button>
 <button class="menubtn" onclick="toggleDrawer(true)" title="菜单">${icon("menu")}</button>
@@ -6803,6 +6969,13 @@ function travExtraPrompt(travId, userText){
       parts.push(RP_TRAVERSE2.partyPrompt(trav)
         + "\n本轮应发言队友：" + (speakers.join("、") || "无")
         + "（按各自人设自由发言、行动或互相拌嘴；正文里用「名字：」区分说话人）");
+    }
+  }catch(e){}
+  /* 走原著线：注入当前剧情节点调度素材（只读状态机，不推进） */
+  try{
+    if(trav.plotrunId && typeof RP_PLOTRUN!=="undefined"){
+      const _pst = RP_PLOTRUN.load(trav.plotrunId);
+      if(_pst){ const _blk = RP_PLOTRUN.directorBlock(_pst); if(_blk) parts.push(_blk); }
     }
   }catch(e){}
   return parts.join("\n\n");

@@ -8,7 +8,7 @@ var SES_PRE = "nd_trav_";
 var LIST_KEY = "nd_trav_list";
 var WS_PRE = "nd_travws_";
 var IDENT_PRE = "nd_identity_";
-var MODES = {soul: "魂穿", body: "肉身穿越"};
+var MODES = {soul: "魂穿", body: "肉身穿越", plotline: "走原著线"};
 
 /* ================= 会话 ================= */
 function newSession(o){
@@ -21,6 +21,7 @@ worldName: o.worldName || "",
 charName: o.charName || "", // 魂穿目标
 identityId: o.identityId || "",// 肉身身份卡 id
 anchorTitle: o.anchorTitle || "",
+plotrunId: o.plotrunId || null, // 走原著线 / 黄金路径：剧情运行时 id（RP_PLOTRUN）
 oocRemind: o.oocRemind!== false,
 createdAt: Date.now(), updatedAt: Date.now(),
 };

@@ -545,6 +545,10 @@ async function send(runId, name, text, opts){
   var apex = await apexFor(runId, name, card, text, cfg,
     function(c, ms, t){ return RP_NET.complete(c, ms, t); });
   var arcText = arcTextFor(runId, name, card); // PPA 对齐依据复用, 避免重复计算
+  /* 方向二：画像动态检索（零 LLM，失败不打断；命中明细见 window.__lastPortrait） */
+  var portEnrich = {text:"", hits:[], banned:[]};
+  try{ if(typeof RP_PORTRAIT!=="undefined") portEnrich = RP_PORTRAIT.enrich(card, text, h); }catch(e){}
+  try{ window.__lastPortrait = portEnrich; }catch(e){}
   var b = RP_PROMPT.buildMessages(card, {
     novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: run.relations,
     memory: memPrompt, memTasks: memTasks,
@@ -557,6 +561,11 @@ async function send(runId, name, text, opts){
     pov: opts.pov, person: opts.person,
     concise: !!opts.concise, /* Tier2 #15 简洁回复开关 */
   }, budget);
+  /* 画像动态检索段落后置拼入（不改 prompt.js） */
+  try{
+    if(portEnrich.text && b.messages.length && b.messages[0].role==="system")
+      b.messages[0].content += "\n\n" + portEnrich.text;
+  }catch(e){}
   var wsText = "";
   try{
     if(typeof RP_WORLDSIM !== "undefined"){

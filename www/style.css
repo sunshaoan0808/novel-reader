@@ -1139,3 +1139,36 @@ body.chatmode.immersive #scenbar{ min-height:0; }
 .tl-item.tp .tl-body{border-color:#d4695e55;}
 .tl-text{font-size:13.5px; color:var(--ink); line-height:1.65;}
 .tl-meta{font-size:11.5px; color:var(--ink-faint); margin-top:4px;}
+
+/* ===== 方向三/四：黄金路径 & 走原著线 ===== */
+.golden-hero{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:14px 16px;border-radius:14px;margin-bottom:12px;cursor:pointer;color:#fff;
+  background:linear-gradient(135deg,#2b1a4d,#5b2350)}
+.gh-title{font-size:16px;font-weight:700}
+.gh-desc{font-size:12px;opacity:.75;margin-top:3px}
+.gchars{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}
+.gchip{padding:8px 14px;border-radius:999px;border:1px solid var(--line);
+  font-size:14px;cursor:pointer;background:var(--card)}
+.gchip.sel{background:#6c4dff;color:#fff;border-color:#6c4dff}
+.gstyles{display:grid;gap:8px;margin-bottom:6px}
+.gstyle{padding:10px 12px;border:1px solid var(--line);border-radius:12px;
+  cursor:pointer;background:var(--card)}
+.gstyle.sel{border-color:#6c4dff;background:rgba(108,77,255,.1)}
+.gopening{min-height:62vh;padding:16px 14px 22px;border-radius:16px;color:#f2edff;
+  background:linear-gradient(180deg,#171226 0%,#251a44 70%,#2e1f52 100%)}
+.gopening .back{color:#cfc4f5}
+.go-kicker{font-size:12px;opacity:.65;letter-spacing:.08em;margin:12px 0 8px}
+.go-anchors{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px}
+.go-anchors .badge{background:rgba(255,255,255,.14);color:#fff;border:none}
+.go-ops{display:grid;gap:10px;margin:8px 0}
+.go-op{padding:12px;border-radius:12px;background:rgba(255,255,255,.06);
+  cursor:pointer;border:1px solid transparent}
+.go-op.sel{border-color:#a78bfa;background:rgba(167,139,250,.14)}
+.go-op .badge{background:rgba(167,139,250,.28);color:#ece5ff;border:none;margin-bottom:6px}
+.go-text{font-size:15px;line-height:1.75}
+.go-stage{font-size:13px;opacity:.8;margin:12px 0 4px}
+.go-enter{display:block;width:100%;margin-top:14px;padding:15px;border:none;border-radius:14px;
+  font-size:16px;font-weight:700;color:#fff;cursor:pointer;
+  background:linear-gradient(135deg,#7c5cff,#b14dff)}
+.plotchip{background:rgba(108,77,255,.16)!important;color:#c9bcff!important;
+  border:1px solid rgba(108,77,255,.45)}

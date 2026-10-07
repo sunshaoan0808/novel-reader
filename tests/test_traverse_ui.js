@@ -78,7 +78,8 @@ t("首页P2/P3入口", h.indexOf("P2") >= 0 && h.indexOf("P3") >= 0);
 t("首页异世界/组团可点", h.indexOf("travMode('isekai')") >= 0 && h.indexOf("travMode('party')") >= 0);
 t("首页onclick闭合", onclickWellFormed(h));
 t("首页无破碎class", noBrokenClass(h));
-t("首页模式卡片4个", (h.match(/travmode(\s|")/g) || []).length === 4);
+t("首页模式卡片5个", (h.match(/travmode(\s|")/g) || []).length === 5);
+t("首页有走原著线卡", h.indexOf("走原著线") >= 0 && h.indexOf("travMode('plotline')") >= 0);
 t("首页导入按钮", h.indexOf("导入角色卡") >= 0);
 
 // ---- 魂穿锚点页 ----
