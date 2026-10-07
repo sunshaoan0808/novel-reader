@@ -66,6 +66,7 @@ else if(n==="chat"){ tabs.classList.add("hidden"); (CHAT.name||CHAT.mode==="trav
 else if(n==="traverse"){ tabs.classList.add("hidden"); showTraverse(); }
 else if(n==="settings"){ tabs.classList.add("hidden"); showSettings();}
 else if(n==="writer"){ tabs.classList.add("hidden"); showWriter();}
+else if(n==="distill"){ tabs.classList.add("hidden"); titleEl.textContent="蒸馏"; subEl.textContent="手机端独立蒸馏"; DISTILL_UI.show(); }
 }
 mainnav.querySelectorAll("button").forEach(b=>
 b.addEventListener("click", ()=>setNav(b.dataset.nav)));

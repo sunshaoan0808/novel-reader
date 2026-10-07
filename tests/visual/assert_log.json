@@ -38,7 +38,7 @@
    "detail": {
     "preHidden": false,
     "cleanStart": true,
-    "maxST": 2058,
+    "maxST": 2104,
     "immediate": true,
     "distAfter20": 20,
     "trace": [
@@ -53,7 +53,7 @@
     "hidden": true,
     "scenGone": true,
     "simGone": true,
-    "h0": 374,
+    "h0": 328,
     "h1": 624,
     "grown": true,
     "barTop": 797,
@@ -127,7 +127,7 @@
      "overlaps": 0,
      "overflows": 0,
      "pageOverflow": false,
-     "nLeaf": 108,
+     "nLeaf": 161,
      "overlapSample": [],
      "overflowSample": []
     },
@@ -135,7 +135,7 @@
      "overlaps": 0,
      "overflows": 0,
      "pageOverflow": false,
-     "nLeaf": 29,
+     "nLeaf": 31,
      "overlapSample": [],
      "overflowSample": []
     }
