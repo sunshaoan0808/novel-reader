@@ -6,6 +6,32 @@
 var DISTILL_DISCOVER = (function(){
 "use strict";
 
+// 泛称过滤: 这些不是具体人物
+var GENERIC_WORDS = ["门子","公子","小姐","夫人","太太","奶奶","爷","老爷","少爷",
+  "姑娘","大人","将军","丞相","王爷","皇上","娘娘","先生","师父","师傅",
+  "大哥","二哥","大姐","妹妹","哥哥","弟弟","姐姐","父亲","母亲","爹","娘",
+  "众人","大家","小厮","丫鬟","婆子","丫头","仆人","下人","小厮","老者","道人",
+  "和尚","尼姑","道士","书生","秀才","举人","进士","官员","差役","衙役"];
+
+function isGeneric(name){
+  return GENERIC_WORDS.indexOf(name) >= 0;
+}
+
+// 别名清洗: 去动词尾，去截断碎片
+var VERB_TAIL = "说道问叹笑应答喊骂哭嚷道着了过";
+function cleanAlias(alias, canonical){
+  // 去尾部动词
+  while(alias.length > 2 && VERB_TAIL.indexOf(alias[alias.length-1]) >= 0){
+    alias = alias.slice(0, -1);
+  }
+  // 如果是正名的截断碎片 (如"王夫" vs "王夫人")，丢弃
+  if(canonical && canonical.indexOf(alias) === 0 && alias.length < canonical.length){
+    return null;
+  }
+  // 如果别名包含正名或被正名包含，保留
+  return alias.length >= 2 ? alias : null;
+}
+
 // 第一遍: 规则提取候选
 function extractCandidates(text, opts){
   opts = opts || {};
@@ -50,10 +76,10 @@ function extractCandidates(text, opts){
     }
   }
 
-  // 过滤低频
+  // 过滤低频 + 泛称
   var cands = [];
   Object.keys(freq).forEach(function(name){
-    if(freq[name] >= minCount && name.length >= 2){
+    if(freq[name] >= minCount && name.length >= 2 && !isGeneric(name)){
       cands.push({name: name, count: freq[name]});
     }
   });
@@ -81,13 +107,20 @@ async function confirmCharacters(candidates, text, opts){
       var obj = JSON.parse(m[0]);
       return (obj.characters || []).map(function(c){
         var cand = top.find(function(t){ return t.name === c.name; });
+        // 过滤泛称正名
+        if(isGeneric(c.name)) return null;
+        // 清洗别名
+        var aliases = (c.aliases || []).map(function(a){ return cleanAlias(a, c.name); })
+          .filter(function(a){ return a && a !== c.name && !isGeneric(a); });
+        // 去重
+        aliases = aliases.filter(function(a, i){ return aliases.indexOf(a) === i; });
         return {
           name: c.name,
-          aliases: c.aliases || [],
+          aliases: aliases,
           importance: c.importance || 5,
           count: cand ? cand.count : 0
         };
-      }).sort(function(a, b){ return b.importance - a.importance || b.count - a.count; });
+      }).filter(Boolean).sort(function(a, b){ return b.importance - a.importance || b.count - a.count; });
     }
   }catch(e){
     onProgress(0, 1, "LLM 确认失败，用规则结果: " + e.message);
@@ -113,6 +146,8 @@ async function discover(text, opts){
 return {
   extractCandidates: extractCandidates,
   confirmCharacters: confirmCharacters,
-  discover: discover
+  discover: discover,
+  isGeneric: isGeneric,
+  cleanAlias: cleanAlias
 };
 })();
