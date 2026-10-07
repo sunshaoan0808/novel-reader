@@ -560,9 +560,17 @@ function openPackage(id){
   }catch(e){}
   var wb = DISTILL_PACKAGE.getData(id, "worldbook");
   var wbCount = wb ? (wb.rules || []).length + (wb.locations || []).length + (wb.factions || []).length : 0;
+  // M1: Memory Usage (Character.AI)
+  var memHtml = "";
+  try{
+    if(typeof DISTILL_MEMORY !== "undefined"){
+      memHtml = DISTILL_MEMORY.renderUsage(id);
+    }
+  }catch(e){}
   v.innerHTML = `<h2 class="sec">${esc(pkg.novel)}</h2>
     <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">剧本包 · ${cards.length} 个角色${wbCount ? " · " + wbCount + " 条世界书" : ""}</div>
     ${qualityHtml}
+    ${memHtml}
     ${wbCount ? `<button class="btn" style="margin-bottom:12px" onclick="DISTILL_UI.showWorldbook('${id}')">📖 世界书 (${wbCount})</button>` : ""}
     <button class="btn" style="margin-bottom:12px;margin-left:8px" onclick="DISTILL_UI.runAudit('${id}')">🔍 审计员</button>
     <button class="btn" style="margin-bottom:12px;margin-left:8px" onclick="DISTILL_UI.runProbes('${id}')">🎭 人格探针</button>
@@ -685,6 +693,7 @@ function openCharacter(pkgId, name, stage){
       <button class="btn" onclick="DISTILL_UI.requestChange('${pkgId}','${esc(name)}')">✏️ 改动</button>
       <button class="btn" onclick="DISTILL_UI.polishCard('${pkgId}','${esc(name)}')">✨ 去AI腔</button>
       <button class="btn" onclick="DISTILL_PLAYGROUND.open('${pkgId}','${esc(name)}')">🎮 试玩</button>
+      <button class="btn" onclick="DISTILL_UI.dynamicGreeting('${pkgId}','${esc(name)}')">✨ 动态开场</button>
       <button class="btn primary" onclick="chatWith('distill_${pkgId}','${esc(name)}')">开聊</button>
     </div>`;
 }
@@ -698,7 +707,8 @@ function showProvenance(pkgId, name){
   }
   var facts = prov.facts.filter(function(f){ return !name || f.character === name; });
   var libStats = (typeof DISTILL_LIBRARY !== "undefined") ? DISTILL_LIBRARY.stats(pkgId) : null;
-  v.innerHTML = `<h2 class="sec">📚 资料库 ${name ? "· " + esc(name) : ""}</h2>
+  v.innerHTML = `<h2 class="sec">📚 资料库 ${name ? "· " + esc(name) : ""}
+    ${name ? `<button class="btn" style="font-size:12px;margin-left:8px" onclick="DISTILL_UI.autoExtractFacts('${pkgId}','${esc(name)}')">⚡ 自动抽取</button>` : ""}</h2>
     <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">
       ${facts.length} 条事实${libStats && libStats.edited ? " · " + libStats.edited + " 条已编辑" : ""}
     </div>
@@ -988,6 +998,20 @@ return {show: show, openPackage: openPackage, openCharacter: openCharacter, show
   requestChange: requestChange, confirmChange: confirmChange,
   editFact: editFact, saveFact: saveFact, deleteFact: deleteFact, addFact: addFact, recompileCard: recompileCard,
   showWorldbook: showWorldbook,
+  dynamicGreeting: async function(pkgId, name){
+    var stage = prompt("当前阶段？(early/mid/late，可空)", "");
+    var text = await DISTILL_OPENINGS.generateDynamic(pkgId, name, {stage: stage || undefined});
+    if(text) alert("动态开场白：\n\n" + text);
+    else alert("生成失败");
+  },
+  autoExtractFacts: async function(pkgId, name){
+    if(!confirm("自动抽取 " + name + " 的事实？(1次LLM调用)")) return;
+    var facts = await DISTILL_LIBRARY.autoExtract(pkgId, name, {
+      onProgress: function(msg){ console.log(msg); }
+    });
+    alert("抽取了 " + facts.length + " 条事实");
+    DISTILL_UI.showLibrary(pkgId, name);
+  },
   setAxis: function(el){
     var pkgId = el.getAttribute("data-pkg");
     var name = el.getAttribute("data-name");

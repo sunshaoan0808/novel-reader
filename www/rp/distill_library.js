@@ -77,6 +77,32 @@ function addFact(pkgId, charName, field, value, source){
   return true;
 }
 
+// M2: Facts 自动抽取 (Character.AI)
+async function autoExtract(pkgId, charName, opts){
+  opts = opts || {};
+  var onProgress = opts.onProgress || function(){};
+  var card = DISTILL_PACKAGE.getCharacterCard(pkgId, charName);
+  if(!card || !card._distill) throw new Error("角色卡不存在");
+  onProgress("抽取 " + charName + " 的事实...");
+  var d = card._distill;
+  var profile = Object.keys(d).map(function(k){
+    var v = d[k];
+    if(typeof v !== "string") return "";
+    return k + ": " + v.slice(0, 200);
+  }).filter(Boolean).join("\n").slice(0, 3000);
+  try{
+    var r = await DISTILL_LLM.chat([
+      {role: "system", content: "从人物档案抽取事实。类别:quirk怪癖/habit习惯/catchphrase口头禅/item标志物/skill技能。返回JSON:{\"facts\":[{\"category\":\"\",\"fact\":\"\"}]}，最多10条。"},
+      {role: "user", content: profile}
+    ]);
+    var m = r.content.match(/\{[\s\S]*\}/);
+    if(!m) return [];
+    var facts = (JSON.parse(m[0]).facts || []);
+    facts.forEach(function(f){ addFact(pkgId, charName, "auto_" + f.category, f.fact, "inference"); });
+    return facts;
+  }catch(e){ return []; }
+}
+
 // 从资料库重新编译角色卡
 // 逻辑: 同一字段的多条事实按 source 优先级合并 (canon > ref > inference > unknown)
 function recompileCard(pkgId, charName){
@@ -135,6 +161,7 @@ return {
   editFact: editFact,
   deleteFact: deleteFact,
   addFact: addFact,
+  autoExtract: autoExtract,
   recompileCard: recompileCard,
   stats: stats
 };

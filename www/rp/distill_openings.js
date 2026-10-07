@@ -80,8 +80,32 @@ DISTILL_PACKAGE.saveCharacterCard(pkgId, name, card);
 return result;
 }
 
+// M3: 动态开场白
+async function generateDynamic(pkgId, name, context){
+  context = context || {};
+  var card = DISTILL_PACKAGE.getCharacterCard(pkgId, name);
+  if(!card || !card._distill) throw new Error("角色卡不存在");
+  var d = card._distill;
+  var ctxDesc = [];
+  if(context.stage) ctxDesc.push("阶段:" + context.stage);
+  if(context.persona) ctxDesc.push("用户身份:" + context.persona);
+  try{
+    var r = await DISTILL_LLM.chat([
+      {role: "system", content: "你是" + name + "。\n身份:" + (d.core_identity||"") + "\n性格:" + (d.core_traits||"") + "\n" + (ctxDesc.length ? ctxDesc.join(";") + "\n" : "") + "生成一句开场白，第一人称50字内，只输出本身。"},
+      {role: "user", content: "开场白"}
+    ]);
+    return r.content.trim();
+  }catch(e){
+    var all = {};
+    try{ all = DISTILL_PACKAGE.getData(pkgId, "openings") || {}; }catch(e2){}
+    var ops = all[name] || [];
+    return ops.length ? ops[0].text : "";
+  }
+}
+
 return {
 generateOpenings: generateOpenings,
-generateAll: generateAll
+generateAll: generateAll,
+generateDynamic: generateDynamic
 };
 })();
