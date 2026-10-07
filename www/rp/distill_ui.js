@@ -578,18 +578,33 @@ function showProvenance(pkgId, name){
     return;
   }
   var facts = prov.facts.filter(function(f){ return !name || f.character === name; });
-  v.innerHTML = `<h2 class="sec">出处索引 ${name ? "· " + esc(name) : ""}</h2>
-    <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">${facts.length} 条事实</div>
-    ${facts.map(function(f){
+  var libStats = (typeof DISTILL_LIBRARY !== "undefined") ? DISTILL_LIBRARY.stats(pkgId) : null;
+  v.innerHTML = `<h2 class="sec">📚 资料库 ${name ? "· " + esc(name) : ""}</h2>
+    <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">
+      ${facts.length} 条事实${libStats && libStats.edited ? " · " + libStats.edited + " 条已编辑" : ""}
+    </div>
+    ${facts.map(function(f, i){
       var color = DISTILL_PROVENANCE.SOURCE_COLOR[f.source] || "var(--ink-faint)";
       var label = DISTILL_PROVENANCE.SOURCE_LABEL[f.source] || f.source;
+      // 找到该角色事实列表中的 index
+      var charFacts = prov.facts.filter(function(x){ return x.character === f.character; });
+      var fidx = charFacts.indexOf(f);
       return `<div class="card" style="padding:10px;margin-bottom:8px">
         <div style="font-size:12px"><b>${esc(f.field)}</b>:
-          <span style="color:${color};font-size:11px;margin-left:6px">${label}${f.chunk_id ? " · " + esc(f.chunk_id) : ""}</span></div>
+          <span style="color:${color};font-size:11px;margin-left:6px">${label}${f.chunk_id ? " · " + esc(f.chunk_id) : ""}${f.edited ? " · ✏️已编辑" : ""}</span>
+          ${name ? `<span style="float:right">
+            <a href="javascript:void(0)" onclick="DISTILL_UI.editFact('${pkgId}','${esc(f.character)}',${fidx})" style="font-size:11px;color:var(--gold)">编辑</a>
+            <a href="javascript:void(0)" onclick="DISTILL_UI.deleteFact('${pkgId}','${esc(f.character)}',${fidx})" style="font-size:11px;color:#e74c3c;margin-left:8px">删除</a>
+          </span>` : ""}
+        </div>
         <div style="font-size:13px;margin-top:4px">${esc(f.value)}</div>
       </div>`;
     }).join("")}
-    <button class="btn" onclick="DISTILL_UI.openCharacter('${pkgId}','${esc(name || "")}')">← 返回</button>`;
+    <div class="btnrow" style="margin-top:12px">
+      <button class="btn" onclick="DISTILL_UI.openCharacter('${pkgId}','${esc(name || "")}')">← 返回</button>
+      ${name ? `<button class="btn" onclick="DISTILL_UI.addFact('${pkgId}','${esc(name)}')">+ 新增事实</button>
+      <button class="btn primary" onclick="DISTILL_UI.recompileCard('${pkgId}','${esc(name)}')">🔄 重新编译角色卡</button>` : ""}
+    </div>`;
 }
 
 // 改动单 UI
@@ -663,6 +678,73 @@ function confirmChange(){
   }
 }
 
+// 资料库操作
+function editFact(pkgId, charName, factIndex){
+  var facts = DISTILL_LIBRARY.getFacts(pkgId, charName);
+  var f = facts[factIndex];
+  if(!f) return;
+  var v = document.getElementById("view");
+  v.innerHTML = `<h2 class="sec">编辑事实 · ${esc(charName)}</h2>
+    <div class="card">
+      <div style="font-size:12px;color:var(--ink-faint);margin-bottom:8px">${esc(f.field)} · ${esc(f.source)}${f.chunk_id ? " · " + esc(f.chunk_id) : ""}</div>
+      <textarea id="d_fact_val" rows="4" style="width:100%;font-size:14px;padding:8px;border:1px solid var(--line);border-radius:6px">${esc(f.value)}</textarea>
+      <div class="btnrow" style="margin-top:12px">
+        <button class="btn" onclick="DISTILL_UI.showProvenance('${pkgId}','${esc(charName)}')">取消</button>
+        <button class="btn primary" onclick="DISTILL_UI.saveFact('${pkgId}','${esc(charName)}',${factIndex})">保存</button>
+      </div>
+    </div>`;
+}
+
+function saveFact(pkgId, charName, factIndex){
+  var val = document.getElementById("d_fact_val").value.trim();
+  if(!val){ alert("内容不能为空"); return; }
+  DISTILL_LIBRARY.editFact(pkgId, charName, factIndex, val);
+  showProvenance(pkgId, charName);
+}
+
+function deleteFact(pkgId, charName, factIndex){
+  if(!confirm("确定删除这条事实吗？")) return;
+  DISTILL_LIBRARY.deleteFact(pkgId, charName, factIndex);
+  showProvenance(pkgId, charName);
+}
+
+function addFact(pkgId, charName){
+  var v = document.getElementById("view");
+  v.innerHTML = `<h2 class="sec">新增事实 · ${esc(charName)}</h2>
+    <div class="card">
+      <div style="font-size:13px;margin-bottom:8px">字段：</div>
+      <select id="d_fact_field" style="width:100%;font-size:14px;padding:8px;margin-bottom:12px;border:1px solid var(--line);border-radius:6px">
+        ${DISTILL_CHANGE.EDITABLE_FIELDS.map(function(f){
+          return `<option value="${f}">${DISTILL_CHANGE.FIELD_LABEL[f] || f}</option>`;
+        }).join("")}
+      </select>
+      <div style="font-size:13px;margin-bottom:8px">内容：</div>
+      <textarea id="d_fact_val" rows="4" style="width:100%;font-size:14px;padding:8px;border:1px solid var(--line);border-radius:6px"></textarea>
+      <div class="btnrow" style="margin-top:12px">
+        <button class="btn" onclick="DISTILL_UI.showProvenance('${pkgId}','${esc(charName)}')">取消</button>
+        <button class="btn primary" id="d_fact_add_go">添加</button>
+      </div>
+    </div>`;
+  document.getElementById("d_fact_add_go").onclick = function(){
+    var field = document.getElementById("d_fact_field").value;
+    var val = document.getElementById("d_fact_val").value.trim();
+    if(!val){ alert("内容不能为空"); return; }
+    DISTILL_LIBRARY.addFact(pkgId, charName, field, val, "inference");
+    showProvenance(pkgId, charName);
+  };
+}
+
+function recompileCard(pkgId, charName){
+  if(!confirm("将根据当前资料库事实重新生成角色卡，确定吗？")) return;
+  try{
+    DISTILL_LIBRARY.recompileCard(pkgId, charName);
+    openCharacter(pkgId, charName);
+  }catch(e){
+    alert("重编译失败: " + e.message);
+  }
+}
+
 return {show: show, openPackage: openPackage, openCharacter: openCharacter, showProvenance: showProvenance,
-  requestChange: requestChange, confirmChange: confirmChange};
+  requestChange: requestChange, confirmChange: confirmChange,
+  editFact: editFact, saveFact: saveFact, deleteFact: deleteFact, addFact: addFact, recompileCard: recompileCard};
 })();
