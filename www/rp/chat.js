@@ -508,6 +508,17 @@ async function send(runId, name, text, opts){
     run = {novel: _cc.novel || "自定义", worldbook: _wr.worldbook || [], relations: []};
   }
   var card = findCard(runId, name) || {name: name, fields: {}};
+  /* Card Evolution: 已接受的建议覆盖卡字段 */
+  try{
+    if(typeof AGENT_CARDEVO !== "undefined"){
+      AGENT_CARDEVO.getSuggestions(runId, name).forEach(function(s){
+        if(s.status === "accepted" && s.field && s.newVal){
+          card.fields = card.fields || {};
+          card.fields[s.field] = s.newVal;
+        }
+      });
+    }
+  }catch(e){}
   /* S-6 按卡温度: 卡片温度覆盖全局 */
   opts.temperature = cardTempOf(card, opts.temperature);
 
@@ -550,7 +561,7 @@ async function send(runId, name, text, opts){
   try{ if(typeof RP_PORTRAIT!=="undefined") portEnrich = RP_PORTRAIT.enrich(card, text, h); }catch(e){}
   try{ window.__lastPortrait = portEnrich; }catch(e){}
   var b = RP_PROMPT.buildMessages(card, {
-    novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: run.relations,
+    novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: (typeof AGENT_RELATIONS !== "undefined" ? AGENT_RELATIONS.merged(runId, run.relations) : run.relations),
     memory: memPrompt, memTasks: memTasks,
     memBudgeted: memCtxFor(runId, name, card, run.novel, temporal, text, apex),
     arc: arcText,
@@ -665,6 +676,26 @@ async function send(runId, name, text, opts){
   if(b.stats.memHits && b.stats.memHits.length) am.memHits = b.stats.memHits;
   if(b.stats.loreHits && b.stats.loreHits.length) am.loreHits = b.stats.loreHits;
   h.push(am);
+  /* 角色卡演变审计: 后台建议卡更新，从不自动改，失败不打断 */
+  try{
+    if(typeof AGENT_CARDEVO !== "undefined"){
+      AGENT_CARDEVO.audit(runId, name, card, h,
+        function(c, ms, t){ return RP_NET.complete(c, ms, t); }, cfg
+      ).then(function(r){
+        if(r && r.suggested) console.log("[CardEvo] +" + r.suggested + " 条卡更新建议");
+      }).catch(function(){});
+    }
+  }catch(e){}
+  /* 关系动态更新: 后台检测关系变化，失败不打断 */
+  try{
+    if(typeof AGENT_RELATIONS !== "undefined"){
+      AGENT_RELATIONS.detectChanges(runId, name, h,
+        function(c, ms, t){ return RP_NET.complete(c, ms, t); }, cfg
+      ).then(function(r){
+        if(r && r.updated) console.log("[RelDyn] +" + r.updated + " 条关系更新");
+      }).catch(function(){});
+    }
+  }catch(e){}
   /* Lorebook Keeper: 后台提取新事实进世界书，失败不打断 */
   try{
     if(typeof AGENT_LOREKEEPER !== "undefined"){
@@ -718,7 +749,7 @@ async function regenerate(runId, name, opts){
     function(c, ms, t){ return RP_NET.complete(c, ms, t); });
   var arcTextRe = arcTextFor(runId, name, card);
   var b = RP_PROMPT.buildMessages(card, {
-    novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: run.relations,
+    novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: (typeof AGENT_RELATIONS !== "undefined" ? AGENT_RELATIONS.merged(runId, run.relations) : run.relations),
     memory: RP_MEM.renderBudgeted ? "" : RP_MEM.renderPrompt(mem),
     memTasks: RP_TASKS.renderPrompt(runId, name, lastUserText),
     memBudgeted: memCtxFor(runId, name, card, run.novel, temporalRe, lastUserText, apexRe),
@@ -847,7 +878,7 @@ async function genOneSpeaker(runId, run, members, speaker, text, h, opts, budget
     function(c, ms, t){ return RP_NET.complete(c, ms, t); });
   var arcTextSpk = arcTextFor(runId, speaker, activeCard);
   var b = RP_PROMPT.buildMessages(activeCard, {
-    novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: run.relations,
+    novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: (typeof AGENT_RELATIONS !== "undefined" ? AGENT_RELATIONS.merged(runId, run.relations) : run.relations),
     memory: RP_MEM.renderBudgeted ? "" : RP_MEM.renderPrompt(RP_MEM.get(runId, speaker)),
     memTasks: RP_TASKS.renderPrompt(runId, speaker, text),
     memBudgeted: memCtxFor(runId, speaker, activeCard, run.novel, temporalSpk, text, apexSpk),

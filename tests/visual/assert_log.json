@@ -113,13 +113,13 @@
   },
   {
    "name": "layout-no-overlap",
-   "ok": true,
+   "ok": false,
    "detail": {
     "chat": {
      "overlaps": 0,
      "overflows": 0,
      "pageOverflow": false,
-     "nLeaf": 108,
+     "nLeaf": 109,
      "overlapSample": [],
      "overflowSample": []
     },
@@ -127,16 +127,32 @@
      "overlaps": 0,
      "overflows": 0,
      "pageOverflow": false,
-     "nLeaf": 164,
+     "nLeaf": 165,
      "overlapSample": [],
      "overflowSample": []
     },
     "traverse": {
-     "overlaps": 0,
+     "overlaps": 8,
      "overflows": 0,
      "pageOverflow": false,
-     "nLeaf": 37,
-     "overlapSample": [],
+     "nLeaf": 42,
+     "overlapSample": [
+      {
+       "a": "div.tm-seal \"迹\"",
+       "b": "div.tm-name \"走原著线\"",
+       "pct": 29
+      },
+      {
+       "a": "div.tm-seal \"迹\"",
+       "b": "div.tm-go \"›\"",
+       "pct": 59
+      },
+      {
+       "a": "div.tm-seal \"魂\"",
+       "b": "div.tm-name \"魂穿\"",
+       "pct": 29
+      }
+     ],
      "overflowSample": []
     }
    }

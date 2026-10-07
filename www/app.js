@@ -1477,6 +1477,9 @@ ${povChipsHTML()}
 <button class="ditem" onclick="toggleDrawer(false);regexEditor(CHAT.runId,CHAT.name,'chat')">🔤 正则替换</button>
 <button class="ditem" onclick="toggleDrawer(false);showSystem()">${icon("settings")} 人设 prompt 预览</button>
 <button class="ditem" onclick="toggleDrawer(false);promptDiag()">${icon("chart")} Prompt 诊断</button>
+<h3>AI 助手</h3>
+<button class="ditem" onclick="toggleDrawer(false);showRelManager()">🔗 关系管理</button>
+<button class="ditem" onclick="toggleDrawer(false);showCardEvo()">📝 角色卡更新建议<span id="cardevo_badge"></span></button>
 <button class="ditem" onclick="toggleDrawer(false);exportChat()">&#x1F4E4; 复制聊天记录</button>
 <button class="ditem" onclick="toggleDrawer(false);showForeshadow()">${icon("book-open")} 伏笔面板</button>
 <button class="ditem" onclick="toggleDrawer(false);exportChatTxt()">${icon("download")} 导出聊天 TXT</button>
@@ -4770,6 +4773,70 @@ if(!sel || typeof RP_ARC === "undefined") return;
 const card = (typeof RP !== "undefined" && RP.findCard(runId, nm)) || {name:nm, fields:{}};
 RP_ARC.setStage(card, runId, sel.value);
 renderDetail();
+};
+/* 关系管理页：查看动态关系 + 锁定/解锁 */
+window.showRelManager = ()=>{
+  var runId = CHAT.runId, name = CHAT.name;
+  var run = (window.__DATA__.runs || {})[runId] || {};
+  var rels = (typeof AGENT_RELATIONS !== "undefined")
+    ? AGENT_RELATIONS.merged(runId, run.relations) : (run.relations || []);
+  var myRels = rels.filter(function(r){
+    return r.source_character === name || r.target_character === name;
+  });
+  var v = document.getElementById("view");
+  var html = `<h2 class="sec">🔗 关系管理</h2>
+    <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">聊天中关系会自动演变，锁定的关系 AI 不会再动</div>`;
+  if(!myRels.length) html += `<div class="card"><div style="font-size:13px;color:var(--ink-faint)">暂无关系数据</div></div>`;
+  myRels.forEach(function(r){
+    var other = r.source_character === name ? r.target_character : r.source_character;
+    var locked = r._locked;
+    var dyn = r._dynamic ? " <span style='font-size:11px;color:#e8a13c'>动态</span>" : "";
+    html += `<div class="card" style="margin-bottom:8px;padding:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><b>${esc(other)}</b>${dyn}<br>
+        <span style="font-size:13px;color:var(--ink-faint)">${esc(r.relationship_summary || r.type || "")}</span></div>
+        <button class="btn${locked ? " primary" : ""}" style="font-size:12px;padding:4px 10px"
+          onclick="AGENT_RELATIONS.setLock('${runId}','${esc(name)}','${esc(other)}',${!locked});showRelManager();">
+          ${locked ? "🔒 已锁定" : "🔓 锁定"}</button>
+      </div></div>`;
+  });
+  html += `<button class="btn" onclick="showChat()">返回聊天</button>`;
+  v.innerHTML = html;
+};
+/* 角色卡更新建议页 */
+window.showCardEvo = ()=>{
+  var runId = CHAT.runId, name = CHAT.name;
+  var list = (typeof AGENT_CARDEVO !== "undefined") ? AGENT_CARDEVO.getSuggestions(runId, name) : [];
+  var pending = list.filter(function(s){ return s.status === "pending"; });
+  var v = document.getElementById("view");
+  var html = `<h2 class="sec">📝 角色卡更新建议 (${pending.length} 待处理)</h2>
+    <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">AI 观察到角色在聊天中的持久变化，建议更新到卡上。每条都要你确认，不会自动改。</div>`;
+  if(!pending.length) html += `<div class="card"><div style="font-size:13px;color:var(--ink-faint)">暂无待处理建议。聊得久一点，AI 会发现角色的成长。</div></div>`;
+  pending.forEach(function(s, i){
+    var idx = list.indexOf(s);
+    html += `<div class="card" style="margin-bottom:8px;padding:12px">
+      <div style="font-size:12px;color:var(--ink-faint)">字段：${esc(s.field)}</div>
+      <div style="font-size:13px;margin:6px 0"><b>建议：</b>${esc(s.newVal)}</div>
+      <div style="font-size:12px;color:var(--ink-faint)">理由：${esc(s.reason || "")}</div>
+      <div class="btnrow" style="margin-top:8px">
+        <button class="btn primary" style="font-size:12px" onclick="acceptCardEvo(${idx})">接受</button>
+        <button class="btn" style="font-size:12px" onclick="AGENT_CARDEVO.reject('${runId}','${esc(name)}',${idx});showCardEvo();">拒绝</button>
+      </div></div>`;
+  });
+  html += `<button class="btn" onclick="showChat()">返回聊天</button>`;
+  v.innerHTML = html;
+};
+window.acceptCardEvo = (idx)=>{
+  var runId = CHAT.runId, name = CHAT.name;
+  var s = AGENT_CARDEVO.accept(runId, name, idx);
+  if(s && s.field){
+    // 写入卡片 (localStorage 自定义卡或运行时)
+    try{
+      var ck = "nd_cardfield_" + runId + "_" + name + "_" + s.field;
+      localStorage.setItem(ck, s.newVal);
+    }catch(e){}
+  }
+  showCardEvo();
 };
 window.showSystem = ()=>{
 if(!LAST_SYSTEM){ alert("先发一句话，引擎组装好人设 prompt 后这里才能预览。"); return; }
