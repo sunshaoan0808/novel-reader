@@ -461,6 +461,13 @@ async function onStartDistill(){
         onProgress: function(m){ prog("[世界书] " + m, 88); }
       });
       DISTILL_PACKAGE.saveData(S.pkg.id, "worldbook", worldbook);
+
+      // 开场白
+      prog("[开场白] 生成中...", 95);
+      await DISTILL_OPENINGS.generateAll(S.pkg.id, chars, {
+        shouldPause: function(){ return S.paused; },
+        onProgress: function(d, t, m){ prog("[开场白] " + m, 95 + d / t * 4); }
+      });
       setStage("plot", "done");
     }
 
@@ -587,6 +594,24 @@ function openCharacter(pkgId, name, stage){
       </div>
       <button class="btn" style="margin-top:8px" onclick="DISTILL_UI.showProvenance('${pkgId}','${esc(name)}')">查看出处索引</button>
     </div>` : ""}
+    ${function(){
+      var openings = [];
+      try{
+        var all = DISTILL_PACKAGE.getData(pkgId, "openings") || {};
+        openings = all[name] || [];
+      }catch(e){}
+      if(!openings.length) return "";
+      return `<div class="card" style="margin-top:12px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:8px">💬 开场白 (${openings.length})</div>
+        ${openings.map(function(o, i){
+          return `<div style="font-size:12px;padding:6px 0;border-bottom:1px solid var(--line)">
+            <div style="color:var(--gold);font-size:11px">${esc(o.situation || ("开场" + (i+1)))}</div>
+            <div style="margin-top:2px">${esc(o.text.slice(0, 120))}${o.text.length > 120 ? "..." : ""}</div>
+          </div>`;
+        }).join("")}
+        <button class="btn" style="margin-top:8px" onclick="DISTILL_UI.regenOpenings('${pkgId}','${esc(name)}')">🔄 重新生成</button>
+      </div>`;
+    }()}
     <div class="btnrow" style="margin-top:12px">
       <button class="btn" onclick="DISTILL_UI.show()">← 返回</button>
       <button class="btn" onclick="DISTILL_UI.requestChange('${pkgId}','${esc(name)}')">✏️ 改动</button>
@@ -869,8 +894,28 @@ function recompileCard(pkgId, charName){
   }
 }
 
+async function regenOpenings(pkgId, charName){
+  if(!confirm("重新生成开场白？")) return;
+  var card = DISTILL_PACKAGE.getCharacterCard(pkgId, charName);
+  if(!card) return;
+  try{
+    var openings = await DISTILL_OPENINGS.generateOpenings(charName, card._distill, {});
+    if(openings.length){
+      var all = DISTILL_PACKAGE.getData(pkgId, "openings") || {};
+      all[charName] = openings;
+      DISTILL_PACKAGE.saveData(pkgId, "openings", all);
+      card.first_mes = openings[0].text;
+      card.alternate_greetings = openings.slice(1).map(function(o){ return o.text; });
+      DISTILL_PACKAGE.saveCharacterCard(pkgId, charName, card);
+    }
+    openCharacter(pkgId, charName);
+  }catch(e){
+    alert("生成失败: " + e.message);
+  }
+}
+
 return {show: show, openPackage: openPackage, openCharacter: openCharacter, showProvenance: showProvenance,
   requestChange: requestChange, confirmChange: confirmChange,
   editFact: editFact, saveFact: saveFact, deleteFact: deleteFact, addFact: addFact, recompileCard: recompileCard,
-  showWorldbook: showWorldbook, exportPkg: exportPkg};
+  showWorldbook: showWorldbook, exportPkg: exportPkg, regenOpenings: regenOpenings};
 })();
