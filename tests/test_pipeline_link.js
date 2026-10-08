@@ -108,6 +108,9 @@ t("无纠错不注入", sys2.indexOf("OOC 纠错") < 0);
 
 /* ---- 5. 世界卡 tab ---- */
 run(ctx, pickFn("esc"));
+run(ctx, pickFn("skeletonHTML")); /* showWorldcard 先渲染骨架屏 */
+run(ctx, pickFn("humanizeGap")); /* 渲染缺口声明 */
+run(ctx, pickFn("prependRunBanner")); /* render 开头插入 run banner */
 run(ctx, `var _wcCache = {}, _wcData = null, view = document.getElementById("view"),
   RUN = {run_id: "wctest", novel: "测试小说"}, TAB = "world";`);
 run(ctx, `window.__WORLDCARD_wctest = {

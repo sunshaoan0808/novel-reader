@@ -39,8 +39,8 @@ t("导出条目有 ST 字段",
   ex2.prompts.every(p=> Array.isArray(Object.keys(p)) && "name" in p && "role" in p
     && "content" in p && "marker" in p && "identifier" in p && "enabled" in p));
 t("marker 条目保留", ex2.prompts.filter(p=>p.marker).length === 8);
-t("disabled 条目保留(enabled=false)",
-  ex2.prompts.filter(p=>!p.enabled).length === 146 - 67);
+t("disabled 条目保留(enabled=false, prompt_order覆盖后66启用)",
+  ex2.prompts.filter(p=>!p.enabled).length === 146 - 66);
 
 // ---- 往返: 导出 -> 再解析, 与第一次解析结果一致 ----
 ctx.__ex2 = ex2;

@@ -3,7 +3,7 @@ const WWW = fs.existsSync("assets/www") ? "assets/www" : "www";
 // v38: ST 预设(全条目保留+逐条开关+变量宏顺序求值)回归测试
 // parseFile(全保留/enabled/group) / evalMacros(变量宏单遍顺序求值) /
 // assemble(disabled跳过+跨条目变量+marker+history) / buildMessages 预设分支 /
-// 真实 MoM 2.4 fixture(146条/67启用/8marker, 宏零泄漏)
+// 真实 MoM 2.4 fixture(146条/67原始启用→prompt_order覆盖后66启用/8marker, 宏零泄漏)
 function mkCtx(){
 const store = {};
 const localStorage = {
@@ -123,7 +123,8 @@ const momRaw = fs.readFileSync("tests/fixtures/mom-2.4.json", "utf8");
 const mom = run(ctx, "RP_PRESET.parseFile(" + JSON.stringify(momRaw) + ")");
 t("MoM parse ok", mom.ok === true);
 t("MoM 146条全保留", mom.preset.prompts.length === 146);
-t("MoM 67条启用", mom.preset.prompts.filter(p=>p.enabled!==false).length === 67);
+t("MoM prompt_order覆盖后66条启用", mom.preset.prompts.filter(p=>p.enabled!==false).length === 66);
+t("MoM prompt_order置关的条目确被关闭", mom.preset.prompts.some(p=>p.identifier==="8eedba76-7382-4477-b45e-5b3f6a818c7d" && p.enabled===false));
 t("MoM 8个marker", mom.preset.prompts.filter(p=>p.marker).length === 8);
 run(ctx, "RP_PRESET.save(" + JSON.stringify(mom.preset) + ")");
 const momMsgs = run(ctx, "RP_PRESET.assemble(RP_PRESET.get(" + JSON.stringify(mom.preset.id) + "), {persona:'P',charDesc:'D',charPers:'PP',scenario:'S',examples:'E',loreBefore:'',lore:'L',history:[{role:'user',content:'你好'}],charName:'蛾摩拉',userName:'主人'})");
