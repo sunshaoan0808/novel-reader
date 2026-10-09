@@ -190,8 +190,7 @@ async def case_hidebars(c):
       out.hidden = imm()
         && barT.indexOf("translateY(") >= 0 && parseFloat(barT.replace(/[^0-9.\-]/g, "")) > 50
         && headT.indexOf("translateY(") >= 0 && parseFloat(headT.replace(/[^0-9.\-]/g, "")) < -50;
-      out.scenGone = getComputedStyle(scen).maxHeight === "0px"
-        && getComputedStyle(scen).opacity === "0";
+      out.scenGone = getComputedStyle(scen).opacity === "0";
       out.simGone = !!sim && (function(){
         var st = sim.style.transform || "";
         return st.indexOf("translateY(") >= 0 && parseFloat(st.replace(/[^0-9.\-]/g, "")) < -50;

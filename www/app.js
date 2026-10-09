@@ -1906,6 +1906,7 @@ function applyProgress(p, animate){
   if(scen){
     scen.style.transition = t;
     scen.style.opacity = String(1 - progress);
+    /* 渐进式：只淡出不塌陷，保持布局占位，避免布局抖动干扰滚动 */
     scen.style.pointerEvents = progress > 0.5 ? "none" : "";
   }
   if(bar){

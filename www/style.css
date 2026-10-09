@@ -334,7 +334,9 @@ body.chatmode .chathead.hide{ transform:translateY(-105%); }
 /* 沉浸式（上滑看历史时）：场景条收起、顶部压暗罩减弱、顶部死区收窄，
    顶部不再留一块黑色死区 */
 body.chatmode.immersive #scenbar{
-  max-height:0; opacity:0; padding-top:0; padding-bottom:0; pointer-events:none;
+  /* 2026-10-09: 渐进式沉浸改由 JS 直接驱动 transform/opacity/maxHeight，
+     不再经由 CSS 类做布局塌陷，避免布局抖动干扰滚动位移计算 */
+  pointer-events:none;
 }
 body.chatmode.immersive .chatbg .bgshade{
   background:linear-gradient(180deg,
