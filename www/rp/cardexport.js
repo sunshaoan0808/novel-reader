@@ -25,7 +25,14 @@ function buildTavernCard(c){
   var lines = f.typical_lines || [];
   /* P1-2: 多开场白与示例对话写回(之前写死空值, roundtrip 会丢) */
   var ext = {};
-  try{ ext = Object.assign({}, ((c && c.raw && c.raw.extensions) || {})); }catch(e){}
+  try{
+    /* Soul Phase1 契约: 应用内 card.extensions 优先, 导入残留 c.raw.extensions 兜底
+     * (2026-10-09 修: 之前只读 c.raw.extensions, 自建卡的 extensions.soul
+     *  在 PNG 导出中被静默丢掉; 优先级与 RP_SOUL.getSoul 一致) */
+    ext = Object.assign({},
+      ((c && c.raw && c.raw.extensions) || {}),
+      ((c && c.extensions) || {}));
+  }catch(e){}
   if(c && c.exampleDialogue) ext.example_dialogue = c.exampleDialogue;
   else delete ext.example_dialogue;
   /* P0 卡兼容: 导入卡再导出时, 原卡字段 roundtrip 不丢 */

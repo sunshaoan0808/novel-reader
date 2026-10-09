@@ -118,5 +118,33 @@ t("rt core_identity", (back2.fields.core_identity||"").indexOf("行者") >= 0
   && (back2.fields.core_identity||"").indexOf("身长八尺") >= 0);
 t("rt core_traits", (back2.fields.core_traits||"").indexOf("豪爽") >= 0);
 
+// --- Soul Phase1 契约: 自建卡 card.extensions.soul 导出不丢 ---
+// 回归: buildTavernCard 曾只读 c.raw.extensions, 应用内写入的 extensions.soul
+// 在 PNG 导出中被静默丢掉 (export 会静默丢 soul)
+const cs = {name: "林黛玉", novel: "红楼梦",
+  fields: {core_identity: "林如海之女", typical_lines: ["你这话说得好没意思"]},
+  extensions: {soul: {schema_version: 3, soul_md: "# 黛玉宪章",
+    persona: {core_traits: ["敏感"]}, memory: {long_term: {facts: []}},
+    character_book: [{k: "葬花", content: "花谢花飞飞满天"}], updated_at: "2026-10-09T10:00:00Z"}}};
+const bcs = X.buildTavernCard(cs);
+var bcsSoul = bcs.data.extensions && bcs.data.extensions.soul;
+t("soul pkg survives export",
+  !!(bcsSoul && bcsSoul.soul_md === "# 黛玉宪章"));
+t("soul character_book survives",
+  !!(bcsSoul && bcsSoul.character_book && bcsSoul.character_book.length === 1 &&
+  bcsSoul.character_book[0].content.indexOf("花谢花飞") >= 0));
+// 优先级: 应用内 extensions 优先于导入残留 raw.extensions (与 getSoul 契约一致)
+const cs2 = {name: "薛宝钗", fields: {},
+  extensions: {soul: {soul_md: "new-md"}},
+  raw: {extensions: {soul: {soul_md: "old-md"}, legacy_flag: 1}}};
+const bcs2 = X.buildTavernCard(cs2);
+t("app extensions win over raw",
+  bcs2.data.extensions.soul.soul_md === "new-md");
+t("raw extensions preserved as fallback",
+  bcs2.data.extensions.legacy_flag === 1);
+// 无 soul 时 extensions 仍为空对象, 不炸
+const cs3 = {name: "无魂", fields: {}};
+t("no-soul card safe", typeof X.buildTavernCard(cs3).data.extensions === "object");
+
 console.log(`\ncardexport: ${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);
