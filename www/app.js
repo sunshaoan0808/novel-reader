@@ -1915,13 +1915,6 @@ let lastDist = distNow();
 const raf = (typeof requestAnimationFrame !== "undefined") ? requestAnimationFrame : (fn)=>fn();
 function applyProgress(p, animate){
   progress = Math.max(0, Math.min(1, p));
-  /* 进度回落时先恢复布局（display），确保 transform 可见 */
-  if(progress < 1){
-    [head, sim, ctx, ws, scen].forEach(el=>{
-      if(el && el.style.display === "none") el.style.display = "";
-    });
-    if(bar && bar.style.visibility === "hidden") bar.style.visibility = "";
-  }
   const t = animate ? "transform .25s ease, opacity .25s ease" : "none";
   const upT = progress > 0 ? `translateY(${-progress * 105}%)` : "";
   if(head){
@@ -1985,31 +1978,7 @@ function scheduleSnap(){
   snapTimer = setTimeout(()=>{
     /* 停手后 snap：超过一半藏，不到一半显 */
     const target = progress > 0.5 ? 1 : 0;
-    if(target === 0 && progress === 1){
-      /* 从全藏恢复：先恢复布局占位，再做滑入动画 */
-      [head, sim, ctx, ws, scen, bar].forEach(el=>{
-        if(el) el.style.display = "";
-      });
-      /* 强制 reflow 确保 display 生效后再启动 transform 动画 */
-      void log.offsetHeight;
-    }
     applyProgress(target, true);
-    if(target === 1){
-      /* 藏到底后 260ms（动画结束）再收布局，消除留白；视觉上已滑出，无跳变感 */
-      setTimeout(()=>{
-        if(progress === 1){
-          [head, sim, ctx, ws].forEach(el=>{
-            if(el) el.style.display = "none";
-          });
-          if(scen) scen.style.display = "none";
-          /* chatbar 用 visibility 保留底栏占位逻辑由 body.immersive 处理 */
-          if(bar) bar.style.visibility = "hidden";
-        }
-      }, 260);
-    }else{
-      /* 显示时确保 visibility 恢复 */
-      if(bar) bar.style.visibility = "";
-    }
   }, 160);
 }
 log.onscroll = ()=>{ if(!ticking){ ticking = true; raf(onScroll); } };
