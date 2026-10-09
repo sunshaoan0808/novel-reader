@@ -1883,109 +1883,67 @@ const log = document.getElementById("chatlog");
 if(!log) return;
 const head = document.getElementById("chathead");
 const bar = document.querySelector(".chatbar");
-let hidden = false, headH = 0, simH = 0, ticking = false;
-/* 离底距离 */
+const sim = document.getElementById("simbar");
+const scen = document.getElementById("scenbar");
+/* 渐进式沉浸 (2026-10-09)：progress 0=全显, 1=全藏；手指滑动时按位移比例
+   实时驱动 transform（无 CSS 过渡，跟手）；停手后 snap 到 0/1。
+   全程只用 transform，不碰布局，无需 scrollTop 补偿，不闪烁。 */
+let progress = 0, ticking = false, snapTimer = 0;
 const distNow = ()=>Math.max(0, ((log.scrollHeight || 0) - (log.clientHeight || 0)) - log.scrollTop);
 let lastDist = distNow();
 const raf = (typeof requestAnimationFrame !== "undefined") ? requestAnimationFrame : (fn)=>fn();
-/* 顶栏/底栏/场景条/世界条联动显隐：
-   - 进入沉浸式：检测到上滑离底（> 8px）立刻藏，不再等 140px；
-   - 退出沉浸式：只有真正滑到底（离底距离 < 6px）才显；
-   - [6px, 8px] 为迟滞区间，进入还要求方向向上，手指在边界抖动不反跳。
-   输入框聚焦(键盘弹起)时不藏底栏 */
-function setHidden(hide){
-if(hide === hidden) return;
-hidden = hide;
-/* 先记基线：改样式之前的离底距离。布局变化是即时的（marginTop/position
-   瞬间切换），样式应用后强制一次同步 layout，直接把 scrollTop 设到"离底距离
-   不变"的位置，单任务内完成。视觉上有 .3s 的 transform 过渡（顶栏/世界条/
-   底栏滑入滑出），但过渡只动 transform、不碰布局，所以补偿数学依然精确。
-   2026-10-01 教训：曾用 rAF 逐帧补偿"布局过渡"，但过渡是"即时回流+渐变"
-   混合体，rAF 在弱环境下不可靠，实测反复 re-hide 闪烁。结论：布局必须即时+
-   同步补偿；只允许 transform/opacity 做纯视觉过渡。 */
-const targetDist = distNow();
-const ae = (typeof document !== "undefined") ? document.activeElement : null;
-const typing = !!ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName || "");
-if(head){
-if(hide) headH = head.offsetHeight || headH;
-head.classList.toggle("hide", hide);
-head.style.marginTop = (hide && headH) ? (-headH + "px") : "";
+function applyProgress(p, animate){
+  progress = Math.max(0, Math.min(1, p));
+  const t = animate ? "transform .25s ease" : "none";
+  if(head){
+    head.style.transition = t;
+    head.style.transform = progress > 0 ? `translateY(${-progress * 105}%)` : "";
+  }
+  if(sim){
+    sim.style.transition = t;
+    sim.style.transform = progress > 0 ? `translateY(${-progress * 105}%)` : "";
+  }
+  if(scen){
+    scen.style.transition = t;
+    scen.style.opacity = String(1 - progress);
+    scen.style.pointerEvents = progress > 0.5 ? "none" : "";
+  }
+  if(bar){
+    const ae = document.activeElement;
+    const typing = !!ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName || "");
+    if(!(typing && progress > 0)){
+      bar.style.transition = t;
+      bar.style.transform = progress > 0 ? `translateY(${progress * 110}%)` : "";
+    }
+  }
+  /* body.immersive 保留给场景条收起/压暗罩等 CSS 联动，阈值 0.5 */
+  if(document.body && document.body.classList)
+    document.body.classList.toggle("immersive", progress > 0.5);
 }
-/* 世界模拟条跟随顶栏一起藏: 沉浸式阅读历史时不留一条空白带(此前漏接) */
-const sim = (typeof document !== "undefined") ? document.getElementById("simbar") : null;
-if(sim){
-if(hide) simH = sim.offsetHeight || simH;
-sim.style.marginTop = (hide && simH) ? (-simH + "px") : "";
-sim.style.transform = hide ? "translateY(-105%)" : "";
-}
-if(bar && !(hide && typing)){
-bar.classList.toggle("hidebar", hide);
-if(hide){
-/* 隐藏: fixed 脱离文档流(正文自动补位, 无需负 margin),
-   bottom:0 + translateY(110%) 保证整体移出视口, 与布局/安全区无关;
-   v33 的 sticky+负 margin 会被浏览器重新锚定抵消位移, 实际没藏住。
-   transform 有 CSS 过渡(.3s), 平滑滑出。 */
-bar.style.position = "fixed";
-bar.style.left = "0";
-bar.style.right = "0";
-bar.style.bottom = "0";
-bar.style.transform = "translateY(110%)";
-}else{
-/* 显示: 先即时恢复文档流(布局复位, 下面的同步补偿照旧执行),
-   再从 translateY(110%) 做 .3s 滑入, 不再"啪"地弹出来。
-   先关 transition 再强制 reflow 定住起始态, 否则起始态会被过渡吞掉、
-   动画直接跳到终点。布局变化本身仍是即时的, 补偿数学保持精确。 */
-bar.style.transition = "none";
-bar.style.position = ""; bar.style.left = ""; bar.style.right = ""; bar.style.bottom = "";
-bar.style.transform = "translateY(110%)";
-void bar.offsetHeight;
-bar.style.transition = "";
-bar.style.transform = "";
-}
-}
-/* 沉浸式总开关挂到 body：场景条收起、顶部压暗罩减弱、顶部死区收窄（CSS 侧） */
-if(typeof document !== "undefined" && document.body && document.body.classList)
-document.body.classList.toggle("immersive", hide);
-/* 同步补偿：样式已全部应用（含 body.immersive），强制一次同步 layout 拿到
-   最终高度，直接把 scrollTop 设到离底距离 == targetDist 的位置。
-   加 noanchor 关掉这次强制 layout 里浏览器滚动锚定的干扰，设完即摘掉。
-   之后只会触发一次 scroll 事件，状态机看到的 dist 就是用户手势的 dist，
-   自己的显隐不产生状态迁移，不可能闪烁。 */
-log.classList.add("noanchor");
-const chNow = log.clientHeight || 0;
-const shNow = log.scrollHeight || 0;
-const maxST = Math.max(0, shNow - chNow);
-log.scrollTop = Math.min(Math.max(0, shNow - chNow - targetDist), maxST);
-log.classList.remove("noanchor");
-lastDist = targetDist;
-const tb = document.getElementById("tobottom");
-if(tb) tb.classList.toggle("show", targetDist > 200);
-}
-window.__setHeadHidden = setHidden; /* 测试钩子 */
+/* 兼容旧测试钩子：__setHeadHidden(true/false) 映射到 progress 1/0 */
+function setHidden(hide){ applyProgress(hide ? 1 : 0, true); }
+window.__setHeadHidden = setHidden;
 function onScroll(){
-ticking = false;
-/* 方向判定必须用离底距离, 不能用绝对 scrollTop：打开聊天页后约 1s 内
-   字体加载/布局沉降会让 scrollTop 原地抖动（实测 ±84px），但离底距离
-   恒为 0；用绝对值判 down/up 会把这次抖动当成用户下滑而误隐藏，
-   导致进聊天页顶栏/底栏就是藏起来的。只有离底距离真的变了，
-   才说明是用户手指在滚动 */
-/* 离底距离判定: 必须用离底距离而不用绝对 scrollTop——打开聊天页后约 1s 内
-   字体加载/布局沉降会让 scrollTop 原地抖动（实测 ±84px），但离底距离
-   恒为 0；用绝对值判 down/up 会把这次抖动当成用户下滑而误隐藏，
-   导致进聊天页顶栏/底栏就是藏起来的。只有离底距离真的变了，
-   才说明是用户手指在滚动。
-   注意：显隐自身的布局过渡也会扰动离底距离（v33 曾误以为浏览器钳制能保持
-   离底距离不变，实测过渡中 183→26），这部分由 setHidden 的同步补偿解决
-   （布局即时切换+单任务内按离底距离重设 scrollTop），
-   状态机这里只看用户手势。 */
-const dist = distNow();
-const movingUp = (dist - lastDist) > 1;   /* 离底距离拉大 = 手指往上滑（看历史） */
-if(!hidden && movingUp && dist > 8){ setHidden(true); }
-else if(hidden && dist < 6){ setHidden(false); }
-lastDist = dist;
-/* M3: 回到底部悬浮按钮（Talkie 式）：离底拉开才出现 */
-const tb = document.getElementById("tobottom");
-if(tb) tb.classList.toggle("show", dist > 200);
+  ticking = false;
+  const dist = distNow();
+  const delta = dist - lastDist; /* >0 = 手指上滑看历史，<0 = 手指下滑回到底部 */
+  lastDist = dist;
+  if(Math.abs(delta) < 1) return;
+  /* 到底时强制全显 */
+  if(dist < 6){ applyProgress(0, false); scheduleSnap(); return; }
+  /* 按位移比例推进：120px 滑距走完 0→1 */
+  const np = progress + delta / 120;
+  applyProgress(np, false);
+  scheduleSnap();
+  const tb = document.getElementById("tobottom");
+  if(tb) tb.classList.toggle("show", dist > 200);
+}
+function scheduleSnap(){
+  if(snapTimer) clearTimeout(snapTimer);
+  snapTimer = setTimeout(()=>{
+    /* 停手后 snap：超过一半藏，不到一半显 */
+    applyProgress(progress > 0.5 ? 1 : 0, true);
+  }, 160);
 }
 log.onscroll = ()=>{ if(!ticking){ ticking = true; raf(onScroll); } };
 ensureToBottom(); /* M3: 注入回到底部按钮（单聊/群聊/穿越共用） */
@@ -3016,13 +2974,38 @@ const hits = (s.loreHits||[]).filter(Boolean);
 const hitDet = (s.loreHitDetails||[]).filter(Boolean);
 bar.style.display = "block";
 bar.innerHTML = `<div class="ctxrow"><div class="ctxbar-bg"><div class="ctxbar-fg${pct>85?" hot":""}" style="width:${pct}%"></div></div>`
-+ `<span class="ctxnum">上下文 ${used}/${max} · 历史${s.histKept||0}条</span></div>`
-+ (hits.length ? `<div class="ctxlore">${icon("book-open",14)} 触发：${hitDet.length
++ `<span class="ctxnum">上下文 ${used}/${max} · 历史${s.histKept||0}条</span>`
++ (hits.length ? `<span class="ctxfold" onclick="toggleCtxLore(event)">触发${hits.length}条 ▾</span>` : "")
++ `</div>`
++ (hits.length ? `<div class="ctxlore" id="ctxlore">${icon("book-open",14)} 触发：${hitDet.length
 ? hitDet.map(d=>`${esc(d.title)}<span style="opacity:.6;font-size:11px"> ${d.probability}%·P${d.priority}</span>`).join("、")
 : hits.map(x=>esc(x)).join("、")}</div>` : "")
 /* Tier2 #6: C.AI "Older messages will fade from Memory, but anything you save to Story Memory is kept safe." */
 + (pct > 90 ? `<div class="ctxwarn">旧消息会逐渐从记忆中褪色，但你置顶 / 存入事件簿的记忆会一直保留。</div>` : "");
+/* 触发明细 5 秒后自动收起，点击徽标可展开/收起 */
+if(hits.length){
+  if(window.__ctxLoreTimer) clearTimeout(window.__ctxLoreTimer);
+  window.__ctxLoreTimer = setTimeout(()=>{
+    const l = document.getElementById("ctxlore");
+    if(l && !l.classList.contains("folded")){
+      l.classList.add("folded");
+      const f = bar.querySelector(".ctxfold");
+      if(f) f.textContent = `触发${hits.length}条 ▸`;
+    }
+  }, 5000);
 }
+}
+window.toggleCtxLore = (ev)=>{
+  if(ev && ev.stopPropagation) ev.stopPropagation();
+  const l = document.getElementById("ctxlore");
+  if(!l) return;
+  l.classList.toggle("folded");
+  const f = document.querySelector("#ctxbar .ctxfold");
+  if(f){
+    const n = (LAST_STATS && (LAST_STATS.loreHits||[]).filter(Boolean).length) || 0;
+    f.textContent = l.classList.contains("folded") ? `触发${n}条 ▸` : `触发${n}条 ▾`;
+  }
+};
 /* ============ 世界模拟 HUD：聊天页顶栏下常驻时间/天气/地点 ============ */
 function simChatKey(){
   try{ return chatHistKey(); }catch(e){ return "misc"; }

@@ -634,7 +634,11 @@ padding:6px 0; border-bottom:1px solid var(--line-soft);}
 .storow span:last-child{white-space:nowrap; margin-left:12px; flex-shrink:0;}
 .storow:last-of-type{border-bottom:0;}
 .ctxnum{white-space:nowrap; color:var(--ink-faint);}
-.ctxlore{margin-top:4px; color:var(--gold-soft); font-size:12px;}
+.ctxlore{margin-top:4px; color:var(--gold-soft); font-size:12px;
+  max-height:200px; overflow:hidden; transition:max-height .35s ease, opacity .35s ease, margin .35s ease;}
+.ctxlore.folded{max-height:0; opacity:0; margin-top:0;}
+.ctxfold{display:inline-block; margin-left:6px; font-size:11px; color:var(--gold);
+  border:1px solid var(--line-soft); border-radius:999px; padding:1px 8px; cursor:pointer;}
 
 /* ===== v21: 情景预设 chips ===== */
 .scenbar{display:flex; gap:8px; padding:6px 10px 2px; overflow-x:auto;}
@@ -1269,7 +1273,9 @@ body.chatmode.immersive #scenbar{ min-height:0; }
   width:48px; height:48px; border-radius:50%;
   background:var(--accent,#e8a13c); border:none; font-size:22px;
   box-shadow:0 2px 12px rgba(0,0,0,.25); cursor:pointer;
+  touch-action:none; user-select:none; -webkit-user-select:none;
 }
+#asst_fab.dragging{opacity:.85; box-shadow:0 4px 20px rgba(0,0,0,.4);}
 #asst_win{
   position:fixed; z-index:1000; left:12px; right:12px; bottom:12px; top:80px;
   background:var(--bg,#1a1a2e); border-radius:12px;

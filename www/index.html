@@ -151,6 +151,68 @@
 <script src="rp/checkin.js"></script>
 <script src="rp/album.js"></script>
 <script src="app.js"></script>
-<button id="asst_fab" onclick="openAssistant()" title="浮生小助手">💡</button>
+<button id="asst_fab" title="浮生小助手">💡</button>
+<script>
+/* 小助手悬浮球：可拖动，点按打开；位置记忆 */
+(function(){
+  var fab = document.getElementById("asst_fab");
+  if(!fab) return;
+  /* 恢复上次位置 */
+  try{
+    var pos = JSON.parse(localStorage.getItem("nd_asst_fab_pos") || "null");
+    if(pos && typeof pos.x === "number" && typeof pos.y === "number"){
+      fab.style.left = pos.x + "px"; fab.style.top = pos.y + "px";
+      fab.style.right = "auto"; fab.style.bottom = "auto";
+    }
+  }catch(e){}
+  var sx, sy, ox, oy, moved, pid;
+  function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+  function onStart(e){
+    var t = e.touches ? e.touches[0] : e;
+    pid = e.pointerId;
+    sx = t.clientX; sy = t.clientY;
+    var r = fab.getBoundingClientRect();
+    ox = r.left; oy = r.top;
+    moved = false;
+    fab.classList.add("dragging");
+    fab.style.left = ox + "px"; fab.style.top = oy + "px";
+    fab.style.right = "auto"; fab.style.bottom = "auto";
+    if(fab.setPointerCapture && pid !== undefined){ try{ fab.setPointerCapture(pid); }catch(_){} }
+    e.preventDefault();
+  }
+  function onMove(e){
+    if(sx === undefined) return;
+    var t = e.touches ? e.touches[0] : e;
+    var dx = t.clientX - sx, dy = t.clientY - sy;
+    if(Math.abs(dx) + Math.abs(dy) > 8) moved = true;
+    if(!moved) return;
+    var nx = clamp(ox + dx, 0, window.innerWidth - 48);
+    var ny = clamp(oy + dy, 0, window.innerHeight - 48);
+    fab.style.left = nx + "px"; fab.style.top = ny + "px";
+    e.preventDefault();
+  }
+  function onEnd(e){
+    if(sx === undefined) return;
+    fab.classList.remove("dragging");
+    if(!moved){
+      /* 点按：打开小助手 */
+      if(typeof openAssistant === "function") openAssistant();
+    }else{
+      /* 拖拽结束：记忆位置 */
+      try{
+        var r = fab.getBoundingClientRect();
+        localStorage.setItem("nd_asst_fab_pos", JSON.stringify({x: Math.round(r.left), y: Math.round(r.top)}));
+      }catch(_){}
+    }
+    sx = undefined;
+  }
+  fab.addEventListener("pointerdown", onStart);
+  fab.addEventListener("pointermove", onMove);
+  fab.addEventListener("pointerup", onEnd);
+  fab.addEventListener("pointercancel", onEnd);
+  /* 移除内联 onclick，改由拖拽逻辑统一处理点按 */
+  fab.removeAttribute("onclick");
+})();
+</script>
 </body>
 </html>
