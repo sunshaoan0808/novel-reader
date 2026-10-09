@@ -1456,7 +1456,7 @@ ${chatBgHTML()}
 <button class="backbtn" onclick="exitChat()">‹</button>
 <div class="avatar">${esc((CHAT.name||"?")[0])}</div>
 <div class="chead-main"><div class="cname">${esc(CHAT.name)}<span class="aimark">AI</span></div>
-<div class="cstat">${run.novel?`<span>${esc(run.novel)}</span>`:""}<button onclick="toggleDrawer(false);openAlbum(CHAT.runId,CHAT.name)"><span class="mement">${icon("brain",15)} ${memN}条记忆</span>›</button></div></div>
+<div class="cstat">${run.novel?`<span>${esc(run.novel)}</span>`:""}<span id="chapter_hbadge" style="display:none;font-size:11px;color:var(--gold);border:1px solid var(--line-soft);border-radius:999px;padding:1px 8px;cursor:pointer" onclick="chapterPicker()"></span><button onclick="toggleDrawer(false);openAlbum(CHAT.runId,CHAT.name)"><span class="mement">${icon("brain",15)} ${memN}条记忆</span>›</button></div></div>
 <button class="menubtn" onclick="toggleChatSearch()" title="搜索聊天记录">${icon("search")}</button>
 <button class="menubtn" onclick="toggleDrawer(true)" title="菜单">${icon("menu")}</button>
 </div>
@@ -1485,6 +1485,7 @@ ${povChipsHTML()}
 <button class="ditem" onclick="toggleDrawer(false);charDetail(CHAT.runId,CHAT.name)">${icon("user")} 角色详情</button>
 <button class="ditem" onclick="toggleDrawer(false);showATasks()">${icon("chart")} 分析任务</button>
 <button class="ditem" onclick="toggleDrawer(false);plotEditor()">${icon("book-open")} 剧情线</button>
+<button class="ditem" onclick="toggleDrawer(false);chapterPicker()">${icon("bookmark")} 章节进度<span id="chapter_badge" style="margin-left:auto;font-size:11px;color:var(--gold)"></span></button>
 <button class="ditem" onclick="toggleDrawer(false);loreEditor(CHAT.runId,'chat')">${icon("book-open")} 世界书管理</button>
 <button class="ditem" onclick="toggleDrawer(false);regexEditor(CHAT.runId,CHAT.name,'chat')">🔤 正则替换</button>
 <button class="ditem" onclick="toggleDrawer(false);showSystem()">${icon("settings")} 人设 prompt 预览</button>
@@ -1509,6 +1510,7 @@ renderChat();
 renderScenChips();
 paintChatBg();
 attachHeadHide();
+updateChapterBadge();
 const k = chatKey(CHAT.runId, CHAT.name);
 if(!getHist(k).length){
 /* 游玩统计：空历史进聊天 = 一次开局（纯本地，RP_STATS） */
@@ -1542,7 +1544,7 @@ ${chatBgHTML()}
 <div class="chathead" id="chathead">
 <button class="backbtn" onclick="exitChat()">‹</button>
 <div class="stack">${stack}</div>
-<div class="cname">群聊 · ${ms.length} 人<span class="aimark">AI</span><small>${esc(ms.join("、"))}</small></div>
+<div class="cname">群聊 · ${ms.length} 人<span class="aimark">AI</span><small>${esc(ms.join("、"))}</small> <span id="chapter_hbadge" style="display:none;font-size:11px;color:var(--gold);border:1px solid var(--line-soft);border-radius:999px;padding:1px 8px;cursor:pointer" onclick="chapterPicker()"></span></div>
 <button class="menubtn" onclick="toggleChatSearch()" title="搜索聊天记录">${icon("search")}</button>
 <button class="menubtn" onclick="toggleDrawer(true)" title="菜单">${icon("menu")}</button>
 </div>
@@ -1575,6 +1577,7 @@ ${povChipsHTML()}
 <button class="ditem" onclick="toggleDrawer(false);showSystem()">${icon("settings")} 人设 prompt 预览</button>
 <button class="ditem" onclick="toggleDrawer(false);showATasks()">${icon("chart")} 分析任务</button>
 <button class="ditem" onclick="toggleDrawer(false);plotEditor()">${icon("book-open")} 剧情线</button>
+<button class="ditem" onclick="toggleDrawer(false);chapterPicker()">${icon("bookmark")} 章节进度</button>
 <button class="ditem" onclick="toggleDrawer(false);openSaves()">${icon("save")} 平行存档</button>
 <button class="ditem" onclick="toggleDrawer(false);wallpaperEditor()">🖼️ 聊天壁纸</button>
 <button class="ditem" onclick="toggleDrawer(false);personaEditor(null,'chat')">${icon("user")} 我的人设（全局）</button>
@@ -1594,6 +1597,7 @@ renderScenChips();
 renderGRelBox();
 paintChatBg();
 attachHeadHide();
+updateChapterBadge();
 if(!getHist(k).length){
 const sp = ms[Math.floor(Math.random()*ms.length)];
 const run = (window.__DATA__.runs||{})[CHAT.runId] || {};
@@ -3437,6 +3441,7 @@ concise: conciseOn,
 optCards: !!rcfg.optCards, optCount: rcfg.optCount, optMood: rcfg.optMood,
 plotOutline: activePlotOutline(), scenario: scenarioInstr(), oocOn: rcfg.ooc,
 sceneText: getSceneText(), /* S-7 高权重场景 */
+chapterIdx: getChapterIdx(), /* 章节进度：角色知识截止 */
 userMtype: CHAT.narrMode ? "narr" : (CHAT.asSpeaker ? "npc" : "player"),
 userSpeaker: CHAT.asSpeaker || null,
 pov: CHAT.pov || "player", person: CHAT.person || "second",
@@ -3513,6 +3518,89 @@ setStreaming(false);
 renderChat();
 };
 /* 剧情线编辑器 v27: 原著剧情大纲, 读者可自行编辑 */
+/* ============ 章节进度：角色只知道所选章节之前的事 ============ */
+function chapterKey(){
+  try{
+    if(CHAT.mode==="group") return "nd_chapter_group_" + CHAT.runId + "_" + (CHAT.members||[]).slice().sort().join("_");
+    if(CHAT.mode==="traverse") return "nd_chapter_trav_" + CHAT.travId;
+    return "nd_chapter_" + CHAT.runId + "_" + (CHAT.name||"");
+  }catch(e){ return "nd_chapter_misc"; }
+}
+function getChapterIdx(){
+  try{
+    var v = localStorage.getItem(chapterKey());
+    return v === null ? -1 : parseInt(v);
+  }catch(e){ return -1; }
+}
+function setChapterIdx(i){
+  try{
+    if(i < 0) localStorage.removeItem(chapterKey());
+    else localStorage.setItem(chapterKey(), String(i));
+  }catch(e){}
+  updateChapterBadge();
+}
+function getSections(){
+  try{
+    var run = (window.__DATA__.runs || {})[CHAT.runId] || {};
+    return run.sections || [];
+  }catch(e){ return []; }
+}
+function updateChapterBadge(){
+  try{
+    var idx = getChapterIdx();
+    var secs = getSections();
+    var label = idx >= 0 && secs[idx] ? ("第" + (idx+1) + "章") : "";
+    ["chapter_badge"].forEach(function(id){
+      var el = document.getElementById(id);
+      if(el) el.textContent = label;
+    });
+    /* 顶栏徽标 */
+    var hb = document.getElementById("chapter_hbadge");
+    if(hb){
+      if(label && secs[idx]){
+        hb.style.display = "";
+        hb.textContent = "📖 " + label;
+        hb.title = secs[idx].title || "";
+      }else hb.style.display = "none";
+    }
+  }catch(e){}
+}
+window.chapterPicker = ()=>{
+  var secs = getSections();
+  if(!secs.length){ rpToast("该作品暂无章节数据"); return; }
+  var cur = getChapterIdx();
+  var v = document.getElementById("view");
+  var html = `<button class="back" onclick="setTab('chat');showChat()">${icon("back")} 返回聊天</button>
+    <h2 class="sec">📖 章节进度</h2>
+    <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px;line-height:1.8">
+      选择后，角色只知道该章节及之前发生的事，对之后剧情一无所知。<br>
+      选"全部（无限制）"则角色拥有完整原著知识。
+    </div>
+    <div class="card" style="padding:6px">
+      <button class="ditem" onclick="setChapterIdx(-1);chapterPicker()" style="width:100%">
+        ${icon("bookmark")} 全部（无限制） ${cur<0?'<span style="margin-left:auto;color:var(--gold)">✓</span>':""}
+      </button>
+    </div>
+    <div style="display:grid;gap:8px;margin-top:8px">` +
+    secs.map(function(s, i){
+      var active = i === cur;
+      return `<div class="card${active?"":""}" onclick="setChapterIdx(${i});chapterPicker()"
+        style="cursor:pointer;${active?"border-color:var(--gold-deep);background:rgba(212,162,78,.08)":""}">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;color:var(--gold);white-space:nowrap">第${i+1}章</span>
+          <span style="font-size:14px;flex:1">${esc(s.title||("章节"+(i+1)))}</span>
+          ${active?'<span style="color:var(--gold)">✓</span>':""}
+        </div>
+        ${s.summary?`<div style="font-size:11px;color:var(--ink-faint);margin-top:4px;line-height:1.6">${esc(s.summary.slice(0,120))}${s.summary.length>120?"…":""}</div>`:""}
+      </div>`;
+    }).join("") + `</div><div style="height:40px"></div>`;
+  /* 保存返回动作 */
+  window.__chapterBack = window.__backAction;
+  window.__backAction = ()=>{ setTab("chat"); showChat(); };
+  document.body.classList.remove("chatmode");
+  v.innerHTML = html;
+  window.scrollTo(0,0);
+};
 window.plotEditor = ()=>{
 __backAction = ()=>plotGoBack();
 document.body.classList.remove("chatmode");

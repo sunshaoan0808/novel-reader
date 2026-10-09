@@ -495,6 +495,23 @@ function cardTempOf(card, fallback){
   return fallback;
 }
 
+/* 章节进度：构建知识截止指令。run.sections 为章节列表，chapterIdx>=0 时生效 */
+function buildChapterInstr(run, chapterIdx){
+  try{
+    if(typeof chapterIdx !== "number" || chapterIdx < 0) return "";
+    var secs = (run && run.sections) || [];
+    if(!secs.length || chapterIdx >= secs.length) return "";
+    var chTitle = (secs[chapterIdx] && secs[chapterIdx].title) || ("第" + (chapterIdx+1) + "章");
+    var knownPlot = secs.slice(0, chapterIdx+1).map(function(s, i){
+      return "第" + (i+1) + "章《" + (s.title||"") + "》：" + (s.summary||"").slice(0, 200);
+    }).join("\n");
+    return "【时间点锁定】当前故事时间点：第" + (chapterIdx+1) + "章《" + chTitle + "》。"
+      + "你只知道第" + (chapterIdx+1) + "章及之前发生的事情，对之后（第" + (chapterIdx+2) + "章及以后）的剧情、人物命运、结局一无所知。"
+      + "绝对不要透露、暗示或利用未来章节的任何信息；如果用户问起之后的事，要以角色身份表示不知道。"
+      + "以下是你已知晓的剧情（截止到当前章节）：\n" + knownPlot;
+  }catch(e){ return ""; }
+}
+
 /* 发送一轮。opts: {cfg, history, onPush, onToken, onSystem, budget, signal,
  *                 temperature, oocOn, cardName} */
 async function send(runId, name, text, opts){
@@ -615,6 +632,15 @@ async function send(runId, name, text, opts){
     b.messages[0].content += "\n\n" + plotRef(opts.plotOutline);
   if(opts.scenario && b.messages.length && b.messages[0].role === "system")
     b.messages[0].content += "\n\n" + opts.scenario;
+  /* 章节进度：角色知识截止到所选章节 */
+  try{
+    var chInstr = buildChapterInstr(run, opts.chapterIdx);
+    if(chInstr && b.messages.length && b.messages[0].role === "system"){
+      b.messages[0].content += "\n\n" + chInstr;
+      b.stats.hasChapterLock = true;
+      b.stats.chapterIdx = opts.chapterIdx;
+    }
+  }catch(e){}
   if(opts.onSystem) opts.onSystem(b.preview, b.stats);
 
   var reply = "";
@@ -951,6 +977,14 @@ async function genOneSpeaker(runId, run, members, speaker, text, h, opts, budget
     b.messages[0].content += "\n\n" + plotRef(opts.plotOutline);
   if(opts.scenario && b.messages.length && b.messages[0].role === "system")
     b.messages[0].content += "\n\n" + opts.scenario;
+  /* 章节进度（群聊） */
+  try{
+    var chInstrG = buildChapterInstr(run, opts.chapterIdx);
+    if(chInstrG && b.messages.length && b.messages[0].role === "system"){
+      b.messages[0].content += "\n\n" + chInstrG;
+      b.stats.hasChapterLock = true;
+    }
+  }catch(e){}
   /* 世界模拟：群聊与单聊共用同一会话时钟 */
   var wsIdG = null, wsHintG = null;
   try{
