@@ -133,13 +133,12 @@ async def case_jitter(c):
 
 
 async def case_hidebars(c):
-    """渐进式沉浸（2026-10-09 起）：progress 0~1 跟随滚动位移，纯 transform，
-       手指滑动时实时驱动（无过渡），停手 160ms 后 snap 到 0/1。
-       上滑看历史 bars 渐隐，滑到底才全显；慢滑/顶部停留不闪烁。
-       注：headless 下 rAF 慢（scroll 事件延迟可达 500ms+），一律轮询等待不用固定 sleep。
+    """点按式沉浸（2026-10-09 v52 起）：正文全屏，点中间 toggles 顶底栏，滑动隐藏。
+       二态切换，无跟手进度，无 transform 留白。
+       注：headless 下一律轮询等待不用固定 sleep。
        注2：关打字机——种子用 Date.now() 时间戳，每次重进 TW.key 都对不上会重播打字机，
-       异步改气泡高度干扰离底距离判定；打字机由 case_jitter 单独覆盖。"""
-    await c.ev(SEED_JS)  # 用例隔离：jitter 用例会留下隐藏状态，重布种子+重进聊天页拿干净状态机
+       异步改气泡高度干扰判定；打字机由 case_jitter 单独覆盖。"""
+    await c.ev(SEED_JS)  # 用例隔离
     await c.ev("try{RP_TYPEWRITER.setEnabled(false);}catch(e){}")
     await c.ev(SHOW_CHAT, await_promise=True)
     await asyncio.sleep(1.0)
@@ -147,89 +146,42 @@ async def case_hidebars(c):
       var log = document.getElementById("chatlog");
       var head = document.getElementById("chathead");
       var bar = document.querySelector(".chatbar");
-      var scen = document.getElementById("scenbar");
       var sim = document.getElementById("simbar");
       var out = {};
       var imm = function(){ return document.body.classList.contains("immersive"); };
-      var dist = function(){ return Math.max(0, log.scrollHeight - log.clientHeight - log.scrollTop); };
-      async function waitImm(want, ms){
-        var t0 = Date.now();
-        while(Date.now() - t0 < ms){
-          if(imm() === want) return true;
-          await new Promise(function(r){ setTimeout(r, 120); });
-        }
-        return imm() === want;
-      }
-      out.preHidden = imm();
-      /* 回到底部清状态 */
-      log.scrollTop = log.scrollHeight - log.clientHeight;
-      out.cleanStart = await waitImm(false, 4000);
+      var barsHidden = function(){
+        return (head.style.display === "none") && (bar.style.display === "none");
+      };
+      var barsShown = function(){
+        return (head.style.display !== "none") && (bar.style.display !== "none");
+      };
+      /* 1) 初始：全屏沉浸，栏隐藏 */
+      out.initHidden = barsHidden() && imm();
+      /* 2) 点中间 -> 显示 */
+      var rect = log.getBoundingClientRect();
+      var cx = rect.left + rect.width/2, cy = rect.top + rect.height/2;
+      /* 直接 dispatch click（target=log 本体） */
+      var ev = new MouseEvent("click", {clientX: cx, clientY: cy, bubbles: true});
+      /* 确保 target 是 log：找 log 内的空白处 */
+      log.dispatchEvent(ev);
+      await new Promise(function(r){ setTimeout(r, 300); });
+      out.tapShown = barsShown() && !imm();
+      /* 3) 滑动 -> 隐藏 */
       var maxST = log.scrollHeight - log.clientHeight;
-      if(maxST < 160) return {skip: true, reason: "滚动空间不足"};
-      out.maxST = Math.round(maxST);
-      var h0 = log.clientHeight;
-      /* 1) 上滑 80px：progress=80/120=0.67>0.5，进入沉浸式（渐进，非二值弹跳） */
-      log.scrollTop = maxST - 80;
-      out.immediate = await waitImm(true, 4000);
-      out.distAfter20 = Math.round(dist());
-      /* 2) 慢滑 6 步（每步 20px 相对滚动），期间沉浸态不得变 false（无闪烁） */
-      out.trace = [];
-      for(var i = 0; i < 6; i++){
-        log.scrollTop = log.scrollTop - 20;
-        await new Promise(function(r){ setTimeout(r, 300); });
-        out.trace.push(imm());
-      }
-      out.noFlickerSlow = out.trace.every(function(v){ return v; });
-      /* 3) 滚到顶：几何断言（渐进式：transform 位移，无布局变更） */
-      log.scrollTop = 0;
-      await waitImm(true, 4000);
-      await new Promise(function(r){ setTimeout(r, 500); }); /* 等 snap 完成 */
-      var h1 = log.clientHeight;
-      var barT = bar.style.transform || "";
-      var headT = head.style.transform || "";
-      var barHidden = barT.indexOf("translateY(") >= 0 && parseFloat(barT.replace(/[^0-9.-]/g, "")) > 50;
-      var headHidden = headT.indexOf("translateY(") >= 0 && parseFloat(headT.replace(/[^0-9.-]/g, "")) < -50;
-      out.hidden = imm() && barHidden && headHidden;
-      out.scenGone = getComputedStyle(scen).opacity === "0";
-      out.simGone = !!sim && (function(){
-        var st = sim.style.transform || "";
-        return st.indexOf("translateY(") >= 0 && parseFloat(st.replace(/[^0-9.-]/g, "")) < -50;
-      })();
-      out.h0 = Math.round(h0); out.h1 = Math.round(h1);
-      out.grown = true; /* 渐进式用纯 transform，无布局补位，不断言高度增长 */
-      var brect = bar.getBoundingClientRect();
-      out.barTop = Math.round(brect.top); out.winH = window.innerHeight;
-      out.barGone = brect.top >= window.innerHeight - 8;
-      /* 4) 顶部停留 900ms，每 150ms 采样：不得闪烁 */
-      out.flick = [];
-      for(var k = 0; k < 6; k++){
-        out.flick.push(imm());
-        await new Promise(function(r){ setTimeout(r, 150); });
-      }
-      out.noFlickerTop = out.flick.every(function(v){ return v; });
-      /* 5) 渐进式：从顶部下滚 100px，bars 应跟手回显（snap 后完全显示） */
-      log.scrollTop = 100;
-      await new Promise(function(r){ setTimeout(r, 500); }); /* 等 snap */
-      out.stillHidden = true; /* 渐进式下滚即回显，此步仅确认无异常 */
-      /* 6) 滑到底 -> 退出沉浸式 */
-      log.scrollTop = maxST;
-      out.shown = await waitImm(false, 4000);
-      await new Promise(function(r){ setTimeout(r, 500); }); /* 等 snap 完成 */
-      out.shownGeo = !bar.style.transform && !head.style.transform
-        && (!sim || !sim.style.transform);
-      out.scenBack = getComputedStyle(scen).opacity === "1";
-      out.simBack = !!sim && !sim.style.transform;
-      out.distEnd = Math.round(dist());
+      if(maxST < 100) return {skip: true, reason: "滚动空间不足"};
+      log.scrollTop = maxST - 100;
+      await new Promise(function(r){ setTimeout(r, 400); });
+      out.scrollHidden = barsHidden() && imm();
+      /* 4) 再点中间 -> 显示 */
+      log.dispatchEvent(new MouseEvent("click", {clientX: cx, clientY: cy, bubbles: true}));
+      await new Promise(function(r){ setTimeout(r, 300); });
+      out.tapShown2 = barsShown() && !imm();
       return out;
     })()'''
     r = await c.ev(js, await_promise=True)
     if r.get("skip"):
         return False, r
-    ok = (r["cleanStart"] and r["immediate"] and r["noFlickerSlow"]
-          and r["hidden"] and r["scenGone"] and r["simGone"] and r["grown"] and r["barGone"]
-          and r["noFlickerTop"] and r["stillHidden"]
-          and r["shown"] and r["shownGeo"] and r["scenBack"] and r["simBack"]
-          and not r["preHidden"])
+    ok = r["initHidden"] and r["tapShown"] and r["scrollHidden"] and r["tapShown2"]
     await c.ev("try{RP_TYPEWRITER.setEnabled(true);}catch(e){}")
     return ok, r
 

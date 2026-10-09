@@ -1906,96 +1906,71 @@ const sim = document.getElementById("simbar");
 const scen = document.getElementById("scenbar");
 const ctx = document.getElementById("ctxbar");
 const ws = document.getElementById("wsbar");
-/* 渐进式沉浸 (2026-10-09)：progress 0=全显, 1=全藏；手指滑动时按位移比例
-   实时驱动 transform（无 CSS 过渡，跟手）；停手后 snap 到 0/1。
-   全程只用 transform，不碰布局，无需 scrollTop 补偿，不闪烁。 */
-let progress = 0, ticking = false, snapTimer = 0;
-const distNow = ()=>Math.max(0, ((log.scrollHeight || 0) - (log.clientHeight || 0)) - log.scrollTop);
-let lastDist = distNow();
-const raf = (typeof requestAnimationFrame !== "undefined") ? requestAnimationFrame : (fn)=>fn();
-function applyProgress(p, animate){
-  progress = Math.max(0, Math.min(1, p));
-  const t = animate ? "transform .25s ease, opacity .25s ease" : "none";
-  /* 上移 400px 确保叠加的所有顶栏都出视口（各自 105% 不够，叠加后仍可见） */
-  const upT = progress > 0 ? `translateY(${-progress * 400}px)` : "";
-  if(head){
-    head.style.transition = t;
-    head.style.transform = upT;
-  }
-  if(sim){
-    sim.style.transition = t;
-    sim.style.transform = upT;
-  }
-  /* ctxbar / wsbar：跟随顶栏一起上滑隐藏 */
-  if(ctx){
-    ctx.style.transition = t;
-    ctx.style.transform = upT;
-    ctx.style.opacity = String(1 - progress);
-  }
-  if(ws){
-    ws.style.transition = t;
-    ws.style.transform = upT;
-    ws.style.opacity = String(1 - progress);
-  }
-  if(scen){
-    scen.style.transition = t;
-    scen.style.opacity = String(1 - progress);
-    /* 渐进式：只淡出不塌陷，保持布局占位，避免布局抖动干扰滚动 */
-    scen.style.pointerEvents = progress > 0.5 ? "none" : "";
-  }
-  if(bar){
+/* 点按式沉浸 (2026-10-09 v52)：正文全屏，点中间 toggles 顶底栏，滑动隐藏。
+   二态切换，无跟手进度，无 transform 留白，无闪烁。 */
+const bars = [head, sim, ctx, ws, scen].filter(Boolean);
+let barsVisible = true;
+function setBars(v){
+  barsVisible = !!v;
+  bars.forEach(el=>{ el.style.display = barsVisible ? "" : "none"; });
+  if(bar) bar.style.display = barsVisible ? "" : "none";
+  if(document.body && document.body.classList)
+    document.body.classList.toggle("immersive", !barsVisible);
+  /* 兼容旧钩子 */
+  try{ if(window.__immState) window.__immState.visible = barsVisible; }catch(e){}
+}
+/* 初始：隐藏，进入全屏沉浸 */
+setBars(false);
+/* 兼容旧测试钩子：__setHeadHidden(true)=隐藏，(false)=显示 */
+window.__setHeadHidden = (hide)=>setBars(!hide);
+/* 点按中间 toggles：只响应 chatlog 本体的点按（消息气泡/按钮不触发），
+   且为轻点（非滑动），点击位置在屏幕中部 20%~80% */
+let tsX=0, tsY=0, tsT=0;
+log.addEventListener("touchstart", (e)=>{
+  const t = e.touches[0];
+  tsX = t.clientX; tsY = t.clientY; tsT = Date.now();
+}, {passive:true});
+log.addEventListener("touchend", (e)=>{
+  const t = e.changedTouches[0];
+  const dx = t.clientX - tsX, dy = t.clientY - tsY;
+  const dt = Date.now() - tsT;
+  /* 轻点：位移<12px，时长<400ms */
+  if(Math.hypot(dx, dy) > 12 || dt > 400) return;
+  /* 只响应点在 chatlog 本体（非消息/按钮） */
+  if(e.target !== log) return;
+  /* 中部区域 */
+  const y = t.clientY, h = window.innerHeight;
+  if(y < h*0.2 || y > h*0.8) return;
+  setBars(!barsVisible);
+}, {passive:true});
+/* mouse 兼容（桌面测试） */
+log.addEventListener("click", (e)=>{
+  if(e.target !== log) return;
+  const y = e.clientY, h = window.innerHeight;
+  if(y < h*0.2 || y > h*0.8) return;
+  /* 避免 touchend 后又触发 click 导致 toggles 两次 */
+  if(Date.now() - tsT < 500) return;
+  setBars(!barsVisible);
+});
+/* 滑动隐藏：栏显示时一旦滚动就藏 */
+let lastST = log.scrollTop;
+log.addEventListener("scroll", ()=>{
+  const st = log.scrollTop;
+  if(Math.abs(st - lastST) > 8 && barsVisible){
+    /* 输入框聚焦时不藏底栏（键盘弹起时） */
     const ae = document.activeElement;
     const typing = !!ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName || "");
-    if(!(typing && progress > 0)){
-      bar.style.transition = t;
-      /* 用 200% 确保完全移出视口 */
-      bar.style.transform = progress > 0 ? `translateY(${progress * 200}%)` : "";
-    }
+    if(!typing) setBars(false);
   }
-  /* body.immersive 保留给场景条收起/压暗罩等 CSS 联动，阈值 0.5 */
-  if(document.body && document.body.classList)
-    document.body.classList.toggle("immersive", progress > 0.5);
-}
-/* 兼容旧测试钩子：__setHeadHidden(true/false) 映射到 progress 1/0 */
-function setHidden(hide){ applyProgress(hide ? 1 : 0, true); }
-window.__setHeadHidden = setHidden;
-function onScroll(){
-  ticking = false;
-  const dist = distNow();
-  const delta = dist - lastDist; /* >0 = 手指上滑看历史，<0 = 手指下滑回到底部 */
-  lastDist = dist;
-  if(Math.abs(delta) < 1) return;
-  /* 到底时强制全显 */
-  if(dist < 6){ applyProgress(0, false); scheduleSnap(); return; }
-  /* 按位移比例推进：120px 滑距走完 0→1 */
-  const np = progress + delta / 120;
-  applyProgress(np, false);
-  scheduleSnap();
+  lastST = st;
   const tb = document.getElementById("tobottom");
-  if(tb) tb.classList.toggle("show", dist > 200);
-}
-function scheduleSnap(){
-  if(snapTimer) clearTimeout(snapTimer);
-  snapTimer = setTimeout(()=>{
-    /* 停手后 snap：超过一半藏，不到一半显 */
-    const target = progress > 0.5 ? 1 : 0;
-    applyProgress(target, true);
-  }, 160);
-}
-log.onscroll = ()=>{ if(!ticking){ ticking = true; raf(onScroll); } };
+  if(tb){
+    const dist = Math.max(0, (log.scrollHeight - log.clientHeight) - st);
+    tb.classList.toggle("show", dist > 200);
+  }
+}, {passive:true});
 ensureToBottom(); /* M3: 注入回到底部按钮（单聊/群聊/穿越共用） */
-if(typeof document !== "undefined" && document.body && document.body.classList)
-document.body.classList.remove("immersive"); /* 新开聊天页先清掉旧状态 */
-/* 2026-10-03: 移除 immersive 后场景条/顶栏恢复高度, 聊天区收缩会留下一段"静默离底
-   距离"(无 scroll 事件, 实测 32→148)。若之前在底部附近, 直接重吸附到底部消除它;
-   否则残留的 dist 会让后续的方向判定错乱(小幅上滑被当成下滑, 进页即误隐藏)。
-   读 scrollHeight 会强制同步布局, 基线取的是落定后的真值。 */
-void log.offsetHeight;
-if(lastDist < 200){
-  log.scrollTop = Math.max(0, log.scrollHeight - log.clientHeight);
-}
-lastDist = distNow();
-}
+} /* attachHeadHide end */
 window.exportChat = ()=>{
 const h = getHist(chatHistKey());
 const txt = h.map(m=>`${m.role==="user"?"我":(CHAT.mode==="group"?(m.speaker||"?"):CHAT.name)}：${m.content}`).join("\n\n");
