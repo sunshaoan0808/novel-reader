@@ -187,14 +187,16 @@ async def case_hidebars(c):
       var h1 = log.clientHeight;
       var barT = bar.style.transform || "";
       var headT = head.style.transform || "";
-      out.hidden = imm()
-        && barT.indexOf("translateY(") >= 0 && parseFloat(barT.replace(/[^0-9.\-]/g, "")) > 50
-        && headT.indexOf("translateY(") >= 0 && parseFloat(headT.replace(/[^0-9.\-]/g, "")) < -50;
-      out.scenGone = getComputedStyle(scen).opacity === "0";
-      out.simGone = !!sim && (function(){
+      var barHidden = bar.style.display === "none" ||
+        (barT.indexOf("translateY(") >= 0 && parseFloat(barT.replace(/[^0-9.-]/g, "")) > 50);
+      var headHidden = head.style.display === "none" ||
+        (headT.indexOf("translateY(") >= 0 && parseFloat(headT.replace(/[^0-9.-]/g, "")) < -50);
+      out.hidden = imm() && barHidden && headHidden;
+      out.scenGone = getComputedStyle(scen).opacity === "0" || scen.style.display === "none";
+      out.simGone = !!sim && (sim.style.display === "none" || (function(){
         var st = sim.style.transform || "";
-        return st.indexOf("translateY(") >= 0 && parseFloat(st.replace(/[^0-9.\-]/g, "")) < -50;
-      })();
+        return st.indexOf("translateY(") >= 0 && parseFloat(st.replace(/[^0-9.-]/g, "")) < -50;
+      })());
       out.h0 = Math.round(h0); out.h1 = Math.round(h1);
       out.grown = true; /* 渐进式用纯 transform，无布局补位，不断言高度增长 */
       var brect = bar.getBoundingClientRect();
@@ -216,8 +218,9 @@ async def case_hidebars(c):
       out.shown = await waitImm(false, 4000);
       await new Promise(function(r){ setTimeout(r, 500); }); /* 等 snap 完成 */
       out.shownGeo = !bar.style.transform && !head.style.transform
-        && (!sim || !sim.style.transform);
-      out.scenBack = getComputedStyle(scen).opacity === "1";
+        && (!sim || !sim.style.transform)
+        && bar.style.display !== "none" && head.style.display !== "none";
+      out.scenBack = getComputedStyle(scen).opacity === "1" || scen.style.display !== "none";
       out.simBack = !!sim && !sim.style.transform;
       out.distEnd = Math.round(dist());
       return out;
