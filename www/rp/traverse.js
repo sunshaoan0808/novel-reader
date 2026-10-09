@@ -21,6 +21,9 @@ worldName: o.worldName || "",
 charName: o.charName || "", // 魂穿目标
 identityId: o.identityId || "",// 肉身身份卡 id
 anchorTitle: o.anchorTitle || "",
+entryChapter: (typeof o.entryChapter === "number") ? o.entryChapter : -1, // 时间线：章节索引
+entryPlace: o.entryPlace || "", // 地点
+entryEvent: o.entryEvent || "", // 事件
 plotrunId: o.plotrunId || null, // 走原著线 / 黄金路径：剧情运行时 id（RP_PLOTRUN）
 oocRemind: o.oocRemind!== false,
 createdAt: Date.now(), updatedAt: Date.now(),
@@ -291,10 +294,24 @@ return parts;
 function identityBlock(trav){
 if(trav.mode === "soul"){
 /* 魂穿: 人设字段由 cardFullSegs 全量注入, 这里只保留身份/守则/处境框架, 不再重复渲染字段 */
+var situation = trav.anchorTitle || "故事开端";
+/* 时间线/地点/事件三选：拼入开局设定 */
+var entryParts = [];
+if(typeof trav.entryChapter === "number" && trav.entryChapter >= 0){
+  try{
+    var run = ((window.__DATA__||{}).runs||{})[trav.worldId] || {};
+    var secs = run.sections || [];
+    var st = (secs[trav.entryChapter] && secs[trav.entryChapter].title) || "";
+    entryParts.push("时间：第" + (trav.entryChapter+1) + "章" + (st ? "《"+st+"》" : "") + "（你只知道该章及之前的事）");
+  }catch(e){ entryParts.push("时间：第" + (trav.entryChapter+1) + "章"); }
+}
+if(trav.entryPlace) entryParts.push("地点：" + trav.entryPlace);
+if(trav.entryEvent) entryParts.push("事件：" + trav.entryEvent);
+if(entryParts.length) situation += "\n【开局设定】" + entryParts.join("；");
 return "「你的身份」你是" + trav.charName + "，玩家本人正在扮演 TA。\n" +
 "守则：你能做的只有" + trav.charName + "能做的，你知道的只有" + trav.charName +
 "知道的；言行举止必须符合 TA 的性格、身份与时代，绝不跳出角色。\n" +
-"「当前处境」" + (trav.anchorTitle || "故事开端");
+"「当前处境」" + situation;
 }
 var idt = getIdentity(trav.identityId) || {};
 var lines = [];

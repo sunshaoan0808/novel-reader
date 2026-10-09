@@ -409,6 +409,21 @@ function showStoryline(){
   document.head.appendChild(s);
 }
 
+/* 事件日历懒加载（file:// 下用 script 标签），穿越事件选择器用 */
+let _calCache = {};
+function loadEventCal(runId){
+  if(!runId) return Promise.resolve(null);
+  if(_calCache[runId]) return Promise.resolve(_calCache[runId]);
+  var gk = "__EVENTCAL_" + runId;
+  if(window[gk]){ _calCache[runId] = window[gk]; return Promise.resolve(window[gk]); }
+  return new Promise(function(resolve){
+    var s = document.createElement("script");
+    s.src = "data/event_calendar_" + encodeURIComponent(runId) + ".js";
+    s.onload = function(){ var cal = window[gk] || null; _calCache[runId] = cal; resolve(cal); };
+    s.onerror = function(){ resolve(null); };
+    document.head.appendChild(s);
+  });
+}
 /* 2026-10-07: 世界卡 (蒸馏管线 worldcard.json)。
  * 懒加载 www/data/worldcard_<run_id>.js, 渲染世界概览/导演蓝图/世界书检索/次要人物/道具。 */
 let _wcCache = {};
@@ -7216,16 +7231,103 @@ window.soulAnchors = (runId, name)=>{
   titleEl.innerHTML = icon("user")+" 魂穿 · "+esc(name); subEl.textContent = "选择进入的剧情锚点";
   const anchors = RP_TRAVERSE.anchorsFor(soulOutlineFor(runId, name));
   const _anchNovel = ((((window.__DATA__||{}).runs||{})[runId]||{}).novel)||"";
+  const run = (((window.__DATA__||{}).runs||{})[runId]||{});
+  const secs = run.sections || [];
+  /* 地点列表：从 worldbook geography + 事件地点聚合 */
+  let places = [];
+  try{
+    const wb = run.worldbook || [];
+    const geoTitles = wb.filter(e=>e.category==="geography").map(e=>e.title);
+    /* 从标题提取具体地名（取前2-4字核心词） */
+    const placeSet = new Set();
+    ["大观园","潇湘馆","怡红院","蘅芜苑","荣国府","宁国府","太虚幻境","铁槛寺",
+     "梁山泊","忠义堂","东京","郓城","阳谷","景阳冈","二龙山","桃花山",
+     "梨香院","栊翠庵","藕香榭","滴翠亭","金陵","神京","姑苏"].forEach(p=>{
+      if(JSON.stringify(wb).includes(p)) placeSet.add(p);
+    });
+    geoTitles.forEach(t=>{
+      const m = t.match(/^(.{2,6}?)(整体|方位|格局|布局|与|之|的)/);
+      if(m && m[1].length>=2) placeSet.add(m[1]);
+    });
+    places = [...placeSet].slice(0, 24);
+  }catch(e){}
   view.innerHTML = `<button class="back" onclick="soulPickTarget()">${icon("back")} 返回</button>
   <h2 class="sec">你想从哪里开始成为${esc(name)}？</h2>
   <div class="card">${anchors.map((a,i)=>`
     <label class="kvline" style="display:block"><input type="radio" name="anchor" value="${i}"${i===0?" checked":""}> ${esc(a.title)}</label>`).join("")}
     <label class="kvline" style="display:block"><input type="radio" name="anchor" value="custom"> 自定：<input id="anchorCustom" style="width:55%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px" placeholder="比如：黛玉初进贾府那天">${RP_AIFILL.btn("anchorCustom","魂穿锚点","一句话描述想切入的剧情时间点，如：黛玉初进贾府那天","魂穿进"+(_anchNovel?("小说《"+_anchNovel+"》"):"异世界")+"成为"+name)}</label>
   </div>
+  ${secs.length?`<h2 class="sec">📖 时间线（可选）</h2>
+  <div class="card"><div class="field" style="margin:0"><label>从哪一章切入？角色只知道该章及之前的事</label>
+  <select id="travChapter" style="width:100%">
+    <option value="-1">不指定（用锚点）</option>
+    ${secs.map((s,i)=>`<option value="${i}">第${i+1}章 · ${esc(s.title||"")}</option>`).join("")}
+  </select></div></div>`:""}
+  ${places.length?`<h2 class="sec">📍 地点（可选）</h2>
+  <div class="card"><div class="field" style="margin:0"><label>故事从哪里开始？</label>
+  <select id="travPlace" style="width:100%">
+    <option value="">不指定</option>
+    ${places.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join("")}
+  </select></div></div>`:""}
+  <h2 class="sec">⚡ 事件（可选）</h2>
+  <div class="card"><div class="field" style="margin:0"><label>从哪个关键事件切入？（输入关键词搜索）</label>
+  <input id="travEventKey" style="width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:8px" placeholder="比如：葬花、拳打镇关西" oninput="travEventSearch('${runId}')">
+  <div id="travEventList" style="margin-top:8px;max-height:200px;overflow-y:auto"></div>
+  <input type="hidden" id="travEventSel" value="">
+  </div></div>
   <div class="card"><label class="kvline" style="display:block"><input type="checkbox" id="oocRemind" checked> OOC 提醒：我说的话不符合身份/时代时，世界轻轻点我一下</label></div>
   <div class="btnrow"><button class="btn" style="flex:1" onclick='soulStart(${JSON.stringify(runId)},${JSON.stringify(name)})'>开始穿越</button></div>
   <div style="height:40px"></div>`;
+  /* 预加载事件日历，供事件搜索用 */
+  try{ loadEventCal(runId); }catch(e){}
   window.scrollTo(0,0);
+};
+/* 事件搜索：从 event_calendar / event_dag 找匹配事件 */
+window.travEventSearch = (runId)=>{
+  const key = ($("#travEventKey").value||"").trim();
+  const listEl = $("#travEventList");
+  if(!listEl) return;
+  if(key.length < 1){ listEl.innerHTML = ""; return; }
+  const doSearch = ()=>{
+    let events = [];
+    try{
+      let cal = _calCache[runId] || window["__EVENTCAL_" + runId];
+      if(cal && cal.events){
+        events = cal.events.filter(e=>(e.summary||"").includes(key)).slice(0, 20)
+          .map(e=>({text: e.summary, chapter: e.chapter, location: (e.location||[]).join("、")}));
+      }else{
+        let dag = window["__DAG_" + runId];
+        if(dag && dag.nodes){
+          events = dag.nodes.filter(n=>(n.text||"").includes(key)).slice(0, 20)
+            .map(n=>({text: n.text, chapter: "", location: (n.location||[]).join("、")}));
+        }
+      }
+    }catch(e){}
+    if(!events.length){ listEl.innerHTML = `<div class="hint">没找到相关事件，换个关键词试试</div>`; return; }
+    listEl.innerHTML = events.map((e,i)=>`
+      <div class="kvline" style="display:block;cursor:pointer;padding:8px;border:1px solid var(--line-soft);border-radius:8px;margin-bottom:6px"
+        onclick="travEventPick(${i})" data-idx="${i}">
+        <div style="font-size:13px">${esc(e.text.slice(0,80))}${e.text.length>80?"…":""}</div>
+        <div style="font-size:11px;color:var(--ink-faint)">${e.chapter?("第"+e.chapter+"回 · "):""}${esc(e.location||"")}</div>
+      </div>`).join("");
+    window.__travEvents = events;
+  };
+  /* 确保数据已加载 */
+  if(!_calCache[runId] && !window["__EVENTCAL_" + runId]){
+    listEl.innerHTML = `<div class="hint">加载事件数据…</div>`;
+    loadEventCal(runId).then(doSearch);
+  }else doSearch();
+};
+window.travEventPick = (i)=>{
+  const ev = (window.__travEvents||[])[i];
+  if(!ev) return;
+  $("#travEventSel").value = ev.text.slice(0, 200);
+  /* 高亮选中 */
+  document.querySelectorAll("#travEventList .kvline").forEach((el,idx)=>{
+    el.style.borderColor = idx===i ? "var(--gold-deep)" : "var(--line-soft)";
+    el.style.background = idx===i ? "rgba(212,162,78,.08)" : "";
+  });
+  rpToast("已选事件");
 };
 window.soulStart = async (runId, name)=>{
   const rs = document.querySelectorAll('input[name="anchor"]');
@@ -7237,6 +7339,16 @@ window.soulStart = async (runId, name)=>{
     anchorTitle = RP_TRAVERSE.anchorsFor(soulOutlineFor(runId, name))[parseInt(idx,10)].title;
   }
   const oocRemind = $("#oocRemind").checked;
+  /* 新增：时间线/地点/事件三选 */
+  let entryChapter = -1, entryPlace = "", entryEvent = "";
+  try{
+    const chSel = $("#travChapter");
+    if(chSel) entryChapter = parseInt(chSel.value, 10);
+    const plSel = $("#travPlace");
+    if(plSel) entryPlace = plSel.value || "";
+    const evSel = $("#travEventSel");
+    if(evSel) entryEvent = evSel.value || "";
+  }catch(e){}
   let worldKind = "book", worldId = runId;
   if(runId === "imported"){
     const c = RP_CARDIMPORT.find(name);
@@ -7251,6 +7363,7 @@ window.soulStart = async (runId, name)=>{
     mode:"soul", worldKind, worldId,
     worldName: RP_TRAVERSE.worldDisplayName(worldKind, worldId),
     charName:name, anchorTitle, oocRemind,
+    entryChapter, entryPlace, entryEvent,
   });
   travBegin(sess);
 };
