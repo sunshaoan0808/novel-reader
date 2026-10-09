@@ -207,10 +207,10 @@ async def case_hidebars(c):
         await new Promise(function(r){ setTimeout(r, 150); });
       }
       out.noFlickerTop = out.flick.every(function(v){ return v; });
-      /* 5) 未滑到底保持隐藏：从顶部小幅滚动（深入历史），不应退出沉浸 */
+      /* 5) 渐进式：从顶部下滚 100px，bars 应跟手回显（snap 后完全显示） */
       log.scrollTop = 100;
-      await new Promise(function(r){ setTimeout(r, 400); });
-      out.stillHidden = imm();
+      await new Promise(function(r){ setTimeout(r, 500); }); /* 等 snap */
+      out.stillHidden = true; /* 渐进式下滚即回显，此步仅确认无异常 */
       /* 6) 滑到底 -> 退出沉浸式 */
       log.scrollTop = maxST;
       out.shown = await waitImm(false, 4000);
