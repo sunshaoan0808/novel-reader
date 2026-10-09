@@ -319,9 +319,84 @@ async function sendGroupSoul(runId, members, text, opts){
   }
   h.push({role: "assistant", content: outText,
     _soul: true, _speakers: woven.speakers, _turnId: turnId});
+  /* per-soul 记忆更新: 每 4 轮一次 (成本控制) */
+  try{
+    var _mk = "nd_soulmem_count_" + (chatId || runId);
+    var _mc = 0;
+    try{ _mc = parseInt(localStorage.getItem(_mk) || "0"); }catch(e){}
+    _mc++;
+    try{ localStorage.setItem(_mk, String(_mc)); }catch(e){}
+    if(_mc % 4 === 0 && typeof RP_NET !== "undefined"){
+      var _callFn = function(c, ms, tt){ return RP_NET.complete(c, ms, tt); };
+      /* 后台跑, 不阻塞返回 */
+      (function(){
+        var jobs = [];
+        runR.results.forEach(function(r){
+          if(!r.ok || !r.reply || r.reply.silence) return;
+          var sm = soulMembers.filter(function(s){ return s.name === r.name; })[0];
+          if(sm) jobs.push(extractSoulMemory(sm.card, r.name, r.reply, h, cfg, _callFn));
+        });
+        Promise.all(jobs).catch(function(){});
+      })();
+    }
+  }catch(e){}
   return {history: h, speakers: woven.speakers, text: outText,
           stats: runR.stats, mode: "soul", turnId: turnId,
           conflicts: woven.conflicts};
+}
+
+/* ============ per-soul 记忆更新 ============ */
+
+/* 从 soul 回复提取视角记忆 (LLM, cheap)
+ * 只提取该 soul 视角的新事实, 写入 by_perspective[soulName] */
+async function extractSoulMemory(card, soulName, reply, history, cfg, callFn){
+  if(typeof RP_SOUL === "undefined") return {added: 0};
+  var rp = reply || {};
+  var text = [(rp.dialogue || ""), (rp.action || ""), (rp.inner || "")].join(" ").trim();
+  if(!text) return {added: 0};
+
+  var prompt =
+    "你是记忆记录员。从「" + soulName + "」的视角, 提取这轮值得记住的事实。\n" +
+    "「" + soulName + "」说/做: " + text.slice(0, 500) + "\n" +
+    "只提取: 该角色新知道的事、新决定、关系变化、承诺。\n" +
+    "不提取: 闲聊、重复已知。\n" +
+    "返回 JSON 数组, 最多2条: [\"事实1\", \"事实2\"]。无则返回 []。只返回 JSON。";
+  try{
+    var raw = await callFn(cfg, [{role: "user", content: prompt}], 0.3);
+    var m = String(raw).match(/\[[\s\S]*\]/);
+    if(!m) return {added: 0};
+    var facts = JSON.parse(m[0]);
+    if(!Array.isArray(facts)) return {added: 0};
+    var added = 0;
+    facts.slice(0, 2).forEach(function(f){
+      var t = String(f || "").trim();
+      if(t){ RP_SOUL.addFact(card, soulName, t); added++; }
+    });
+    /* 情感记忆: 从 inner 提取 */
+    if(rp.inner && rp.inner.trim()){
+      var emo = detectEmotion(rp.inner);
+      if(emo) RP_SOUL.addEmotional(card, emo, rp.inner.slice(0, 200));
+    }
+    return {added: added};
+  }catch(e){ return {added: 0}; }
+}
+
+/* 简单情感检测 (关键词) */
+function detectEmotion(text){
+  var t = String(text || "");
+  var map = [
+    ["悲伤", ["难过", "哭泣", "流泪", "伤心", "悲伤", "心碎"]],
+    ["喜悦", ["开心", "大笑", "高兴", "喜悦", "欢喜"]],
+    ["愤怒", ["愤怒", "生气", "恼火", "恨意", "暴怒"]],
+    ["恐惧", ["害怕", "恐惧", "惊慌", "瑟瑟发抖"]],
+    ["思念", ["怀念", "思念", "想念"]]
+  ];
+  for(var i = 0; i < map.length; i++){
+    for(var j = 0; j < map[i][1].length; j++){
+      if(t.indexOf(map[i][1][j]) >= 0) return map[i][0];
+    }
+  }
+  return "";
 }
 
 return {
@@ -335,7 +410,9 @@ weave: weave,
 detectConflicts: detectConflicts,
 sendGroupSoul: sendGroupSoul,
 shouldUseSoulMode: shouldUseSoulMode,
-setSoulMode: setSoulMode
+setSoulMode: setSoulMode,
+extractSoulMemory: extractSoulMemory,
+detectEmotion: detectEmotion
 };
 
 })();
