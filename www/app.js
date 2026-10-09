@@ -5060,6 +5060,16 @@ window.showChatSettings = ()=>{
       <div style="font-size:11px;color:var(--ink-faint)">留空用全局设置。温度越高越发散，0-2。</div>
     </div>
 
+    ${typeof RP_SOUL_CFG!=="undefined" ? `<div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:13px;margin-bottom:8px">🔌 Soul 模型（本次聊天覆盖）</div>
+      <div style="font-size:12px;color:var(--ink-faint);margin-bottom:6px">覆盖角色卡上的绑定，仅本次聊天有效</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="cs_soul_profile" style="flex:1;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:inherit">
+          <option value="">不覆盖（用角色绑定）</option>
+          ${RP_SOUL_CFG.list().map(p=>`<option value="${esc(p.name)}" ${RP_SOUL_CFG.getChatOverride(chatId)===p.name?"selected":""}>${esc(p.name)} · ${esc(p.model||"")}</option>`).join("")}
+        </select>
+        <button class="btn" style="font-size:12px" onclick="saveChatSoulProfile()">保存</button>
+      </div></div>` : ""}
+
     ${wsHtml}
 
     <div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:13px;margin-bottom:8px">🔗 快捷入口</div>
@@ -5092,6 +5102,14 @@ window.saveChatParams = ()=>{
     if(mt) localStorage.setItem("nd_maxtok_" + chatId, mt); else localStorage.removeItem("nd_maxtok_" + chatId);
   }catch(e){}
   alert("已保存");
+};
+window.saveChatSoulProfile = ()=>{
+  var chatId = (typeof chatKey !== "undefined") ? chatKey(CHAT.runId, CHAT.name) : (CHAT.runId + "|" + CHAT.name);
+  var v = document.getElementById("cs_soul_profile").value;
+  try{
+    if(typeof RP_SOUL_CFG !== "undefined") RP_SOUL_CFG.setChatOverride(chatId, v);
+  }catch(e){}
+  alert(v ? "已覆盖为「" + v + "」" : "已清除覆盖");
 };
 window.wsAdjustTimePrompt = ()=>{
   var m = prompt("推进多少分钟？（如 30）", "30");
@@ -5471,7 +5489,7 @@ ${fontScaleCardsHTML()}</div>` + `\n<div class="setcard"><h3>🖼️ 全局壁�
 <div class="field"><label>TTS 音色</label>
 <input id="c_voice" placeholder="alloy" value="${esc(c.ttsVoice||"")}"></div>
 <div class="btnrow"><button class="btn" onclick="saveCfgUI()">保存</button></div>
-</div>`+`<h2 class="sec setsec">RP 引擎</h2>
+</div>`+ (typeof RP_SOUL_CFG!=="undefined" ? RP_SOUL_CFG.profilesCardHTML() : "") +`<h2 class="sec setsec">RP 引擎</h2>
 <div class="setcard"><h3>基础</h3>
 <div class="field"><label>${icon("user",15)} 我的人设（全局）</label>
 <div class="btnrow"><button class="btn ghost" onclick="personaEditor(null,'settings')">编辑全局人设</button></div>
@@ -6384,6 +6402,7 @@ view.innerHTML = `
 <select id="ce_flair">${flairOpts}</select></div>
 <div class="field"><label>温度 <span class="dim">temperature · 0.6~1.8，空=用全局</span></label>
 <input id="ce_temp" type="number" min="0.6" max="1.8" step="0.05" value="${esc(temp)}" placeholder="如 0.95"></div>
+${typeof RP_SOUL_CFG!=="undefined" ? RP_SOUL_CFG.bindSelectHTML(card) : ""}
 <div class="field"><label>行为标签 <span class="dim">tags · 逗号分隔，如 傲娇,毒舌 · 进 system</span></label>
 <input id="ce_tags" value="${esc(tagsIn)}"></div>
 </div>
@@ -6431,6 +6450,12 @@ if(i<0){ alert("卡片不存在"); return; }
 list[i] = Object.assign({}, list[i], {name, fields:f, altGreetings:alt, exampleDialogue:exd,
 systemPrompt:sysp, postHistoryInstructions:phi, creatorNotes:cnote, scenario:scen,
 flair:flair||"", temperature:temp, tags:tags});
+/* Soul 模型绑定 */
+try{
+  if(typeof RP_SOUL!=="undefined" && typeof RP_SOUL_CFG!=="undefined"){
+    RP_SOUL.bindProfile(list[i], RP_SOUL_CFG.readBindSelect());
+  }
+}catch(e){}
 RP_WRITER.saveCustomChars(list);
 }else{
 const c = RP_CARDIMPORT.findById(id);
@@ -6441,6 +6466,13 @@ Object.keys((c.aiFilled||{})).forEach(k=>{ if(f[k] && String(f[k]).trim()) keepA
 RP_CARDIMPORT.update(Object.assign({}, c, {name, fields:f, altGreetings:alt, exampleDialogue:exd,
 systemPrompt:sysp, postHistoryInstructions:phi, creatorNotes:cnote, scenario:scen,
 flair:flair||"", temperature:temp, tags:tags, aiFilled:keepAi}));
+/* Soul 模型绑定 (导入卡) */
+try{
+  if(typeof RP_SOUL!=="undefined" && typeof RP_SOUL_CFG!=="undefined"){
+    var _uc = RP_CARDIMPORT.findById(id);
+    if(_uc){ RP_SOUL.bindProfile(_uc, RP_SOUL_CFG.readBindSelect()); RP_CARDIMPORT.update(_uc); }
+  }
+}catch(e){}
 }
 alert("已保存");
 if(src==="custom") showWriter(); else showTraverse();
