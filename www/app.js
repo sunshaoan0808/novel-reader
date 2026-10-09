@@ -1916,7 +1916,8 @@ const raf = (typeof requestAnimationFrame !== "undefined") ? requestAnimationFra
 function applyProgress(p, animate){
   progress = Math.max(0, Math.min(1, p));
   const t = animate ? "transform .25s ease, opacity .25s ease" : "none";
-  const upT = progress > 0 ? `translateY(${-progress * 105}%)` : "";
+  /* 上移 400px 确保叠加的所有顶栏都出视口（各自 105% 不够，叠加后仍可见） */
+  const upT = progress > 0 ? `translateY(${-progress * 400}px)` : "";
   if(head){
     head.style.transition = t;
     head.style.transform = upT;
