@@ -5040,6 +5040,7 @@ window.showChatSettings = ()=>{
       ${asstToggle("🔍 Continuity Checker", "检查逻辑矛盾", ctOn, "toggleCT")}
       ${asstToggle("📝 角色卡审计", "建议角色成长更新", !ceOff, "toggleCE")}
       ${asstToggle("🔗 关系动态", "聊天中关系演变", !rdOff, "toggleRD")}
+      ${typeof RP_SOUL_ORCH!=="undefined" ? asstToggle("👥 Soul 多智能体", "多角色并行独立回应", (function(){ try{ return localStorage.getItem("nd_soulmode_off_"+chatId)!=="1"; }catch(e){ return true; } })(), "toggleSoulMode") : ""}
       <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0">
         <div><div style="font-size:13px">🚀 Push Story</div>
         <div style="font-size:11px;color:var(--ink-faint)">${pushMode ? "已武装（" + (pushMode === "natural" ? "顺推" : "意外") + "），下条回复生效" : "一键推进剧情"}</div></div>
@@ -5094,6 +5095,13 @@ window.toggleLK = ()=>{ AGENT_LOREKEEPER.setEnabled(!AGENT_LOREKEEPER.isEnabled(
 window.toggleCT = ()=>{ AGENT_CONTINUITY.setEnabled(!AGENT_CONTINUITY.isEnabled()); };
 window.toggleCE = ()=>{ AGENT_CARDEVO.setEnabled(localStorage.getItem("nd_cardevo_off") === "1"); };
 window.toggleRD = ()=>{ AGENT_RELATIONS.setEnabled(localStorage.getItem("nd_reldyn_off") === "1"); };
+window.toggleSoulMode = ()=>{
+  var chatId = (typeof chatKey !== "undefined") ? chatKey(CHAT.runId, CHAT.name) : (CHAT.runId + "|" + CHAT.name);
+  try{
+    var off = localStorage.getItem("nd_soulmode_off_" + chatId) === "1";
+    if(typeof RP_SOUL_ORCH !== "undefined") RP_SOUL_ORCH.setSoulMode(chatId, off);
+  }catch(e){}
+};
 window.saveChatParams = ()=>{
   var chatId = (typeof chatKey !== "undefined") ? chatKey(CHAT.runId, CHAT.name) : (CHAT.runId + "|" + CHAT.name);
   var tp = document.getElementById("cs_temp").value, mt = document.getElementById("cs_maxtok").value;

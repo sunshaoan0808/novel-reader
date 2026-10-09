@@ -233,6 +233,97 @@ seen[key] = a.name;
 return conflicts;
 }
 
+/* ============ 群聊集成 ============ */
+
+/* 是否启用 soul 并行模式
+ * 条件: per-chat 开关开 + 成员 >=2 + 至少 2 人有 soul 包 */
+function shouldUseSoulMode(runId, members, chatId){
+  try{
+    if(chatId){
+      var off = null;
+      try{ off = localStorage.getItem("nd_soulmode_off_" + chatId); }catch(e){}
+      if(off === "1") return false;
+    }
+    if(!members || members.length < 2) return false;
+    var withSoul = 0;
+    members.forEach(function(m){
+      try{
+        var card = (typeof findCard !== "undefined") ? findCard(runId, m) : null;
+        if(card && typeof RP_SOUL !== "undefined" && RP_SOUL.getSoul(card)) withSoul++;
+      }catch(e){}
+    });
+    return withSoul >= 2;
+  }catch(e){ return false; }
+}
+
+function setSoulMode(chatId, on){
+  try{
+    if(on) localStorage.removeItem("nd_soulmode_off_" + chatId);
+    else localStorage.setItem("nd_soulmode_off_" + chatId, "1");
+  }catch(e){}
+}
+
+/* Soul 并行群聊主入口 */
+async function sendGroupSoul(runId, members, text, opts){
+  opts = opts || {};
+  var cfg = opts.cfg || {};
+  var h = opts.history || [];
+  var chatId = opts.chatId || "";
+  var soulMembers = [];
+  members.forEach(function(m){
+    try{
+      var card = (typeof findCard !== "undefined") ? findCard(runId, m) : null;
+      if(card && typeof RP_SOUL !== "undefined" && RP_SOUL.getSoul(card)){
+        soulMembers.push({card: card, name: m});
+      }else{
+        var bc = card || {name: m, fields: {}, extensions: {}};
+        if(typeof RP_SOUL !== "undefined"){
+          bc.extensions = bc.extensions || {};
+          if(!bc.extensions.soul) bc.extensions.soul = RP_SOUL.fromCard(bc);
+        }
+        soulMembers.push({card: bc, name: m});
+      }
+    }catch(e){}
+  });
+  var sel = await select(text, soulMembers.map(function(s){ return {name: s.name}; }),
+    h, cfg,
+    function(c, ms, tt){ return (typeof RP_NET !== "undefined") ? RP_NET.complete(c, ms, tt) : Promise.reject(new Error("no net")); },
+    {mode: opts.selectMode || "auto"});
+  var activeNames = sel.speakers.concat((sel.reactions || []).map(function(r){ return r.name; }));
+  activeNames = activeNames.filter(function(n, i){ return activeNames.indexOf(n) === i; });
+  var active = soulMembers.filter(function(s){ return activeNames.indexOf(s.name) >= 0; });
+  if(!active.length) active = soulMembers.slice(0, 2);
+  if(opts.onSpeaker) active.forEach(function(s){ opts.onSpeaker(s.name); });
+  var turnId = "sg" + Date.now().toString(36);
+  var runR = await run(active, opts.scene || "", text, h.slice(-10), {
+    cfg: cfg, turnId: turnId,
+    temperature: opts.temperature, maxTokens: opts.maxTokens,
+    contextToken: opts.contextToken
+  });
+  var woven = weave(runR.results, {});
+  var outText = woven.text || "(无回应)";
+  runR.results.forEach(function(r){
+    if(!r.ok || !r.reply || r.reply.silence) return;
+    try{
+      var sm = soulMembers.filter(function(s){ return s.name === r.name; })[0];
+      if(sm && typeof RP_SOUL !== "undefined"){
+        RP_SOUL.log(sm.card, r.name,
+          (r.reply.action || "") + (r.reply.dialogue ? (" 说:" + r.reply.dialogue.slice(0, 100)) : ""),
+          "ok");
+      }
+    }catch(e){}
+  });
+  if(woven.conflicts && woven.conflicts.length){
+    outText += "\n\n[系统: 动作冲突 " +
+      woven.conflicts.map(function(c){ return c.a + " vs " + c.b; }).join("; ") + "]";
+  }
+  h.push({role: "assistant", content: outText,
+    _soul: true, _speakers: woven.speakers, _turnId: turnId});
+  return {history: h, speakers: woven.speakers, text: outText,
+          stats: runR.stats, mode: "soul", turnId: turnId,
+          conflicts: woven.conflicts};
+}
+
 return {
 select: select,
 deterministicSelect: deterministicSelect,
@@ -241,7 +332,10 @@ buildSoulPrompt: buildSoulPrompt,
 parseSoulReply: parseSoulReply,
 run: run,
 weave: weave,
-detectConflicts: detectConflicts
+detectConflicts: detectConflicts,
+sendGroupSoul: sendGroupSoul,
+shouldUseSoulMode: shouldUseSoulMode,
+setSoulMode: setSoulMode
 };
 
 })();

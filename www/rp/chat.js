@@ -848,6 +848,28 @@ async function sendGroup(runId, members, speakers, text, opts){
   var budget = opts.budget || {};
   if(!budget.maxContext && cfg.maxContext) budget.maxContext = cfg.maxContext;
 
+  /* Soul 并行模式: per-chat 开关 + 成员有 soul 包时走并行路径 */
+  try{
+    if(typeof RP_SOUL_ORCH !== "undefined" && typeof chatKey !== "undefined"){
+      var _sChatId = chatKey(runId, (members || []).join(","));
+      if(RP_SOUL_ORCH.shouldUseSoulMode(runId, members, _sChatId)){
+        var sr = await RP_SOUL_ORCH.sendGroupSoul(runId, members, text, {
+          cfg: cfg, history: h, temperature: opts.temperature,
+          maxTokens: opts.maxTokens, chatId: _sChatId,
+          scene: opts.scene || "", contextToken: opts.contextToken,
+          onSpeaker: opts.onSpeaker, selectMode: opts.soulSelectMode
+        });
+        /* trajectory 已在 sendGroupSoul 内记录 */
+        return {history: sr.history, aborted: false, stats: sr.stats,
+                speakers: sr.speakers, speaker: sr.speakers[sr.speakers.length - 1] || null,
+                mode: "soul", turnId: sr.turnId};
+      }
+    }
+  }catch(e){
+    /* soul 路径失败回退传统串行 */
+    try{ console.warn("[soul] parallel failed, fallback:", e.message); }catch(_){}
+  }
+
   h.push(tagUserMsg(newMsg("user", text), opts));
   if(opts.onPush) opts.onPush();
   if(opts.onUserMsg) opts.onUserMsg();
