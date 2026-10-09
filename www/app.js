@@ -3321,21 +3321,24 @@ renderChat();
 };
 /* 输入栏（含旁白按钮；群聊多发言身份选择） */
 function chatbarInner(disabled){
-if(disabled) return `<input id="chat_in" disabled placeholder="生成中…"><button class="stopbtn" onclick="stopGen()" title="停止">${icon("stop",16)}</button>`;
+if(disabled) return `<div class="cb-inputrow"><input id="chat_in" disabled placeholder="生成中…"><button class="stopbtn" onclick="stopGen()" title="停止">${icon("stop",16)}</button></div>`;
 const ph = CHAT.mode==="group" ? "在群里说点什么…"
 : CHAT.mode==="traverse" ? `以${esc(travPlayerName())}的身份行动…`
 : `和${esc(CHAT.name||"TA")}说点什么`;
 const spk = CHAT.mode==="group"
-? `<select id="spksel" onchange="setAsSpeaker(this.value)" title="发言身份"><option value="">我</option>`
-+ CHAT.members.map(n=>`<option value="${esc(n)}"${CHAT.asSpeaker===n?" selected":""}>${esc(n)}</option>`).join("") + `</select>` : "";
+? `<label class="cb-tool"><span class="cb-ico">🗣️</span><select id="spksel" onchange="setAsSpeaker(this.value)" title="发言身份"><option value="">我</option>`
++ CHAT.members.map(n=>`<option value="${esc(n)}"${CHAT.asSpeaker===n?" selected":""}>${esc(n)}</option>`).join("") + `</select></label>` : "";
 /* Tier3-22: 群聊输入区点头像 @ 指定角色（@ 后本轮点名该角色先回） */
 const atb = CHAT.mode==="group"
-? `<button id="atbtn" class="atbtn" onclick="toggleAtMenu(event)" title="＠ 指定角色：本轮点名 TA 先回">＠</button>` : "";
-return `<button id="pushbtn" class="narrbtn" onclick="togglePushStory(event)" title="推剧情：下一条回复自动推进">🚀</button>`
-+ `<button id="narrbtn" class="narrbtn${CHAT.narrMode?" on":""}" onclick="toggleNarr()" title="旁白模式：发送场景/动作描写">${icon("scroll")}</button>`
-+ `${atb}${spk}<input id="chat_in" placeholder="${CHAT.narrMode?"📜 旁白：写场景/动作/心理描写…":ph}" onkeydown="if(event.key==='Enter')sendChat()">`
-+ `<button class="aifillbtn chatfill" onclick="RP_AIFILL.fillChat(this)" title="AI 帮我说一句（只填入，不发送）">✨</button>`
-+ `<button class="sendbtn" onclick="sendChat()" title="发送">${icon("send")}</button>`;
+? `<button id="atbtn" class="cb-tool" onclick="toggleAtMenu(event)" title="＠ 指定角色：本轮点名 TA 先回"><span class="cb-ico">＠</span><span class="cb-tx">点名</span></button>` : "";
+return `<div class="cb-tools">`
++ `<button id="pushbtn" class="cb-tool${CHAT.pushStory?" on":""}" onclick="togglePushStory(event)" title="推剧情：下一条回复自动推进"><span class="cb-ico">🚀</span><span class="cb-tx">推剧情</span></button>`
++ `<button id="narrbtn" class="cb-tool${CHAT.narrMode?" on":""}" onclick="toggleNarr()" title="旁白模式：发送场景/动作描写"><span class="cb-ico">📜</span><span class="cb-tx">旁白</span></button>`
++ `${atb}${spk}`
++ `<button class="cb-tool" onclick="RP_AIFILL.fillChat(this)" title="AI 帮我说一句（只填入，不发送）"><span class="cb-ico">✨</span><span class="cb-tx">帮我说</span></button>`
++ `</div>`
++ `<div class="cb-inputrow"><input id="chat_in" placeholder="${CHAT.narrMode?"📜 旁白：写场景/动作/心理描写…":ph}" onkeydown="if(event.key==='Enter')sendChat()">`
++ `<button class="cbsend" onclick="sendChat()" title="发送">发送</button></div>`;
 }
 window.toggleAtMenu = (ev)=>{
 if(ev && ev.stopPropagation) ev.stopPropagation();
