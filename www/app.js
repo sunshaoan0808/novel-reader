@@ -1915,13 +1915,6 @@ let lastDist = distNow();
 const raf = (typeof requestAnimationFrame !== "undefined") ? requestAnimationFrame : (fn)=>fn();
 function applyProgress(p, animate){
   progress = Math.max(0, Math.min(1, p));
-  /* 进度回落时先恢复 display，确保 transform 动画可见 */
-  if(progress < 1){
-    [head, sim, ctx, ws, scen].forEach(el=>{
-      if(el && el.style.display === "none") el.style.display = "";
-    });
-    if(bar && bar.style.visibility === "hidden") bar.style.visibility = "";
-  }
   const t = animate ? "transform .25s ease, opacity .25s ease" : "none";
   /* 上移 400px 确保叠加的所有顶栏都出视口（各自 105% 不够，叠加后仍可见） */
   const upT = progress > 0 ? `translateY(${-progress * 400}px)` : "";
@@ -1987,30 +1980,6 @@ function scheduleSnap(){
     /* 停手后 snap：超过一半藏，不到一半显 */
     const target = progress > 0.5 ? 1 : 0;
     applyProgress(target, true);
-    if(target === 1){
-      /* 动画结束后（300ms）用 display:none 回收布局空间，消除上下留白；
-         先记总高度用于 scrollTop 补偿，避免内容跳动 */
-      setTimeout(()=>{
-        if(progress !== 1) return;
-        const bars = [head, sim, ctx, ws, scen].filter(Boolean);
-        let totalH = 0;
-        bars.forEach(el=>{ totalH += el.offsetHeight || 0; });
-        const barH = bar ? (bar.offsetHeight || 0) : 0;
-        bars.forEach(el=>{ el.style.display = "none"; });
-        if(scen) scen.style.display = "none";
-        if(bar) bar.style.visibility = "hidden";
-        /* 补偿：内容区扩大 totalH+barH，保持当前可视内容不动 */
-        try{
-          const sh0 = log.scrollHeight;
-          /* 强制布局后调整 */
-          void log.offsetHeight;
-          /* 顶部收起 totalH，底部收起 barH；保持离底距离不变 */
-          const dist = Math.max(0, (log.scrollHeight - log.clientHeight) - log.scrollTop);
-          /* scrollTop 不动，离底距离会自动扩大 totalH+barH，需要拉回 */
-          log.scrollTop = Math.max(0, log.scrollHeight - log.clientHeight - dist);
-        }catch(e){}
-      }, 300);
-    }
   }, 160);
 }
 log.onscroll = ()=>{ if(!ticking){ ticking = true; raf(onScroll); } };

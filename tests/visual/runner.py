@@ -172,32 +172,29 @@ async def case_hidebars(c):
       log.scrollTop = maxST - 80;
       out.immediate = await waitImm(true, 4000);
       out.distAfter20 = Math.round(dist());
-      /* 2) 慢滑 6 步（每步 20px 相对滚动），期间沉浸态不得变 false（无闪烁）；
-         注：snap 后 300ms 会 display:none 回收布局，步骤间隔 700ms 确保沉降 */
+      /* 2) 慢滑 6 步（每步 20px 相对滚动），期间沉浸态不得变 false（无闪烁） */
       out.trace = [];
       for(var i = 0; i < 6; i++){
         log.scrollTop = log.scrollTop - 20;
-        await new Promise(function(r){ setTimeout(r, 700); });
+        await new Promise(function(r){ setTimeout(r, 300); });
         out.trace.push(imm());
       }
       out.noFlickerSlow = out.trace.every(function(v){ return v; });
-      /* 3) 滚到顶：几何断言（渐进式：transform 位移 + snap 后 display:none 回收布局） */
+      /* 3) 滚到顶：几何断言（渐进式：transform 位移，无布局变更） */
       log.scrollTop = 0;
       await waitImm(true, 4000);
-      await new Promise(function(r){ setTimeout(r, 800); }); /* 等 snap + display:none 完成 */
+      await new Promise(function(r){ setTimeout(r, 500); }); /* 等 snap 完成 */
       var h1 = log.clientHeight;
       var barT = bar.style.transform || "";
       var headT = head.style.transform || "";
-      var barHidden = bar.style.display === "none" ||
-        (barT.indexOf("translateY(") >= 0 && parseFloat(barT.replace(/[^0-9.-]/g, "")) > 50);
-      var headHidden = head.style.display === "none" ||
-        (headT.indexOf("translateY(") >= 0 && parseFloat(headT.replace(/[^0-9.-]/g, "")) < -50);
+      var barHidden = barT.indexOf("translateY(") >= 0 && parseFloat(barT.replace(/[^0-9.-]/g, "")) > 50;
+      var headHidden = headT.indexOf("translateY(") >= 0 && parseFloat(headT.replace(/[^0-9.-]/g, "")) < -50;
       out.hidden = imm() && barHidden && headHidden;
-      out.scenGone = getComputedStyle(scen).opacity === "0" || scen.style.display === "none";
-      out.simGone = !!sim && (sim.style.display === "none" || (function(){
+      out.scenGone = getComputedStyle(scen).opacity === "0";
+      out.simGone = !!sim && (function(){
         var st = sim.style.transform || "";
         return st.indexOf("translateY(") >= 0 && parseFloat(st.replace(/[^0-9.-]/g, "")) < -50;
-      })());
+      })();
       out.h0 = Math.round(h0); out.h1 = Math.round(h1);
       out.grown = true; /* 渐进式用纯 transform，无布局补位，不断言高度增长 */
       var brect = bar.getBoundingClientRect();
