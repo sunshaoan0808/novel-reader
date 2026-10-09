@@ -7581,21 +7581,35 @@ async function showTraverseChat(cfg){
 function renderWsBar(){
   const bar = $("#wsbar"); if(!bar || CHAT.mode!=="traverse") return;
   const st = RP_TRAVERSE.getState(CHAT.travId);
-  /* 世界模拟三件套：时间/天气/地点（与单聊/群聊同一套状态键 nd_travchat_<id>） */
-  let sim = "";
+  /* 单行世界状态：时间 · 地点天气 · 导演模式 · 物品/出戏值（2026-10-09 合并三重叠加） */
+  let parts = [];
+  /* 时间地点：优先用 traverse state，worldsim 只补天气 */
+  let dateStr = st.date || "", locStr = st.loc || "", weatherStr = "";
   try{
     if(typeof RP_WORLDSIM!=="undefined" && RP_WORLDSIM.enabled()){
-      const trav = RP_TRAVERSE.get(CHAT.travId) || {};
-      sim = '<span class="simline">' + RP_WORLDSIM.briefHTML("nd_travchat_"+CHAT.travId, {novel: trav.worldName||"", worldName: trav.worldName||""});
-      try{ if(typeof RP_DIRECTOR!=="undefined") sim += RP_DIRECTOR.briefHTML("nd_travchat_"+CHAT.travId); }catch(e){}
-      sim += "</span>";
+      const ws = RP_WORLDSIM.get("nd_travchat_"+CHAT.travId) || {};
+      if(ws.weather) weatherStr = ws.weather;
+      /* traverse state 为空时才用 worldsim 的 */
+      if(!dateStr && ws.date) dateStr = ws.date;
+      if(!locStr && ws.loc) locStr = ws.loc;
     }
   }catch(e){}
-  bar.innerHTML = `${icon("scroll",13)} ${esc(RP_TRAVERSE.stateLine(st))}`+
-    (st.items.length?` · 物品${st.items.length}`:"")+
-    ((st.flags&&st.flags.ooc>0)?` · <span class="ooc">出戏值${st.flags.ooc}</span>`:"")+
-    sim+
-    `<span style="float:right;opacity:.6">查看 ›</span>`;
+  if(dateStr) parts.push(esc(dateStr));
+  if(locStr) parts.push("📍"+esc(locStr));
+  if(weatherStr) parts.push(esc(weatherStr));
+  try{
+    if(typeof RP_DIRECTOR!=="undefined"){
+      const dh = RP_DIRECTOR.briefHTML("nd_travchat_"+CHAT.travId);
+      /* briefHTML 返回 html，提取纯文本 */
+      const tmp = document.createElement("div"); tmp.innerHTML = dh;
+      const dtxt = (tmp.textContent||"").trim();
+      if(dtxt) parts.push("🎬"+esc(dtxt));
+    }
+  }catch(e){}
+  if(st.items && st.items.length) parts.push("🎒"+st.items.length);
+  if(st.flags && st.flags.ooc>0) parts.push(`<span class="ooc">出戏${st.flags.ooc}</span>`);
+  bar.innerHTML = `${icon("scroll",13)} <span class="wsline">${parts.join(" · ")||"世界状态"}</span>`
+    + `<span style="float:right;opacity:.6">查看 ›</span>`;
 }
 window.travWsEditor = ()=>{
   const trav = RP_TRAVERSE.get(CHAT.travId); if(!trav) return;

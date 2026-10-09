@@ -157,11 +157,12 @@
 (function(){
   var fab = document.getElementById("asst_fab");
   if(!fab) return;
-  /* 恢复上次位置 */
+  /* 恢复上次位置（避开顶栏区） */
   try{
     var pos = JSON.parse(localStorage.getItem("nd_asst_fab_pos") || "null");
     if(pos && typeof pos.x === "number" && typeof pos.y === "number"){
-      fab.style.left = pos.x + "px"; fab.style.top = pos.y + "px";
+      var cy = Math.max(220, Math.min(window.innerHeight - 48, pos.y));
+      fab.style.left = pos.x + "px"; fab.style.top = cy + "px";
       fab.style.right = "auto"; fab.style.bottom = "auto";
     }
   }catch(e){}
@@ -187,7 +188,8 @@
     if(Math.abs(dx) + Math.abs(dy) > 8) moved = true;
     if(!moved) return;
     var nx = clamp(ox + dx, 0, window.innerWidth - 48);
-    var ny = clamp(oy + dy, 0, window.innerHeight - 48);
+    /* 避开顶栏区（chathead+ctxbar+wsbar 约 220px），不遮挡内容 */
+    var ny = clamp(oy + dy, 220, window.innerHeight - 48);
     fab.style.left = nx + "px"; fab.style.top = ny + "px";
     e.preventDefault();
   }
