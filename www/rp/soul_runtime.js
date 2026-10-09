@@ -13,6 +13,18 @@
 var RP_SOUL_RT = (function(){
 "use strict";
 
+function getMaxConcurrent(){
+  try{
+    var v = parseInt(localStorage.getItem("nd_soul_concurrent") || "3");
+    return Math.max(1, Math.min(8, v || 3));
+  }catch(e){ return 3; }
+}
+function getTimeoutMs(){
+  try{
+    var v = parseInt(localStorage.getItem("nd_soul_timeout") || "60000");
+    return Math.max(10000, Math.min(180000, v || 60000));
+  }catch(e){ return 60000; }
+}
 var MAX_CONCURRENT = 3;
 var SOUL_TIMEOUT_MS = 60000;
 var TURN_TOKEN_BUDGET = 12000; /* 单轮 token 上限 */
@@ -22,7 +34,7 @@ var running = 0;
 var queue = [];
 
 function next(){
-  while(queue.length > 0 && running < MAX_CONCURRENT){
+  while(queue.length > 0 && running < getMaxConcurrent()){
     var job = queue.shift();
     running++;
     job();
@@ -40,6 +52,24 @@ var CALL_HISTORY_MAX = 50;
 function logCall(entry){
   callHistory.push(Object.assign({t: new Date().toISOString()}, entry));
   if(callHistory.length > CALL_HISTORY_MAX) callHistory.shift();
+  /* 成本统计 */
+  try{
+    var ck = "nd_soul_cost";
+    var cost = JSON.parse(localStorage.getItem(ck) || "{}");
+    var mk = entry.model || "unknown";
+    cost[mk] = cost[mk] || {calls: 0, tokens: 0, ms: 0};
+    cost[mk].calls++;
+    cost[mk].tokens += (entry.tokens || 0);
+    cost[mk].ms += (entry.ms || 0);
+    localStorage.setItem(ck, JSON.stringify(cost));
+  }catch(e){}
+}
+function getCostStats(){
+  try{ return JSON.parse(localStorage.getItem("nd_soul_cost") || "{}"); }
+  catch(e){ return {}; }
+}
+function clearCostStats(){
+  try{ localStorage.removeItem("nd_soul_cost"); }catch(e){}
 }
 
 function getCallHistory(){
@@ -163,7 +193,7 @@ async function doCall(opts){
       var p = (typeof RP_NET !== "undefined")
         ? RP_NET.complete(c, opts.messages, opts.temperature, null, {maxTokens: opts.maxTokens})
         : Promise.reject(new Error("RP_NET 未加载"));
-      var r = await withTimeout(p, opts.timeoutMs || SOUL_TIMEOUT_MS, soulName);
+      var r = await withTimeout(p, opts.timeoutMs || getTimeoutMs(), soulName);
 
       /* 竞态保护: 完成后验证 */
       if(opts.contextToken !== undefined && opts.contextToken !== tokenAtStart){
@@ -226,7 +256,9 @@ return {
   saveProfiles: saveProfiles,
   getProfile: getProfile,
   getCallHistory: getCallHistory,
-  clearCallHistory: clearCallHistory
+  clearCallHistory: clearCallHistory,
+  getMaxConcurrent: getMaxConcurrent, getTimeoutMs: getTimeoutMs,
+  getCostStats: getCostStats, clearCostStats: clearCostStats
 };
 
 })();
