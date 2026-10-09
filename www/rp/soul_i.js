@@ -1,0 +1,61 @@
+/* I. 群聊高级玩法 50条 (151-200) */
+var RP_SOUL_I = (function(){
+"use strict";
+function _k(c){ return "nd_souli_"+c; }
+function _g(c){ try{return JSON.parse(localStorage.getItem(_k(c))||"{}");}catch(e){return{};} }
+function _s(c,o){ try{localStorage.setItem(_k(c),JSON.stringify(o));}catch(e){} }
+var F={};
+/* 151 */ F.setTopic=function(c,t){ var o=_g(c);o.topic=t;_s(c,o); };
+/* 152 */ F.getTopic=function(c){ return _g(c).topic||""; };
+/* 153 */ F.setScene=function(c,s){ var o=_g(c);o.scene=s;_s(c,o); };
+/* 154 */ F.getScene=function(c){ return _g(c).scene||""; };
+/* 155 */ F.setTime=function(c,t){ var o=_g(c);o.time=t;_s(c,o); };
+/* 156 */ F.getTime=function(c){ return _g(c).time||""; };
+/* 157 */ F.setWeather=function(c,w){ var o=_g(c);o.weather=w;_s(c,o); };
+/* 158 */ F.addRule=function(c,r){ var o=_g(c);o.rules=o.rules||[];o.rules.push(r);_s(c,o); };
+/* 159 */ F.getRules=function(c){ return _g(c).rules||[]; };
+/* 160 */ F.clearRules=function(c){ var o=_g(c);o.rules=[];_s(c,o); };
+/* 161 */ F.setMode=function(c,m){ var o=_g(c);o.playMode=m;_s(c,o); };
+/* 162 */ F.getMode=function(c){ return _g(c).playMode||"free"; };
+/* 163 */ F.startGame=function(c,game){ var o=_g(c);o.game={name:game,t:new Date().toISOString(),score:{}};_s(c,o); };
+/* 164 */ F.score=function(c,name,pts){ var o=_g(c);o.game=o.game||{score:{}};o.game.score[name]=(o.game.score[name]||0)+pts;_s(c,o); };
+/* 165 */ F.getScores=function(c){ return (_g(c).game||{}).score||{}; };
+/* 166 */ F.endGame=function(c){ var o=_g(c);var g=o.game;o.game=null;_s(c,o);return g; };
+/* 167 */ F.whisper=function(c,from,to,text){ var o=_g(c);o.whispers=o.whispers||[];o.whispers.push({from:from,to:to,text:text,t:new Date().toISOString()});_s(c,o); };
+/* 168 */ F.getWhispers=function(c,to){ return (_g(c).whispers||[]).filter(function(w){return !to||w.to===to;}); };
+/* 169 */ F.setStage=function(c,s){ var o=_g(c);o.stage=s;_s(c,o); };
+/* 170 */ F.addProp=function(c,p){ var o=_g(c);o.props=o.props||[];o.props.push(p);_s(c,o); };
+/* 171 */ F.getProps=function(c){ return _g(c).props||[]; };
+/* 172 */ F.removeProp=function(c,p){ var o=_g(c);o.props=(o.props||[]).filter(function(x){return x!==p;});_s(c,o); };
+/* 173 */ F.setObjective=function(c,o2){ var o=_g(c);o.objective=o2;_s(c,o); };
+/* 174 */ F.getObjective=function(c){ return _g(c).objective||""; };
+/* 175 */ F.completeObjective=function(c){ var o=_g(c);o.objectiveDone=true;_s(c,o); };
+/* 176 */ F.addClue=function(c,cl){ var o=_g(c);o.clues=o.clues||[];o.clues.push(cl);_s(c,o); };
+/* 177 */ F.getClues=function(c){ return _g(c).clues||[]; };
+/* 178 */ F.revealClue=function(c,i){ var o=_g(c);if(o.clues&&o.clues[i])o.clues[i].revealed=true;_s(c,o); };
+/* 179 */ F.setTurn=function(c,n){ var o=_g(c);o.turn=n;_s(c,o); };
+/* 180 */ F.nextTurn=function(c){ var o=_g(c);o.turn=(o.turn||0)+1;_s(c,o);return o.turn; };
+/* 181 */ F.setPhase=function(c,p){ var o=_g(c);o.phase=p;_s(c,o); };
+/* 182 */ F.getPhase=function(c){ return _g(c).phase||"开场"; };
+/* 183 */ F.addEvent2=function(c,e){ var o=_g(c);o.timeline=o.timeline||[];o.timeline.push({t:new Date().toISOString(),e:e});_s(c,o); };
+/* 184 */ F.getTimeline=function(c){ return _g(c).timeline||[]; };
+/* 185 */ F.setWinner=function(c,n){ var o=_g(c);o.winner=n;_s(c,o); };
+/* 186 */ F.getWinner=function(c){ return _g(c).winner||""; };
+/* 187 */ F.vote2=function(c,name,opt){ var o=_g(c);o.votes2=o.votes2||{};o.votes2[name]=opt;_s(c,o); };
+/* 188 */ F.setBet=function(c,name,amt){ var o=_g(c);o.bets=o.bets||{};o.bets[name]=amt;_s(c,o); };
+/* 189 */ F.setTimer=function(c,sec){ var o=_g(c);o.timer={sec:sec,start:Date.now()};_s(c,o); };
+/* 190 */ F.timerLeft=function(c){ var o=_g(c);if(!o.timer)return 0;var e=Math.floor((Date.now()-o.timer.start)/1000);return Math.max(0,o.timer.sec-e); };
+/* 191 */ F.setTeam=function(c,name,team){ var o=_g(c);o.teams=o.teams||{};o.teams[name]=team;_s(c,o); };
+/* 192 */ F.getTeam=function(c,name){ return (_g(c).teams||{})[name]||""; };
+/* 193 */ F.teams=function(c){ var t={};var o=_g(c).teams||{};Object.keys(o).forEach(function(n){t[o[n]]=t[o[n]]||[];t[o[n]].push(n);});return t; };
+/* 194 */ F.setRole2=function(c,name,role){ var o=_g(c);o.roles2=o.roles2||{};o.roles2[name]=role;_s(c,o); };
+/* 195 */ F.shuffle=function(c,members){ var a=members.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;}return a; };
+/* 196 */ F.pickRandom=function(c,members){ if(!members.length)return null;return members[Math.floor(Math.random()*members.length)]; };
+/* 197 */ F.eliminate=function(c,name){ var o=_g(c);o.out=o.out||[];if(o.out.indexOf(name)<0)o.out.push(name);_s(c,o); };
+/* 198 */ F.isOut=function(c,name){ return (_g(c).out||[]).indexOf(name)>=0; };
+/* 199 */ F.revive=function(c,name){ var o=_g(c);o.out=(o.out||[]).filter(function(x){return x!==name;});_s(c,o); };
+/* 200 */ F.reset=function(c){ try{localStorage.removeItem(_k(c));}catch(e){} };
+return F;
+})();
+if(typeof window!=="undefined") window.RP_SOUL_I=RP_SOUL_I;
+if(typeof module!=="undefined") module.exports=RP_SOUL_I;

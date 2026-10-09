@@ -1,0 +1,61 @@
+/* M. 关系网 50条 (351-400) */
+var RP_SOUL_M = (function(){
+"use strict";
+function _k(c){return "nd_soulm_"+c;}
+function _g(c){try{return JSON.parse(localStorage.getItem(_k(c))||"{}");}catch(e){return{};}}
+function _s(c,o){try{localStorage.setItem(_k(c),JSON.stringify(o));}catch(e){}}
+var F={};
+/* 351 */ F.add=function(c,a,b,rel){var o=_g(c);o.edges=o.edges||{};o.edges[a+">"+b]={rel:rel,t:new Date().toISOString()};_s(c,o);};
+/* 352 */ F.get=function(c,a,b){return ((_g(c).edges||{})[a+">"+b]||{}).rel||"";};
+/* 353 */ F.remove=function(c,a,b){var o=_g(c);if(o.edges)delete o.edges[a+">"+b];_s(c,o);};
+/* 354 */ F.update=function(c,a,b,rel){F.add(c,a,b,rel);};
+/* 355 */ F.all=function(c){return _g(c).edges||{};};
+/* 356 */ F.from=function(c,a){var e=_g(c).edges||{},o={};Object.keys(e).forEach(function(k){if(k.indexOf(a+">")===0)o[k.slice(a.length+1)]=e[k];});return o;};
+/* 357 */ F.to=function(c,b){var e=_g(c).edges||{},o={};Object.keys(e).forEach(function(k){if(k.endsWith(">"+b))o[k.slice(0,-(b.length+1))]=e[k];});return o;};
+/* 358 */ F.mutual=function(c,a,b){return {ab:F.get(c,a,b),ba:F.get(c,b,a)};};
+/* 359 */ F.setStrength=function(c,a,b,n){var o=_g(c);var k=a+">"+b;if(o.edges&&o.edges[k])o.edges[k].strength=Math.max(0,Math.min(100,n));_s(c,o);};
+/* 360 */ F.getStrength=function(c,a,b){return (((_g(c).edges||{})[a+">"+b])||{}).strength||50;};
+/* 361 */ F.stronger=function(c,a,b,d){F.setStrength(c,a,b,F.getStrength(c,a,b)+d);};
+/* 362 */ F.weaker=function(c,a,b,d){F.setStrength(c,a,b,F.getStrength(c,a,b)-d);};
+/* 363 */ F.setType=function(c,a,b,t){var o=_g(c);var k=a+">"+b;if(o.edges&&o.edges[k])o.edges[k].type=t;_s(c,o);};
+/* 364 */ F.byType=function(c,t){var e=_g(c).edges||{},o=[];Object.keys(e).forEach(function(k){if(e[k].type===t)o.push(k);});return o;};
+/* 365 */ F.addEvent4=function(c,a,b,e){var o=_g(c);var k=a+">"+b;if(o.edges&&o.edges[k]){o.edges[k].events=o.edges[k].events||[];o.edges[k].events.push({t:new Date().toISOString(),e:e});}_s(c,o);};
+/* 366 */ F.events=function(c,a,b){return (((_g(c).edges||{})[a+">"+b])||{}).events||[];};
+/* 367 */ F.path=function(c,a,b){var e=_g(c).edges||{};if(e[a+">"+b])return [a,b];for(var k in e){var m=k.split(">");if(m[0]===a&&e[m[1]+">"+b])return [a,m[1],b];}return null;};
+/* 368 */ F.distance=function(c,a,b){var p=F.path(c,a,b);return p?p.length-1:-1;};
+/* 369 */ F.connected=function(c,a,b){return F.distance(c,a,b)>=0;};
+/* 370 */ F.clique=function(c){var e=_g(c).edges||{},nodes={};Object.keys(e).forEach(function(k){var m=k.split(">");nodes[m[0]]=1;nodes[m[1]]=1;});return Object.keys(nodes);};
+/* 371 */ F.mostConnected=function(c){var e=_g(c).edges||{},cnt={};Object.keys(e).forEach(function(k){var m=k.split(">");cnt[m[0]]=(cnt[m[0]]||0)+1;cnt[m[1]]=(cnt[m[1]]||0)+1;});var best="",bn=0;Object.keys(cnt).forEach(function(n){if(cnt[n]>bn){bn=cnt[n];best=n;}});return {name:best,count:bn};};
+/* 372 */ F.isolated=function(c){var all=F.clique(c),e=_g(c).edges||{},has={};Object.keys(e).forEach(function(k){var m=k.split(">");has[m[0]]=1;has[m[1]]=1;});return all.filter(function(n){return !has[n];});};
+/* 373 */ F.rivals=function(c,a){var f=F.from(c,a);return Object.keys(f).filter(function(b){return /敌|仇|恨|对手/.test(f[b].rel||"");});};
+/* 374 */ F.allies=function(c,a){var f=F.from(c,a);return Object.keys(f).filter(function(b){return /友|盟|亲|爱/.test(f[b].rel||"");});};
+/* 375 */ F.family=function(c,a){var f=F.from(c,a);return Object.keys(f).filter(function(b){return /父|母|兄|弟|姐|妹|子|女|妻|夫/.test(f[b].rel||"");});};
+/* 376 */ F.lovers=function(c,a){var f=F.from(c,a);return Object.keys(f).filter(function(b){return /恋|爱|情/.test(f[b].rel||"");});};
+/* 377 */ F.setSecret3=function(c,a,b,s){var o=_g(c);var k=a+">"+b;if(o.edges&&o.edges[k])o.edges[k].secret=s;_s(c,o);};
+/* 378 */ F.getSecret=function(c,a,b){return (((_g(c).edges||{})[a+">"+b])||{}).secret||"";};
+/* 379 */ F.addMemory2=function(c,a,b,m){F.addEvent4(c,a,b,m);};
+/* 380 */ F.timeline2=function(c,a,b){return F.events(c,a,b);};
+/* 381 */ F.evolve=function(c,a,b,delta,reason){F.stronger(c,a,b,delta);F.addEvent4(c,a,b,reason||"关系变化");};
+/* 382 */ F.break2=function(c,a,b){F.update(c,a,b,"决裂");F.setStrength(c,a,b,0);};
+/* 383 */ F.reconcile=function(c,a,b){F.update(c,a,b,"和解");F.setStrength(c,a,b,60);};
+/* 384 */ F.crush=function(c,a,b){F.add(c,a,b,"暗恋");F.setStrength(c,a,b,70);};
+/* 385 */ F.confess=function(c,a,b){F.update(c,a,b,"恋人");F.setStrength(c,a,b,90);};
+/* 386 */ F.betray=function(c,a,b){F.update(c,a,b,"背叛");F.setStrength(c,a,b,10);};
+/* 387 */ F.befriend=function(c,a,b){F.add(c,a,b,"朋友");F.setStrength(c,a,b,60);};
+/* 388 */ F.marry=function(c,a,b){F.update(c,a,b,"夫妻");F.add(c,b,a,"夫妻");F.setStrength(c,a,b,95);};
+/* 389 */ F.divorce=function(c,a,b){F.update(c,a,b,"前任");F.update(c,b,a,"前任");};
+/* 390 */ F.mentor=function(c,a,b){F.add(c,a,b,"师父");F.add(c,b,a,"徒弟");};
+/* 391 */ F.rival2=function(c,a,b){F.add(c,a,b,"对手");F.add(c,b,a,"对手");};
+/* 392 */ F.export2=function(c){return _g(c).edges||{};};
+/* 393 */ F.import2=function(c,edges){var o=_g(c);o.edges=edges||{};_s(c,o);};
+/* 394 */ F.count=function(c){return Object.keys(_g(c).edges||{}).length;};
+/* 395 */ F.clear2=function(c){var o=_g(c);o.edges={};_s(c,o);};
+/* 396 */ F.suggest=function(c,a){var f=F.from(c,a),sug=[];Object.keys(f).forEach(function(b){var f2=F.from(c,b);Object.keys(f2).forEach(function(cc){if(cc!==a&&!f[cc])sug.push(cc);});});return sug.filter(function(v,i){return sug.indexOf(v)===i;});};
+/* 397 */ F.triangle=function(c){var e=_g(c).edges||{},tr=[];Object.keys(e).forEach(function(k1){var m1=k1.split(">");Object.keys(e).forEach(function(k2){var m2=k2.split(">");if(m1[1]===m2[0]&&e[m2[1]+">"+m1[0]])tr.push([m1[0],m1[1],m2[1]]);});});return tr;};
+/* 398 */ F.balance=function(c,a){var f=F.from(c,a);var pos=0,neg=0;Object.keys(f).forEach(function(b){var s=(f[b].strength||50);if(s>=60)pos++;else if(s<=40)neg++;});return {positive:pos,negative:neg};};
+/* 399 */ F.snapshot3=function(c){return JSON.stringify(_g(c).edges||{});};
+/* 400 */ F.reset4=function(c){try{localStorage.removeItem(_k(c));}catch(e){}};
+return F;
+})();
+if(typeof window!=="undefined") window.RP_SOUL_M=RP_SOUL_M;
+if(typeof module!=="undefined") module.exports=RP_SOUL_M;

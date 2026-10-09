@@ -1,0 +1,61 @@
+/* K. 世界模拟 50条 (251-300) */
+var RP_SOUL_K = (function(){
+"use strict";
+function _k(c){return "nd_soulk_"+c;}
+function _g(c){try{return JSON.parse(localStorage.getItem(_k(c))||"{}");}catch(e){return{};}}
+function _s(c,o){try{localStorage.setItem(_k(c),JSON.stringify(o));}catch(e){}}
+var F={};
+/* 251 */ F.setLocation=function(c,l){var o=_g(c);o.loc=l;_s(c,o);};
+/* 252 */ F.getLocation=function(c){return _g(c).loc||"";};
+/* 253 */ F.setTime2=function(c,t){var o=_g(c);o.wtime=t;_s(c,o);};
+/* 254 */ F.advanceTime=function(c,h){var o=_g(c);o.whours=(o.whours||0)+h;_s(c,o);return o.whours;};
+/* 255 */ F.setSeason=function(c,s){var o=_g(c);o.season=s;_s(c,o);};
+/* 256 */ F.setWeather2=function(c,w){var o=_g(c);o.wweather=w;_s(c,o);};
+/* 257 */ F.addNPC=function(c,n,d){var o=_g(c);o.npcs=o.npcs||{};o.npcs[n]={desc:d||"",t:new Date().toISOString()};_s(c,o);};
+/* 258 */ F.removeNPC=function(c,n){var o=_g(c);if(o.npcs)delete o.npcs[n];_s(c,o);};
+/* 259 */ F.listNPC=function(c){return Object.keys(_g(c).npcs||{});};
+/* 260 */ F.setFaction=function(c,f,rel){var o=_g(c);o.factions=o.factions||{};o.factions[f]=rel;_s(c,o);};
+/* 261 */ F.getFaction=function(c,f){return (_g(c).factions||{})[f]||0;};
+/* 262 */ F.addItem2=function(c,item,loc){var o=_g(c);o.items=o.items||{};o.items[item]={loc:loc||"",t:new Date().toISOString()};_s(c,o);};
+/* 263 */ F.moveItem=function(c,item,loc){var o=_g(c);if(o.items&&o.items[item])o.items[item].loc=loc;_s(c,o);};
+/* 264 */ F.itemLoc=function(c,item){return ((_g(c).items||{})[item]||{}).loc||"";};
+/* 265 */ F.setEconomy=function(c,gold){var o=_g(c);o.gold=gold;_s(c,o);};
+/* 266 */ F.addGold=function(c,n){var o=_g(c);o.gold=(o.gold||0)+n;_s(c,o);return o.gold;};
+/* 267 */ F.setReputation=function(c,n,r){var o=_g(c);o.rep=o.rep||{};o.rep[n]=r;_s(c,o);};
+/* 268 */ F.getReputation=function(c,n){return (_g(c).rep||{})[n]||0;};
+/* 269 */ F.addQuest=function(c,q){var o=_g(c);o.quests=o.quests||[];o.quests.push({q:q,done:false,t:new Date().toISOString()});_s(c,o);};
+/* 270 */ F.completeQuest=function(c,i){var o=_g(c);if(o.quests&&o.quests[i])o.quests[i].done=true;_s(c,o);};
+/* 271 */ F.activeQuests=function(c){return (_g(c).quests||[]).filter(function(q){return !q.done;});};
+/* 272 */ F.setDanger=function(c,n){var o=_g(c);o.danger=Math.max(0,Math.min(100,n));_s(c,o);};
+/* 273 */ F.addRumor=function(c,r){var o=_g(c);o.rumors=o.rumors||[];o.rumors.push(r);_s(c,o);};
+/* 274 */ F.getRumors=function(c){return _g(c).rumors||[];};
+/* 275 */ F.setLaw=function(c,l){var o=_g(c);o.law=l;_s(c,o);};
+/* 276 */ F.addHistory=function(c,e){var o=_g(c);o.hist=o.hist||[];o.hist.push({t:new Date().toISOString(),e:e});_s(c,o);};
+/* 277 */ F.getHistory=function(c){return _g(c).hist||[];};
+/* 278 */ F.setCulture=function(c,cu){var o=_g(c);o.culture=cu;_s(c,o);};
+/* 279 */ F.addLocation2=function(c,l,d){var o=_g(c);o.locs=o.locs||{};o.locs[l]=d||"";_s(c,o);};
+/* 280 */ F.describeLocation=function(c,l){return (_g(c).locs||{})[l]||"";};
+/* 281 */ F.connectLoc=function(c,a,b){var o=_g(c);o.paths=o.paths||{};o.paths[a]=o.paths[a]||[];if(o.paths[a].indexOf(b)<0)o.paths[a].push(b);_s(c,o);};
+/* 282 */ F.neighbors=function(c,l){return (_g(c).paths||{})[l]||[];};
+/* 283 */ F.setEvent3=function(c,e){var o=_g(c);o.curEvent=e;_s(c,o);};
+/* 284 */ F.clearEvent=function(c){var o=_g(c);o.curEvent="";_s(c,o);};
+/* 285 */ F.addFaction2=function(c,f,d){var o=_g(c);o.faction2=o.faction2||{};o.faction2[f]=d||"";_s(c,o);};
+/* 286 */ F.war=function(c,a,b){var o=_g(c);o.wars=o.wars||[];o.wars.push({a:a,b:b,t:new Date().toISOString()});_s(c,o);};
+/* 287 */ F.peace=function(c,a,b){var o=_g(c);o.wars=(o.wars||[]).filter(function(w){return !((w.a===a&&w.b===b)||(w.a===b&&w.b===a));});_s(c,o);};
+/* 288 */ F.atWar=function(c,a,b){return (_g(c).wars||[]).some(function(w){return (w.a===a&&w.b===b)||(w.a===b&&w.b===a);});};
+/* 289 */ F.setRuler=function(c,loc,r){var o=_g(c);o.rulers=o.rulers||{};o.rulers[loc]=r;_s(c,o);};
+/* 290 */ F.getRuler=function(c,loc){return (_g(c).rulers||{})[loc]||"";};
+/* 291 */ F.addTech=function(c,t){var o=_g(c);o.tech=o.tech||[];if(o.tech.indexOf(t)<0)o.tech.push(t);_s(c,o);};
+/* 292 */ F.hasTech=function(c,t){return (_g(c).tech||[]).indexOf(t)>=0;};
+/* 293 */ F.setMagic=function(c,level){var o=_g(c);o.magic=level;_s(c,o);};
+/* 294 */ F.addDeity=function(c,d,dom){var o=_g(c);o.deities=o.deities||{};o.deities[d]=dom||"";_s(c,o);};
+/* 295 */ F.setCalendar=function(c,cal){var o=_g(c);o.cal=cal;_s(c,o);};
+/* 296 */ F.tick=function(c){var o=_g(c);o.day=(o.day||0)+1;_s(c,o);return o.day;};
+/* 297 */ F.getDay=function(c){return _g(c).day||0;};
+/* 298 */ F.snapshot2=function(c){return JSON.stringify(_g(c));};
+/* 299 */ F.restore2=function(c,snap){try{_s(c,JSON.parse(snap));return true;}catch(e){return false;}};
+/* 300 */ F.reset2=function(c){try{localStorage.removeItem(_k(c));}catch(e){}};
+return F;
+})();
+if(typeof window!=="undefined") window.RP_SOUL_K=RP_SOUL_K;
+if(typeof module!=="undefined") module.exports=RP_SOUL_K;

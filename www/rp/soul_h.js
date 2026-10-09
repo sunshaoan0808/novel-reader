@@ -1,0 +1,61 @@
+/* H. Soul 人格深度 50条 (101-150) */
+var RP_SOUL_H = (function(){
+"use strict";
+function _s(card){ try{ return RP_SOUL.getSoul(card); }catch(e){ return null; } }
+function _p(card){ var s=_s(card); return (s&&s.persona)||{}; }
+function _set(card,fn){ var s=_s(card); if(s){ fn(s); return true; } return false; }
+var F = {};
+/* 101 */ F.setMoodBaseline=function(c,m){ return _set(c,function(s){ s.persona.mood_baseline=m; }); };
+/* 102 */ F.getMoodBaseline=function(c){ return _p(c).mood_baseline||"平静"; };
+/* 103 */ F.addHabit=function(c,h){ return _set(c,function(s){ s.persona.habits=s.persona.habits||[]; s.persona.habits.push(h); }); };
+/* 104 */ F.getHabits=function(c){ return _p(c).habits||[]; };
+/* 105 */ F.addFear=function(c,f){ return _set(c,function(s){ s.persona.fears=s.persona.fears||[]; s.persona.fears.push(f); }); };
+/* 106 */ F.addDesire=function(c,d){ return _set(c,function(s){ s.persona.desires=s.persona.desires||[]; s.persona.desires.push(d); }); };
+/* 107 */ F.setVice=function(c,v){ return _set(c,function(s){ s.persona.vice=v; }); };
+/* 108 */ F.setVirtue=function(c,v){ return _set(c,function(s){ s.persona.virtue=v; }); };
+/* 109 */ F.addQuirk=function(c,q){ return _set(c,function(s){ s.persona.quirks=s.persona.quirks||[]; s.persona.quirks.push(q); }); };
+/* 110 */ F.setSpeechPattern=function(c,p){ return _set(c,function(s){ s.persona.speech_pattern=p; }); };
+/* 111 */ F.addCatchphrase=function(c,p){ return _set(c,function(s){ s.persona.catchphrases=s.persona.catchphrases||[]; s.persona.catchphrases.push(p); }); };
+/* 112 */ F.setHumor=function(c,h){ return _set(c,function(s){ s.persona.humor=h; }); };
+/* 113 */ F.setEmpathy=function(c,n){ return _set(c,function(s){ s.persona.empathy=Math.max(0,Math.min(100,n)); }); };
+/* 114 */ F.setAssertiveness=function(c,n){ return _set(c,function(s){ s.persona.assertiveness=Math.max(0,Math.min(100,n)); }); };
+/* 115 */ F.setOpenness=function(c,n){ return _set(c,function(s){ s.persona.openness=Math.max(0,Math.min(100,n)); }); };
+/* 116 */ F.setNeuroticism=function(c,n){ return _set(c,function(s){ s.persona.neuroticism=Math.max(0,Math.min(100,n)); }); };
+/* 117 */ F.bigFive=function(c){ var p=_p(c); return {o:p.openness||50,c:50,e:p.empathy||50,a:p.assertiveness||50,n:p.neuroticism||50}; };
+/* 118 */ F.addValue=function(c,v,rank){ return _set(c,function(s){ s.persona.values=s.persona.values||[]; s.persona.values.splice(rank||s.persona.values.length,0,v); }); };
+/* 119 */ F.removeValue=function(c,v){ return _set(c,function(s){ s.persona.values=(s.persona.values||[]).filter(function(x){return x!==v;}); }); };
+/* 120 */ F.setGoal=function(c,g){ return _set(c,function(s){ s.persona.long_goal=g; }); };
+/* 121 */ F.setShortGoal=function(c,g){ return _set(c,function(s){ s.persona.short_goal=g; }); };
+/* 122 */ F.addBelief=function(c,b){ return _set(c,function(s){ s.persona.beliefs=s.persona.beliefs||[]; s.persona.beliefs.push(b); }); };
+/* 123 */ F.addPrejudice=function(c,p){ return _set(c,function(s){ s.persona.prejudices=s.persona.prejudices||[]; s.persona.prejudices.push(p); }); };
+/* 124 */ F.setMoral=function(c,m){ return _set(c,function(s){ s.persona.moral_code=m; }); };
+/* 125 */ F.addTaboo=function(c,t){ return _set(c,function(s){ s.persona.taboos=s.persona.taboos||[]; s.persona.taboos.push(t); }); };
+/* 126 */ F.setAttachment=function(c,a){ return _set(c,function(s){ s.persona.attachment=a; }); };
+/* 127 */ F.setLoveLang=function(c,l){ return _set(c,function(s){ s.persona.love_language=l; }); };
+/* 128 */ F.addSkill=function(c,s2,lv){ return _set(c,function(s){ s.persona.skills=s.persona.skills||[]; s.persona.skills.push({name:s2,level:lv||1}); }); };
+/* 129 */ F.addWeakness=function(c,w){ return _set(c,function(s){ s.persona.weaknesses=s.persona.weaknesses||[]; s.persona.weaknesses.push(w); }); };
+/* 130 */ F.setEnergy=function(c,n){ return _set(c,function(s){ s.persona.energy=Math.max(0,Math.min(100,n)); }); };
+/* 131 */ F.drainEnergy=function(c,n){ var p=_p(c); return F.setEnergy(c,(p.energy||50)-n); };
+/* 132 */ F.restEnergy=function(c){ return F.setEnergy(c,100); };
+/* 133 */ F.setStress=function(c,n){ return _set(c,function(s){ s.persona.stress=Math.max(0,Math.min(100,n)); }); };
+/* 134 */ F.addCoping=function(c,cp){ return _set(c,function(s){ s.persona.coping=s.persona.coping||[]; s.persona.coping.push(cp); }); };
+/* 135 */ F.setDecisionStyle=function(c,d){ return _set(c,function(s){ s.persona.decision_style=d; }); };
+/* 136 */ F.setConflictStyle=function(c,d){ return _set(c,function(s){ s.persona.conflict_style=d; }); };
+/* 137 */ F.addRole=function(c,r){ return _set(c,function(s){ s.persona.roles=s.persona.roles||[]; s.persona.roles.push(r); }); };
+/* 138 */ F.setIdentity=function(c,i){ return _set(c,function(s){ s.persona.identity=i; }); };
+/* 139 */ F.addMemory_trigger=function(c,tr){ return _set(c,function(s){ s.persona.triggers=s.persona.triggers||[]; s.persona.triggers.push(tr); }); };
+/* 140 */ F.setWorldview=function(c,w){ return _set(c,function(s){ s.persona.worldview=w; }); };
+/* 141 */ F.setPolitics=function(c,p){ return _set(c,function(s){ s.persona.politics=p; }); };
+/* 142 */ F.setReligion=function(c,r){ return _set(c,function(s){ s.persona.religion=r; }); };
+/* 143 */ F.addSecret2=function(c,sec,level){ return _set(c,function(s){ s.persona.secrets2=s.persona.secrets2||[]; s.persona.secrets2.push({text:sec,level:level||1}); }); };
+/* 144 */ F.setAmbition=function(c,a){ return _set(c,function(s){ s.persona.ambition=a; }); };
+/* 145 */ F.setRegret=function(c,r){ return _set(c,function(s){ s.persona.regrets=s.persona.regrets||[]; s.persona.regrets.push(r); }); };
+/* 146 */ F.addDream=function(c,d){ return _set(c,function(s){ s.persona.dreams=s.persona.dreams||[]; s.persona.dreams.push(d); }); };
+/* 147 */ F.setSenseHumor2=function(c,s2){ return _set(c,function(s){ s.persona.humor_style=s2; }); };
+/* 148 */ F.personaSummary=function(c){ var p=_p(c); return {traits:(p.core_traits||[]).length,values:(p.values||[]).length,habits:(p.habits||[]).length,skills:(p.skills||[]).length,energy:p.energy||50,stress:p.stress||0}; };
+/* 149 */ F.clonePersona=function(c){ return JSON.parse(JSON.stringify(_p(c))); };
+/* 150 */ F.resetPersona=function(c){ return _set(c,function(s){ s.persona={core_traits:[],motivations:[],values:[],relationships:{}}; }); };
+return F;
+})();
+if(typeof window!=="undefined") window.RP_SOUL_H=RP_SOUL_H;
+if(typeof module!=="undefined") module.exports=RP_SOUL_H;

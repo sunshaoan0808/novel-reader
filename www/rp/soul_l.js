@@ -1,0 +1,61 @@
+/* L. 叙事引擎 50条 (301-350) */
+var RP_SOUL_L = (function(){
+"use strict";
+function _k(c){return "nd_soull_"+c;}
+function _g(c){try{return JSON.parse(localStorage.getItem(_k(c))||"{}");}catch(e){return{};}}
+function _s(c,o){try{localStorage.setItem(_k(c),JSON.stringify(o));}catch(e){}}
+var F={};
+/* 301 */ F.setArc=function(c,a){var o=_g(c);o.arc=a;_s(c,o);};
+/* 302 */ F.getArc=function(c){return _g(c).arc||"";};
+/* 303 */ F.setTheme=function(c,t){var o=_g(c);o.theme=t;_s(c,o);};
+/* 304 */ F.addBeat=function(c,b){var o=_g(c);o.beats=o.beats||[];o.beats.push({t:new Date().toISOString(),b:b});_s(c,o);};
+/* 305 */ F.getBeats=function(c){return _g(c).beats||[];};
+/* 306 */ F.setPOV=function(c,p){var o=_g(c);o.pov=p;_s(c,o);};
+/* 307 */ F.setTense=function(c,t){var o=_g(c);o.tense=t;_s(c,o);};
+/* 308 */ F.setTone=function(c,t){var o=_g(c);o.tone=t;_s(c,o);};
+/* 309 */ F.setPacing=function(c,p){var o=_g(c);o.pacing=p;_s(c,o);};
+/* 310 */ F.addForeshadow=function(c,f){var o=_g(c);o.fore=o.fore||[];o.fore.push({f:f,paid:false});_s(c,o);};
+/* 311 */ F.payoff=function(c,i){var o=_g(c);if(o.fore&&o.fore[i])o.fore[i].paid=true;_s(c,o);};
+/* 312 */ F.unpaid=function(c){return (_g(c).fore||[]).filter(function(f){return !f.paid;});};
+/* 313 */ F.addTwist=function(c,t){var o=_g(c);o.twists=o.twists||[];o.twists.push(t);_s(c,o);};
+/* 314 */ F.setClimax=function(c,cl){var o=_g(c);o.climax=cl;_s(c,o);};
+/* 315 */ F.setResolution=function(c,r){var o=_g(c);o.resolution=r;_s(c,o);};
+/* 316 */ F.addChapter=function(c,t){var o=_g(c);o.chapters=o.chapters||[];o.chapters.push({t:new Date().toISOString(),title:t});_s(c,o);};
+/* 317 */ F.getChapters=function(c){return _g(c).chapters||[];};
+/* 318 */ F.setConflict2=function(c,cf){var o=_g(c);o.conflict=cf;_s(c,o);};
+/* 319 */ F.addStakes=function(c,s){var o=_g(c);o.stakes=o.stakes||[];o.stakes.push(s);_s(c,o);};
+/* 320 */ F.setGenre=function(c,g){var o=_g(c);o.genre=g;_s(c,o);};
+/* 321 */ F.addMotif=function(c,m){var o=_g(c);o.motifs=o.motifs||[];if(o.motifs.indexOf(m)<0)o.motifs.push(m);_s(c,o);};
+/* 322 */ F.setSymbol=function(c,s,m){var o=_g(c);o.symbols=o.symbols||{};o.symbols[s]=m;_s(c,o);};
+/* 323 */ F.addDialogue2=function(c,who,text){var o=_g(c);o.dialog=o.dialog||[];o.dialog.push({who:who,text:text});_s(c,o);};
+/* 324 */ F.setNarrator2=function(c,n){var o=_g(c);o.narr=n;_s(c,o);};
+/* 325 */ F.addDesc=function(c,d){var o=_g(c);o.descs=o.descs||[];o.descs.push(d);_s(c,o);};
+/* 326 */ F.setOpening=function(c,o2){var o=_g(c);o.opening=o2;_s(c,o);};
+/* 327 */ F.setEnding=function(c,e){var o=_g(c);o.ending=e;_s(c,o);};
+/* 328 */ F.addFlashback=function(c,f){var o=_g(c);o.flash=o.flash||[];o.flash.push(f);_s(c,o);};
+/* 329 */ F.addDream2=function(c,d){var o=_g(c);o.dreams2=o.dreams2||[];o.dreams2.push(d);_s(c,o);};
+/* 330 */ F.setMoral2=function(c,m){var o=_g(c);o.moral=m;_s(c,o);};
+/* 331 */ F.rate2=function(c,n){var o=_g(c);o.ratings2=o.ratings2||[];o.ratings2.push(n);_s(c,o);};
+/* 332 */ F.avgRate=function(c){var r=_g(c).ratings2||[];return r.length?Math.round(r.reduce(function(a,b){return a+b;},0)/r.length*10)/10:0;};
+/* 333 */ F.setLength=function(c,l){var o=_g(c);o.len=l;_s(c,o);};
+/* 334 */ F.wordGoal=function(c,n){var o=_g(c);o.wgoal=n;_s(c,o);};
+/* 335 */ F.wordCount2=function(c){return (_g(c).words||0);};
+/* 336 */ F.addWords=function(c,n){var o=_g(c);o.words=(o.words||0)+n;_s(c,o);};
+/* 337 */ F.goalPct=function(c){var o=_g(c);if(!o.wgoal)return 0;return Math.round((o.words||0)/o.wgoal*100);};
+/* 338 */ F.setDeadline=function(c,d){var o=_g(c);o.deadline=d;_s(c,o);};
+/* 339 */ F.addNote2=function(c,n){var o=_g(c);o.notes2=o.notes2||[];o.notes2.push(n);_s(c,o);};
+/* 340 */ F.getNotes2=function(c){return _g(c).notes2||[];};
+/* 341 */ F.pinNote=function(c,i){var o=_g(c);if(o.notes2&&o.notes2[i])o.notes2[i]={pinned:true,text:o.notes2[i]};_s(c,o);};
+/* 342 */ F.setDraft=function(c,d){var o=_g(c);o.draft=d;_s(c,o);};
+/* 343 */ F.getDraft=function(c){return _g(c).draft||"";};
+/* 344 */ F.publish=function(c){var o=_g(c);o.published=true;o.pubT=new Date().toISOString();_s(c,o);};
+/* 345 */ F.isPublished=function(c){return !!_g(c).published;};
+/* 346 */ F.addRevision=function(c,r){var o=_g(c);o.revs=o.revs||[];o.revs.push({t:new Date().toISOString(),r:r});_s(c,o);};
+/* 347 */ F.revCount=function(c){return (_g(c).revs||[]).length;};
+/* 348 */ F.setEditor=function(c,e){var o=_g(c);o.editor=e;_s(c,o);};
+/* 349 */ F.addComment=function(c,who,text){var o=_g(c);o.comments=o.comments||[];o.comments.push({who:who,text:text,t:new Date().toISOString()});_s(c,o);};
+/* 350 */ F.reset3=function(c){try{localStorage.removeItem(_k(c));}catch(e){}};
+return F;
+})();
+if(typeof window!=="undefined") window.RP_SOUL_L=RP_SOUL_L;
+if(typeof module!=="undefined") module.exports=RP_SOUL_L;
