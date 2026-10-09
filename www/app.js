@@ -5073,6 +5073,8 @@ window.showChatSettings = ()=>{
 
     ${wsHtml}
 
+    ${typeof RP_SOUL_CFG!=="undefined" ? `<div id="soul_debug_wrap" style="margin-bottom:8px">${RP_SOUL_CFG.debugHTML()}</div>` : ""}
+
     <div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:13px;margin-bottom:8px">🔗 快捷入口</div>
       <div class="btnrow">
         <button class="btn" style="font-size:12px" onclick="showRelManager()">关系管理</button>

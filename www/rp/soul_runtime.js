@@ -33,6 +33,23 @@ function next(){
 var tokenStats = {}; /* turnId -> {soulName: {prompt, completion, total}} */
 var currentTurn = null;
 
+/* 调用历史 (调试用, 最多保留 50 条) */
+var callHistory = [];
+var CALL_HISTORY_MAX = 50;
+
+function logCall(entry){
+  callHistory.push(Object.assign({t: new Date().toISOString()}, entry));
+  if(callHistory.length > CALL_HISTORY_MAX) callHistory.shift();
+}
+
+function getCallHistory(){
+  return callHistory.slice().reverse(); /* 最新的在前 */
+}
+
+function clearCallHistory(){
+  callHistory = [];
+}
+
 function startTurn(turnId){
   currentTurn = turnId;
   tokenStats[turnId] = {};
@@ -139,6 +156,7 @@ async function doCall(opts){
   }
 
   var lastErr = null;
+  var startMs = Date.now();
   for(var i = 0; i < cfgs.length; i++){
     try{
       var c = cfgs[i].cfg;
@@ -149,6 +167,8 @@ async function doCall(opts){
 
       /* 竞态保护: 完成后验证 */
       if(opts.contextToken !== undefined && opts.contextToken !== tokenAtStart){
+        logCall({soul: soulName, model: c.model, ms: Date.now() - startMs,
+                 ok: false, error: "context_changed"});
         return {ok: false, error: "context_changed", soulName: soulName, aborted: true};
       }
 
@@ -156,6 +176,9 @@ async function doCall(opts){
       var text = (typeof r === "string") ? r : (r.text || r.content || "");
       if(opts.onToken && r && r.usage) opts.onToken(soulName, r.usage);
       recordTokens(soulName, r && r.usage);
+      logCall({soul: soulName, model: c.model, ms: Date.now() - startMs,
+               ok: true, fallback: cfgs[i].level,
+               tokens: r && r.usage ? (r.usage.total_tokens || 0) : 0});
 
       return {ok: true, text: text, model: c.model,
               fallback: cfgs[i].level, soulName: soulName};
@@ -165,6 +188,9 @@ async function doCall(opts){
       if(/超时|context_changed/.test(String(e && e.message))) break;
     }
   }
+  logCall({soul: soulName, model: (cfgs[0] && cfgs[0].cfg.model) || "?",
+           ms: Date.now() - startMs, ok: false,
+           error: String(lastErr && lastErr.message || lastErr)});
   return {ok: false, error: String(lastErr && lastErr.message || lastErr),
           soulName: soulName};
 }
@@ -198,7 +224,9 @@ return {
   resolveProfile: resolveProfile,
   listProfiles: listProfiles,
   saveProfiles: saveProfiles,
-  getProfile: getProfile
+  getProfile: getProfile,
+  getCallHistory: getCallHistory,
+  clearCallHistory: clearCallHistory
 };
 
 })();

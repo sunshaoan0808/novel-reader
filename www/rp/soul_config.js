@@ -205,6 +205,39 @@ function readBindSelect(){
   return el ? el.value : "";
 }
 
+/* ============ 调用追踪调试视图 ============ */
+
+function debugHTML(){
+  var hist = [];
+  try{
+    if(typeof RP_SOUL_RT !== "undefined") hist = RP_SOUL_RT.getCallHistory();
+  }catch(e){}
+  var rows = hist.map(function(h){
+    return "<div class=\"kv\" style=\"font-size:12px\">" +
+      "<span>" + (h.ok ? "OK" : "FAIL") + " <b>" + escHtml(h.soul) + "</b></span>" +
+      "<span class=\"dim\">" + escHtml(h.model || "") +
+      (h.fallback && h.fallback !== "profile" ? " (降级:" + escHtml(h.fallback) + ")" : "") +
+      " · " + (h.ms || 0) + "ms" +
+      (h.tokens ? " · " + h.tokens + "tok" : "") +
+      (h.error ? " · " + escHtml(String(h.error).slice(0, 60)) : "") +
+      "</span></div>";
+  }).join("");
+  return "<div class=\"setcard\"><h3>Soul 调用追踪 <span class=\"dim\">最近 " + hist.length + " 次</span></h3>" +
+    (rows || "<div class=\"dim\">暂无调用记录</div>") +
+    (hist.length ? "<div class=\"btnrow\" style=\"margin-top:8px\"><button class=\"btn ghost\" onclick=\"RP_SOUL_CFG.clearDebug()\">清空</button></div>" : "") +
+    "</div>";
+}
+
+function clearDebug(){
+  try{ if(typeof RP_SOUL_RT !== "undefined") RP_SOUL_RT.clearCallHistory(); }catch(e){}
+  refreshDebug();
+}
+
+function refreshDebug(){
+  var el = document.getElementById("soul_debug_wrap");
+  if(el) el.innerHTML = debugHTML();
+}
+
 return {
   list: list, save: save, add: add, del: del, get: get,
   resolveForSoul: resolveForSoul,
@@ -212,7 +245,8 @@ return {
   profilesCardHTML: profilesCardHTML,
   addProfileUI: addProfileUI, delProfile: delProfile,
   testProfile: testProfile, refreshProfilesList: refreshProfilesList,
-  bindSelectHTML: bindSelectHTML, readBindSelect: readBindSelect
+  bindSelectHTML: bindSelectHTML, readBindSelect: readBindSelect,
+  debugHTML: debugHTML, clearDebug: clearDebug, refreshDebug: refreshDebug
 };
 
 })();
