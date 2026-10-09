@@ -697,7 +697,7 @@ background:none; border:1px solid var(--line); border-radius:8px; cursor:pointer
 
 /* ===== Tier3-22: ＠ 点名按钮 + 成员菜单 ===== */
 .atbtn{flex:0 0 auto; padding:9px 11px; border-radius:10px; border:1px solid #4a3d24; background:#241f16; color:var(--gold); font-size:16px; font-weight:700; cursor:pointer;}
-.atmenu{position:fixed; left:12px; bottom:74px; z-index:60; background:#221d14; border:1px solid #4a3d24; border-radius:12px; padding:6px; min-width:150px; box-shadow:0 8px 24px rgba(0,0,0,.5);}
+.atmenu{position:fixed; left:12px; bottom:124px; z-index:60; background:#221d14; border:1px solid #4a3d24; border-radius:12px; padding:6px; min-width:150px; box-shadow:0 8px 24px rgba(0,0,0,.5);}
 .atmenu .athint{font-size:12px; color:var(--ink-faint); padding:4px 8px;}
 .atmenu button{display:flex; align-items:center; gap:8px; width:100%; text-align:left; background:none; border:none; color:var(--ink); font-size:14px; padding:7px 8px; border-radius:8px; cursor:pointer;}
 .atmenu button:active{background:rgba(212,162,78,.15);}
