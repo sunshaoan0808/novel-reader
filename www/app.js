@@ -1914,7 +1914,8 @@ function applyProgress(p, animate){
     const typing = !!ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName || "");
     if(!(typing && progress > 0)){
       bar.style.transition = t;
-      bar.style.transform = progress > 0 ? `translateY(${progress * 110}%)` : "";
+      /* 110% 位移确保完全移出视口（bar 高度约 100px，110% = 110px） */
+      bar.style.transform = progress > 0 ? `translateY(${progress * 150}%)` : "";
     }
   }
   /* body.immersive 保留给场景条收起/压暗罩等 CSS 联动，阈值 0.5 */

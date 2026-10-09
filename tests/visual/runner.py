@@ -207,9 +207,8 @@ async def case_hidebars(c):
         await new Promise(function(r){ setTimeout(r, 150); });
       }
       out.noFlickerTop = out.flick.every(function(v){ return v; });
-      /* 5) 未滑到底保持隐藏 */
-      var curMax5 = log.scrollHeight - log.clientHeight;
-      log.scrollTop = curMax5 - 300;
+      /* 5) 未滑到底保持隐藏：从顶部小幅滚动（深入历史），不应退出沉浸 */
+      log.scrollTop = 100;
       await new Promise(function(r){ setTimeout(r, 400); });
       out.stillHidden = imm();
       /* 6) 滑到底 -> 退出沉浸式 */
