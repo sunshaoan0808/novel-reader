@@ -25,10 +25,18 @@ if(text.indexOf("@" + nm) >= 0) mentioned.push(nm);
 });
 if(mentioned.length) return {speakers: mentioned, via: "mention"};
 
-/* state.roundRobin: 上次说话的 index, 轮询 */
+/* state.roundRobin: 上次说话的 index, 轮询 (按发言频率加权) */
 if(state && state.mode === "roundrobin" && souls.length){
 var _li = (state.lastIdx == null) ? -1 : state.lastIdx;
-var idx = (_li + 1) % souls.length;
+var idx = _li, tries = 0;
+do{
+  idx = (idx + 1) % souls.length;
+  tries++;
+  var _nm = souls[idx].name || souls[idx];
+  /* quiet 的 soul 有 70% 概率被跳过 */
+  if(getChattiness(_nm) < 1 && Math.random() < 0.7 && tries < souls.length * 2) continue;
+  break;
+}while(tries < souls.length * 3);
 var nm2 = souls[idx].name || souls[idx];
 return {speakers: [nm2], via: "roundrobin", lastIdx: idx};
 }
@@ -86,6 +94,13 @@ var mem = (typeof RP_SOUL!== "undefined")
 ? RP_SOUL.getMemory(soulCard, soulName): {facts: [], emotional: [], perspective: []};
 
 var parts = [];
+
+/* 时间感知: 第几轮 */
+try{
+  var _turn = 0;
+  (history || []).forEach(function(m){ if(m.role === "user") _turn++; });
+  if(_turn > 0) parts.push("现在是第 " + _turn + " 轮对话。");
+}catch(e){}
 
 /* 身份 (persona 核心) */
 var traits = (persona.core_traits || []).map(function(t){
@@ -160,6 +175,11 @@ action: "", inner: "", silence:!text.trim()};
 
 /* ============ Orchestrator ============ */
 
+/* Prompt 预览: 存最后一次各 soul 的 prompt (调试用) */
+var _lastPrompts = {};
+function getLastPrompts(){ return Object.assign({}, _lastPrompts); }
+function clearLastPrompts(){ _lastPrompts = {}; }
+
 /* 并行跑选中的 souls
 * souls: [{card, name}]
 * 返回 [{name, reply(解析后), raw}] */
@@ -169,8 +189,10 @@ var cfg = opts.cfg || {};
 var turnId = opts.turnId || ("t" + Date.now());
 if(typeof RP_SOUL_RT!== "undefined") RP_SOUL_RT.startTurn(turnId);
 
+_lastPrompts = {};
 var jobs = souls.map(function(s){
 var prompt = buildSoulPrompt(s.card, s.name, scene, userText, history);
+_lastPrompts[s.name] = prompt;
 var profile = (typeof RP_SOUL!== "undefined")
 ? RP_SOUL.getProfile(s.card): "";
 /* 两阶段: 检查该 soul 是否配了 think/speak 双 profile */
@@ -291,6 +313,16 @@ function shouldUseSoulMode(runId, members, chatId){
   }catch(e){ return false; }
 }
 
+/* 发言频率: quiet(0.3) / normal(1) / chatty(2), 影响被选中的概率 */
+function getChattiness(soulName){
+  try{
+    var v = localStorage.getItem("nd_soul_chatty_" + soulName);
+    return v === "quiet" ? 0.3 : (v === "chatty" ? 2 : 1);
+  }catch(e){ return 1; }
+}
+function setChattiness(soulName, level){
+  try{ localStorage.setItem("nd_soul_chatty_" + soulName, level); }catch(e){}
+}
 function setSoulMode(chatId, on){
   try{
     if(on) localStorage.removeItem("nd_soulmode_off_" + chatId);
@@ -320,10 +352,23 @@ async function sendGroupSoul(runId, members, text, opts){
       }
     }catch(e){}
   });
+  /* @指定: @名字 开头则只叫 TA (去 @ 后继续) */
+  var _atM = String(text || "").match(/^@([^\s@]+)/);
+  if(_atM){
+    var _atHit = soulMembers.filter(function(s){
+      return s.name === _atM[1] || s.name.indexOf(_atM[1]) === 0;
+    })[0];
+    if(_atHit){
+      text = text.slice(_atM[0].length).trim();
+      var sel = {speakers: [_atHit.name], reactions: [], atDirect: true};
+    }
+  }
+  if(typeof sel === "undefined"){
   var sel = await select(text, soulMembers.map(function(s){ return {name: s.name}; }),
     h, cfg,
     function(c, ms, tt){ return (typeof RP_NET !== "undefined") ? RP_NET.complete(c, ms, tt) : Promise.reject(new Error("no net")); },
     {mode: opts.selectMode || "auto"});
+  }
   var activeNames = sel.speakers.concat((sel.reactions || []).map(function(r){ return r.name; }));
   activeNames = activeNames.filter(function(n, i){ return activeNames.indexOf(n) === i; });
   var active = soulMembers.filter(function(s){ return activeNames.indexOf(s.name) >= 0; });
@@ -355,6 +400,18 @@ async function sendGroupSoul(runId, members, text, opts){
   h.push({role: "assistant", content: outText,
     _soul: true, _speakers: woven.speakers, _turnId: turnId,
     _conflicts: woven.conflicts, _conflictResolved: false});
+  /* 大事件自动记入共享记忆 */
+  try{
+    var _big = detectBigEvents(runR.results);
+    if(_big.length && typeof RP_SOUL !== "undefined"){
+      active.forEach(function(sm){
+        _big.forEach(function(ev){
+          RP_SOUL.addFact(sm.card, null,
+            ev.actor + ": " + (ev.action || ev.dialogue).slice(0, 100));
+        });
+      });
+    }
+  }catch(e){}
   /* per-soul 记忆更新: 每 4 轮一次 (成本控制) */
   try{
     var _mk = "nd_soulmem_count_" + (chatId || runId);
@@ -415,6 +472,106 @@ async function twoStageCall(soulName, card, soul, scene, userText, history, cfg,
     inner: think.inner || "",
     silence: false
   }), model: speakCfg.model + "+" + thinkCfg.model, twoStage: true, soulName: soulName};
+}
+
+/* 回放: 重跑指定 soul 的上一轮 (调试用) */
+async function replaySoul(soulName, souls, opts){
+  opts = opts || {};
+  var prompt = _lastPrompts[soulName];
+  if(!prompt) return {ok: false, error: "无缓存 prompt"};
+  var s = (souls || []).filter(function(x){ return x.name === soulName; })[0];
+  if(!s) return {ok: false, error: "找不到 soul"};
+  var profile = (typeof RP_SOUL !== "undefined") ? RP_SOUL.getProfile(s.card) : "";
+  var r = await RP_SOUL_RT.callSoul({
+    soulName: soulName, profile: profile, cfg: opts.cfg || {},
+    messages: [{role: "user", content: prompt}],
+    temperature: 0.8, maxTokens: 800
+  });
+  if(!r.ok) return r;
+  return {ok: true, reply: parseSoulReply(r.text), model: r.model};
+}
+
+/* ============ 群聊摘要 & 大事件 ============ */
+
+/* 一键生成群聊摘要 (LLM) */
+async function summarizeChat(history, cfg, callFn){
+  var text = (history || []).slice(-20).map(function(m){
+    return (m.role === "user" ? "用户" : (m.speaker || "AI")) + ": " + (m.content || "").slice(0, 200);
+  }).join("\n");
+  if(!text.trim()) return "";
+  try{
+    var raw = await callFn(cfg, [{role: "user",
+      content: "用3句话总结这段群聊发生了什么:\n\n" + text + "\n\n只输出总结，不要解释。"}], 0.3);
+    var t = (typeof raw === "string") ? raw : (raw.text || "");
+    return t.trim().slice(0, 500);
+  }catch(e){ return ""; }
+}
+
+/* 大事件检测: 从 weave 结果提取值得记入共享记忆的事件 */
+function detectBigEvents(results){
+  var events = [];
+  (results || []).forEach(function(r){
+    if(!r.ok || !r.reply) return;
+    var rp = r.reply;
+    var text = ((rp.action || "") + " " + (rp.dialogue || "")).toLowerCase();
+    /* 关键词: 死亡/表白/决裂/获得/失去等 */
+    var bigWords = ["死", "杀", "表白", "喜欢", "分手", "决裂", "得到", "失去", "发现", "秘密"];
+    var hit = bigWords.filter(function(w){ return text.indexOf(w) >= 0; });
+    if(hit.length){
+      events.push({actor: r.name, action: rp.action || "", dialogue: (rp.dialogue || "").slice(0, 100),
+        keywords: hit});
+    }
+  });
+  return events;
+}
+
+/* 关系自动更新: 从对话提取关系变化, 写入 persona.relationships */
+async function updateRelationships(card, soulName, reply, cfg, callFn){
+  if(typeof RP_SOUL === "undefined") return 0;
+  var soul = RP_SOUL.getSoul(card);
+  if(!soul) return 0;
+  var text = ((reply || {}).dialogue || "").slice(0, 400);
+  if(!text.trim()) return 0;
+  try{
+    var raw = await callFn(cfg, [{role: "user",
+      content: "「" + soulName + "」说: " + text +
+      "\n这段话是否改变了 TA 和某人的关系? 只输出 JSON: {\"人名\": \"新关系描述\"}，无变化输出 {}。只输出 JSON。"}], 0.3);
+    var t = (typeof raw === "string") ? raw : (raw.text || "");
+    var m = t.match(/\{[\s\S]*\}/);
+    if(!m) return 0;
+    var rels = JSON.parse(m[0]);
+    var count = 0;
+    soul.persona.relationships = soul.persona.relationships || {};
+    Object.keys(rels).forEach(function(k){
+      if(rels[k] && soul.persona.relationships[k] !== rels[k]){
+        soul.persona.relationships[k] = String(rels[k]).slice(0, 200);
+        count++;
+      }
+    });
+    return count;
+  }catch(e){ return 0; }
+}
+
+/* 物品流转追踪: 谁最后拿了什么 (从 trajectory) */
+function trackItems(card){
+  var items = {}; /* item -> {holder, t} */
+  var soul = null;
+  try{ soul = (typeof RP_SOUL !== "undefined") ? RP_SOUL.getSoul(card) : null; }catch(e){}
+  if(!soul) return items;
+  (soul.trajectory || []).forEach(function(t){
+    var a = String(t.action || "");
+    /* 简单模式: 拿起/获得/交给 */
+    var m = a.match(/(拿起|获得|得到|交给|给)(.{1,10})/);
+    if(m){
+      var item = m[2].trim();
+      if(m[1] === "交给" || m[1] === "给"){
+        items[item] = {holder: "已转交", t: t.t};
+      }else{
+        items[item] = {holder: t.actor || "未知", t: t.t};
+      }
+    }
+  });
+  return items;
 }
 
 /* ============ per-soul 记忆更新 ============ */
@@ -485,7 +642,12 @@ shouldUseSoulMode: shouldUseSoulMode,
 setSoulMode: setSoulMode,
 extractSoulMemory: extractSoulMemory,
 detectEmotion: detectEmotion,
-twoStageCall: twoStageCall
+twoStageCall: twoStageCall,
+getChattiness: getChattiness, setChattiness: setChattiness,
+summarizeChat: summarizeChat, detectBigEvents: detectBigEvents,
+updateRelationships: updateRelationships,
+getLastPrompts: getLastPrompts, clearLastPrompts: clearLastPrompts,
+replaySoul: replaySoul, trackItems: trackItems
 };
 
 })();

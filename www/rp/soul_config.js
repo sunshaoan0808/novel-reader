@@ -228,6 +228,99 @@ function debugHTML(){
     "</div>";
 }
 
+/* 降级链说明 (当前顺序: 绑定 > 聊天覆盖 > 第一个 > 主配置) */
+function fallbackHTML(){
+  return "<div class=\"setcard\"><h3>模型降级链</h3>" +
+    "<div class=\"kv\" style=\"font-size:12px\"><span>1. 角色绑定</span><span class=\"dim\">角色卡单独绑定的模型</span></div>" +
+    "<div class=\"kv\" style=\"font-size:12px\"><span>2. 聊天覆盖</span><span class=\"dim\">本聊临时指定的模型</span></div>" +
+    "<div class=\"kv\" style=\"font-size:12px\"><span>3. 第一个 Profile</span><span class=\"dim\">多模型配置里的第一个</span></div>" +
+    "<div class=\"kv\" style=\"font-size:12px\"><span>4. 主配置</span><span class=\"dim\">设置页的主 API</span></div>" +
+    "<div class=\"meta\" style=\"margin-top:6px\">按顺序尝试，失败自动降级。调用追踪里会标注实际用了哪一级。</div>" +
+    "</div>";
+}
+
+/* Prompt 预览 */
+function promptPreviewHTML(){
+  var prompts = {};
+  try{
+    if(typeof RP_SOUL_ORCH !== "undefined") prompts = RP_SOUL_ORCH.getLastPrompts();
+  }catch(e){}
+  var names = Object.keys(prompts);
+  if(!names.length) return "<div class=\"setcard\"><h3>Prompt 预览</h3><div class=\"dim\">跑一轮群聊后这里会显示各 soul 的实际 prompt</div></div>";
+  var rows = names.map(function(n){
+    var p = prompts[n];
+    return "<div class=\"kv\"><span><b>" + escHtml(n) + "</b> (" + p.length + "字)</span>" +
+      "<span><button class=\"btn ghost\" style=\"font-size:11px\" " +
+      "onclick=\"RP_SOUL_CFG.showPrompt('" + escHtml(n).replace(/'/g, "\\'") + "')\">查看</button> " +
+      "<button class=\"btn ghost\" style=\"font-size:11px\" " +
+      "onclick=\"RP_SOUL_CFG.replaySoulUI('" + escHtml(n).replace(/'/g, "\\'") + "')\">重跑</button></span></div>";
+  }).join("");
+  return "<div class=\"setcard\"><h3>Prompt 预览</h3>" + rows + "</div>";
+}
+function showPrompt(name){
+  var prompts = {};
+  try{ prompts = RP_SOUL_ORCH.getLastPrompts(); }catch(e){}
+  var p = prompts[name] || "无";
+  alert("【" + name + "】的 Prompt:\n\n" + p.slice(0, 2000));
+}
+function replaySoulUI(name){
+  alert("重跑功能需要群聊上下文，请在群聊里使用");
+}
+
+/* 成本统计面板 */
+function costHTML(){
+  var cost = {};
+  try{
+    if(typeof RP_SOUL_RT !== "undefined") cost = RP_SOUL_RT.getCostStats();
+  }catch(e){}
+  var rows = Object.keys(cost).map(function(m){
+    var c = cost[m];
+    return "<div class=\"kv\" style=\"font-size:12px\"><span>" + escHtml(m) + "</span>" +
+      "<span class=\"dim\">" + c.calls + "次 · " + c.tokens + "tok · " + Math.round(c.ms/1000) + "s</span></div>";
+  }).join("");
+  return "<div class=\"setcard\"><h3>成本统计</h3>" +
+    (rows || "<div class=\"dim\">暂无</div>") +
+    (rows ? "<div class=\"btnrow\" style=\"margin-top:8px\"><button class=\"btn ghost\" onclick=\"RP_SOUL_CFG.clearCost()\">清空</button></div>" : "") +
+    "</div>";
+}
+function clearCost(){
+  try{ if(typeof RP_SOUL_RT !== "undefined") RP_SOUL_RT.clearCostStats(); }catch(e){}
+  refreshPerf();
+}
+
+/* 性能设置 */
+function perfHTML(){
+  var conc = 3, timeout = 60;
+  try{
+    conc = parseInt(localStorage.getItem("nd_soul_concurrent") || "3");
+    timeout = parseInt(localStorage.getItem("nd_soul_timeout") || "60000") / 1000;
+  }catch(e){}
+  return "<div class=\"setcard\"><h3>性能设置</h3>" +
+    "<div class=\"kv\"><span>最大并行数</span><span>" +
+    "<button class=\"btn ghost\" style=\"font-size:12px\" onclick=\"RP_SOUL_CFG.setPerf('concurrent',-1)\">-</button> " +
+    conc + " <button class=\"btn ghost\" style=\"font-size:12px\" onclick=\"RP_SOUL_CFG.setPerf('concurrent',1)\">+</button></span></div>" +
+    "<div class=\"kv\"><span>单 soul 超时 (秒)</span><span>" +
+    "<button class=\"btn ghost\" style=\"font-size:12px\" onclick=\"RP_SOUL_CFG.setPerf('timeout',-10)\">-</button> " +
+    timeout + " <button class=\"btn ghost\" style=\"font-size:12px\" onclick=\"RP_SOUL_CFG.setPerf('timeout',10)\">+</button></span></div>" +
+    "</div>";
+}
+function setPerf(key, delta){
+  try{
+    if(key === "concurrent"){
+      var v = Math.max(1, Math.min(8, (parseInt(localStorage.getItem("nd_soul_concurrent") || "3") || 3) + delta));
+      localStorage.setItem("nd_soul_concurrent", String(v));
+    }else{
+      var t = Math.max(10, Math.min(180, (parseInt(localStorage.getItem("nd_soul_timeout") || "60000") || 60000)/1000 + delta));
+      localStorage.setItem("nd_soul_timeout", String(t * 1000));
+    }
+  }catch(e){}
+  refreshPerf();
+}
+function refreshPerf(){
+  var el = document.getElementById("soul_perf_wrap");
+  if(el) el.innerHTML = perfHTML() + costHTML();
+}
+
 function clearDebug(){
   try{ if(typeof RP_SOUL_RT !== "undefined") RP_SOUL_RT.clearCallHistory(); }catch(e){}
   refreshDebug();
@@ -292,8 +385,43 @@ function soulViewHTML(card, runId, name){
     escHtml(name).replace(/'/g, "\\'") + "')\">编辑记忆</button></div></div>" +
     "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">行动日志 (" + traj.length + " 条)</div>" +
     (trajs || "<div class=\"dim\">暂无</div>") + "</div>" +
+    (function(){
+      var items = {};
+      try{ if(typeof RP_SOUL_ORCH !== "undefined") items = RP_SOUL_ORCH.trackItems(card); }catch(e){}
+      var keys = Object.keys(items);
+      if(!keys.length) return "";
+      return "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">物品流转</div>" +
+        keys.map(function(k){
+          return "<div class=\"kv\" style=\"font-size:12px\"><span>" + escHtml(k) + "</span>" +
+            "<span class=\"dim\">" + escHtml(items[k].holder) + "</span></div>";
+        }).join("") + "</div>";
+    })() +
     "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">绑定模型</div>" +
-    "<div class=\"kv\">" + escHtml(profile || "默认") + "</div></div>";
+    "<div class=\"kv\">" + escHtml(profile || "默认") + "</div></div>" +
+    (function(){
+      var q2 = escHtml(runId).replace(/'/g, "\\'"), n2 = escHtml(name).replace(/'/g, "\\'");
+      var cur = "normal";
+      try{ cur = localStorage.getItem("nd_soul_chatty_" + name) || "normal"; }catch(e){}
+      return "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">发言频率</div>" +
+        "<div class=\"btnrow\">" +
+        ["quiet", "normal", "chatty"].map(function(lv){
+          var label = lv === "quiet" ? "沉默" : (lv === "normal" ? "适中" : "话痨");
+          return "<button class=\"btn" + (cur === lv ? "" : " ghost") + "\" style=\"font-size:12px\" " +
+            "onclick=\"RP_SOUL_CFG.setChattyUI('" + q2 + "','" + n2 + "','" + lv + "')\">" + label + "</button>";
+        }).join("") + "</div></div>";
+    })() +
+    (function(){
+      var h = soulHealth(card);
+      var q = escHtml(runId).replace(/'/g, "\\'"), n = escHtml(name).replace(/'/g, "\\'");
+      return "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">健康度 " + h.score + "分</div>" +
+        (h.issues.length ? "<div class=\"kv\" style=\"color:var(--danger)\">" + escHtml(h.issues.join("、")) + "</div>"
+          : "<div class=\"kv\" style=\"color:green\">完整</div>") +
+        "<div class=\"btnrow\" style=\"margin-top:8px;flex-wrap:wrap\">" +
+        "<button class=\"btn ghost\" style=\"font-size:12px\" onclick=\"RP_SOUL_CFG.exportSoulUI('" + q + "','" + n + "')\">导出</button>" +
+        "<button class=\"btn ghost\" style=\"font-size:12px\" onclick=\"RP_SOUL_CFG.importSoulUI('" + q + "','" + n + "')\">导入</button>" +
+        "<button class=\"btn ghost\" style=\"font-size:12px\" onclick=\"RP_SOUL_CFG.applyTemplateUI('" + q + "','" + n + "')\">人格模板</button>" +
+        "</div></div>";
+    })();
 }
 
 async function genSoulUI(runId, name){
@@ -322,7 +450,154 @@ function conflictBadgeHTML(conflicts, msgIdx){
     "onclick=\"RP_SOUL_CFG.arbitrateUI(" + msgIdx + ")\">⚠️ 动作冲突 (" + conflicts.length + ") 点击裁决</button></div>";
 }
 
+/* 新手引导: 首次开 Soul 模式 */
+function maybeShowGuide(chatId){
+  try{
+    if(localStorage.getItem("nd_soul_guide_seen")) return;
+    localStorage.setItem("nd_soul_guide_seen", "1");
+  }catch(e){ return; }
+  setTimeout(function(){
+    alert("👥 Soul 多智能体模式已开启!\n\n" +
+      "• 每个角色独立思考，用自己的模型\n" +
+      "• @名字 可指定只叫 TA 回应\n" +
+      "• 角色详情页「灵魂包」可看 TA 的内心\n" +
+      "• 聊天设置里有调用追踪和成本统计");
+  }, 800);
+}
+
+/* 19. Soul 对比视图 */
+function compareSoulsUI(runId, nameA, nameB){
+  var cardA = null, cardB = null;
+  try{
+    if(typeof RP !== "undefined" && RP.findCard){
+      cardA = RP.findCard(runId, nameA);
+      cardB = RP.findCard(runId, nameB);
+    }
+  }catch(e){}
+  if(!cardA || !cardB){ alert("找不到卡片"); return; }
+  var sA = null, sB = null;
+  try{ sA = RP_SOUL.getSoul(cardA); sB = RP_SOUL.getSoul(cardB); }catch(e){}
+  if(!sA || !sB){ alert("双方都需要有 Soul 包"); return; }
+  var rows = [
+    ["宪章", (sA.soul_md || "").slice(0, 80), (sB.soul_md || "").slice(0, 80)],
+    ["特质", ((sA.persona || {}).core_traits || []).map(function(t){ return typeof t === "string" ? t : t.trait; }).join("、"),
+           ((sB.persona || {}).core_traits || []).map(function(t){ return typeof t === "string" ? t : t.trait; }).join("、")],
+    ["价值观", ((sA.persona || {}).values || []).join(" > "), ((sB.persona || {}).values || []).join(" > ")],
+    ["记忆", (((sA.memory || {}).long_term || {}).facts || []).length + "条", (((sB.memory || {}).long_term || {}).facts || []).length + "条"],
+    ["健康度", soulHealth(cardA).score + "分", soulHealth(cardB).score + "分"]
+  ];
+  var html = "<table style=\"width:100%;font-size:12px;border-collapse:collapse\">" +
+    "<tr><th></th><th>" + escHtml(nameA) + "</th><th>" + escHtml(nameB) + "</th></tr>" +
+    rows.map(function(r){
+      return "<tr style=\"border-top:1px solid var(--line)\"><td><b>" + r[0] + "</b></td>" +
+        "<td>" + escHtml(String(r[1]).slice(0, 100)) + "</td><td>" + escHtml(String(r[2]).slice(0, 100)) + "</td></tr>";
+    }).join("") + "</table>";
+  var w = window.open("", "_blank", "width=600,height=400");
+  if(w){ w.document.write("<html><body>" + html + "</body></html>"); }
+  else { alert("弹窗被拦截，对比数据:\n" + rows.map(function(r){ return r[0] + ": " + r[1] + " vs " + r[2]; }).join("\n")); }
+}
+
 /* 附体: 从群聊切换到与指定 soul 的单聊 (保留群聊上下文) */
+/* ============ Soul 导出/导入 ============ */
+function exportSoulUI(runId, name){
+  var card = null;
+  try{ if(typeof RP !== "undefined" && RP.findCard) card = RP.findCard(runId, name); }catch(e){}
+  if(!card){ alert("找不到卡片"); return; }
+  var soul = null;
+  try{ soul = RP_SOUL.getSoul(card); }catch(e){}
+  if(!soul){ alert("还没有 Soul 包"); return; }
+  var blob = new Blob([JSON.stringify(soul, null, 2)], {type: "application/json"});
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name + "_soul.json";
+  a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 5000);
+}
+
+function importSoulUI(runId, name){
+  var card = null;
+  try{ if(typeof RP !== "undefined" && RP.findCard) card = RP.findCard(runId, name); }catch(e){}
+  if(!card){ alert("找不到卡片"); return; }
+  var inp = document.createElement("input");
+  inp.type = "file"; inp.accept = ".json";
+  inp.onchange = function(){
+    var f = inp.files[0];
+    if(!f) return;
+    var rd = new FileReader();
+    rd.onload = function(){
+      try{
+        var d = JSON.parse(rd.result);
+        if(!d.persona && !d.soul_md){ alert("不是有效的 Soul 包"); return; }
+        card.extensions = card.extensions || {};
+        card.extensions.soul = d;
+        try{ if(typeof RP_CARDIMPORT !== "undefined" && card.id) RP_CARDIMPORT.update(card); }catch(e){}
+        alert("Soul 包已导入");
+        if(typeof renderDetail === "function") renderDetail();
+      }catch(e){ alert("解析失败: " + (e.message || e)); }
+    };
+    rd.readAsText(f);
+  };
+  inp.click();
+}
+
+/* ============ Soul 健康度 ============ */
+function soulHealth(card){
+  var soul = null;
+  try{ soul = (typeof RP_SOUL !== "undefined") ? RP_SOUL.getSoul(card) : null; }catch(e){}
+  if(!soul) return {score: 0, issues: ["无 Soul 包"]};
+  var score = 100, issues = [];
+  var p = soul.persona || {}, bg = soul.background || {}, mem = (soul.memory || {}).long_term || {};
+  if(!soul.soul_md){ score -= 20; issues.push("缺宪章"); }
+  if(!(p.core_traits || []).length){ score -= 15; issues.push("缺性格特质"); }
+  if(!(p.motivations || []).length){ score -= 10; issues.push("缺动机"); }
+  if(!(p.values || []).length){ score -= 10; issues.push("缺价值观"); }
+  if(!bg.origin && !bg.history){ score -= 10; issues.push("缺背景"); }
+  if(!(soul.rules || {}).decision){ score -= 10; issues.push("缺决策原则"); }
+  if(!((mem.facts || []).length)){ score -= 5; issues.push("无记忆"); }
+  if(!(soul.trajectory || []).length){ score -= 5; issues.push("无行动日志"); }
+  if(!((soul.character_book || []).length)){ score -= 5; issues.push("无私有书"); }
+  else { var dis = (soul.character_book || []).filter(function(e){ return e.enabled === false; }).length;
+    if(dis) issues.push(dis + " 条私有书被禁用"); }
+  return {score: Math.max(0, score), issues: issues};
+}
+
+/* ============ 人格模板库 ============ */
+var SOUL_TEMPLATES = [
+  {name: "傲娇", traits: ["外冷内热", "口是心非", "自尊心强"], values: ["面子", "真心"], decision: "嘴上拒绝，身体诚实"},
+  {name: "温柔大姐姐", traits: ["包容", "细心", "治愈"], values: ["陪伴", "理解"], decision: "先照顾对方感受"},
+  {name: "腹黑", traits: ["笑面虎", "谋定后动", "掌控欲"], values: ["胜利", "信息"], decision: "让对手以为自己赢了"},
+  {name: "天然呆", traits: ["单纯", "直率", "慢半拍"], values: ["开心", "朋友"], decision: "跟着感觉走"},
+  {name: "高冷", traits: ["惜字如金", "独立", "观察者"], values: ["效率", "边界"], decision: "最小代价达成目标"},
+  {name: "热血", traits: ["冲动", "讲义气", "不服输"], values: ["兄弟", "荣誉"], decision: "先做了再说"}
+];
+
+function setChattyUI(runId, name, level){
+  try{
+    if(typeof RP_SOUL_ORCH !== "undefined") RP_SOUL_ORCH.setChattiness(name, level);
+    else localStorage.setItem("nd_soul_chatty_" + name, level);
+  }catch(e){}
+  if(typeof renderDetail === "function") renderDetail();
+}
+
+function applyTemplateUI(runId, name){
+  var card = null;
+  try{ if(typeof RP !== "undefined" && RP.findCard) card = RP.findCard(runId, name); }catch(e){}
+  if(!card){ alert("找不到卡片"); return; }
+  var names = SOUL_TEMPLATES.map(function(t, i){ return (i+1) + ". " + t.name; }).join("\n");
+  var pick = prompt("选择人格模板:\n\n" + names + "\n\n输入编号 (会覆盖现有 persona):");
+  if(pick == null) return;
+  var idx = parseInt(pick) - 1;
+  if(isNaN(idx) || idx < 0 || idx >= SOUL_TEMPLATES.length){ alert("无效"); return; }
+  var tpl = SOUL_TEMPLATES[idx];
+  var soul = RP_SOUL.ensureSoul(card);
+  soul.persona.core_traits = tpl.traits.map(function(t){ return {trait: t, intensity: 75, description: ""}; });
+  soul.persona.values = tpl.values.slice();
+  soul.rules.decision = tpl.decision;
+  try{ if(typeof RP_CARDIMPORT !== "undefined" && card.id) RP_CARDIMPORT.update(card); }catch(e){}
+  alert("已套用「" + tpl.name + "」模板");
+  if(typeof renderDetail === "function") renderDetail();
+}
+
 function possessSoul(runId, soulName){
   if(!confirm("附体「" + soulName + "」? 将切换到与 TA 的单聊。")) return;
   try{
@@ -392,7 +667,15 @@ return {
   debugHTML: debugHTML, clearDebug: clearDebug, refreshDebug: refreshDebug,
   soulViewHTML: soulViewHTML, genSoulUI: genSoulUI, editMemoryUI: editMemoryUI,
   conflictBadgeHTML: conflictBadgeHTML, arbitrateUI: arbitrateUI,
-  possessSoul: possessSoul
+  possessSoul: possessSoul,
+  exportSoulUI: exportSoulUI, importSoulUI: importSoulUI,
+  soulHealth: soulHealth, applyTemplateUI: applyTemplateUI,
+  setChattyUI: setChattyUI, maybeShowGuide: maybeShowGuide,
+  compareSoulsUI: compareSoulsUI,
+  costHTML: costHTML, clearCost: clearCost,
+  perfHTML: perfHTML, setPerf: setPerf, refreshPerf: refreshPerf,
+  fallbackHTML: fallbackHTML, promptPreviewHTML: promptPreviewHTML,
+  showPrompt: showPrompt, replaySoulUI: replaySoulUI
 };
 
 })();

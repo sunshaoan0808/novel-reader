@@ -5089,6 +5089,8 @@ window.showChatSettings = ()=>{
     ${wsHtml}
 
     ${typeof RP_SOUL_CFG!=="undefined" ? `<div id="soul_debug_wrap" style="margin-bottom:8px">${RP_SOUL_CFG.debugHTML()}</div>` : ""}
+    ${typeof RP_SOUL_CFG!=="undefined" ? `<div id="soul_perf_wrap" style="margin-bottom:8px">${RP_SOUL_CFG.perfHTML()}${RP_SOUL_CFG.costHTML()}</div>` : ""}
+    ${typeof RP_SOUL_CFG!=="undefined" ? `<div style="margin-bottom:8px">${RP_SOUL_CFG.fallbackHTML()}${RP_SOUL_CFG.promptPreviewHTML()}</div>` : ""}
 
     <div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:13px;margin-bottom:8px">🔗 快捷入口</div>
       <div class="btnrow">
@@ -5115,8 +5117,9 @@ window.toggleRD = ()=>{ AGENT_RELATIONS.setEnabled(localStorage.getItem("nd_reld
 window.toggleSoulMode = ()=>{
   var chatId = (typeof chatKey !== "undefined") ? chatKey(CHAT.runId, CHAT.name) : (CHAT.runId + "|" + CHAT.name);
   try{
-    var off = localStorage.getItem("nd_soulmode_off_" + chatId) === "1";
-    if(typeof RP_SOUL_ORCH !== "undefined") RP_SOUL_ORCH.setSoulMode(chatId, off);
+    var wasOff = localStorage.getItem("nd_soulmode_off_" + chatId) === "1";
+    if(typeof RP_SOUL_ORCH !== "undefined") RP_SOUL_ORCH.setSoulMode(chatId, wasOff);
+    if(wasOff && typeof RP_SOUL_CFG !== "undefined") RP_SOUL_CFG.maybeShowGuide(chatId);
   }catch(e){}
 };
 window.saveChatParams = ()=>{
