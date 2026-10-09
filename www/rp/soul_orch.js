@@ -99,6 +99,18 @@ if(soul.soul_md) parts.push(soul.soul_md.slice(0, 800));
 /* 秘密 (只给自己!) */
 if(bg.secrets) parts.push("你的秘密(绝不主动透露): " + bg.secrets.slice(0, 500));
 
+/* 私有世界书: 按当前场景/用户输入匹配, 只有该 soul 可见 */
+try{
+  if(typeof RP_SOUL !== "undefined" && RP_SOUL.matchLore){
+    var _loreHits = RP_SOUL.matchLore(soulCard, (scene || "") + " " + (userText || ""));
+    if(_loreHits.length){
+      parts.push("你私下知道 (别人不知道): " + _loreHits.map(function(e){
+        return e.content;
+      }).join(" | ").slice(0, 800));
+    }
+  }
+}catch(e){}
+
 /* 自己的记忆视角 */
 var myFacts = (mem.perspective || []).concat(mem.facts || []).slice(-10);
 if(myFacts.length){
@@ -161,6 +173,26 @@ var jobs = souls.map(function(s){
 var prompt = buildSoulPrompt(s.card, s.name, scene, userText, history);
 var profile = (typeof RP_SOUL!== "undefined")
 ? RP_SOUL.getProfile(s.card): "";
+/* 两阶段: 检查该 soul 是否配了 think/speak 双 profile */
+var twoCfg = null;
+try{
+  var _ts = localStorage.getItem("nd_soul_twostage_" + s.name);
+  if(_ts) twoCfg = JSON.parse(_ts);
+}catch(e){}
+if(twoCfg && twoCfg.think && twoCfg.speak && typeof RP_SOUL_CFG !== "undefined"){
+  var _plist = RP_SOUL_CFG.list();
+  var _think = null, _speak = null;
+  _plist.forEach(function(pp){ if(pp.name === twoCfg.think) _think = pp; if(pp.name === twoCfg.speak) _speak = pp; });
+  if(_think && _speak){
+    var _soul = (typeof RP_SOUL !== "undefined") ? RP_SOUL.getSoul(s.card) : null;
+    return twoStageCall(s.name, s.card, _soul, scene, userText, history,
+      {think: _think, speak: _speak}, opts).then(function(r){
+      if(!r.ok) return {name: s.name, ok: false, error: r.error};
+      return {name: s.name, ok: true, reply: parseSoulReply(r.text),
+        model: r.model, fallback: "twostage"};
+    });
+  }
+}
 var messages = (history || []).concat([{role: "user", content: prompt}]);
 /* soul 的"想"用短 prompt, 温度取卡片温度 */
 return RP_SOUL_RT.callSoul({
@@ -189,15 +221,17 @@ stats: (typeof RP_SOUL_RT!== "undefined")? RP_SOUL_RT.getStats(turnId): {}};
 * 纯文本拼接 (便宜, 确定性); 需要仲裁时才调 LLM */
 function weave(results, opts){
 opts = opts || {};
+var reactions = opts.reactions || []; /* [{name, type}] */
 var parts = [];
 var actions = []; /* 写冲突检测用 */
 
 results.forEach(function(r){
 if(!r.ok ||!r.reply || r.reply.silence) return;
 var rp = r.reply;
+var isReaction = reactions.some(function(x){ return x.name === r.name; });
 var segs = [];
-if(rp.action) segs.push("【" + r.name + " " + rp.action + "】");
-if(rp.dialogue) segs.push(r.name + ": " + rp.dialogue);
+if(rp.action) segs.push(isReaction ? "_[" + r.name + " " + rp.action + "]_" : "【" + r.name + " " + rp.action + "】");
+if(rp.dialogue) segs.push(isReaction ? "_" + r.name + "（旁观）: " + rp.dialogue + "_" : r.name + ": " + rp.dialogue);
 /* inner 不直接输出, 只用于仲裁参考 */
 if(segs.length) parts.push(segs.join("\n"));
 if(rp.action) actions.push({name: r.name, action: rp.action});
@@ -245,6 +279,7 @@ function shouldUseSoulMode(runId, members, chatId){
       if(off === "1") return false;
     }
     if(!members || members.length < 2) return false;
+    if(members.length > 6) return false; /* 超 6 人降级为传统串行 (成本/延迟) */
     var withSoul = 0;
     members.forEach(function(m){
       try{
@@ -300,7 +335,7 @@ async function sendGroupSoul(runId, members, text, opts){
     temperature: opts.temperature, maxTokens: opts.maxTokens,
     contextToken: opts.contextToken
   });
-  var woven = weave(runR.results, {});
+  var woven = weave(runR.results, {reactions: sel.reactions});
   var outText = woven.text || "(无回应)";
   runR.results.forEach(function(r){
     if(!r.ok || !r.reply || r.reply.silence) return;
@@ -318,7 +353,8 @@ async function sendGroupSoul(runId, members, text, opts){
       woven.conflicts.map(function(c){ return c.a + " vs " + c.b; }).join("; ") + "]";
   }
   h.push({role: "assistant", content: outText,
-    _soul: true, _speakers: woven.speakers, _turnId: turnId});
+    _soul: true, _speakers: woven.speakers, _turnId: turnId,
+    _conflicts: woven.conflicts, _conflictResolved: false});
   /* per-soul 记忆更新: 每 4 轮一次 (成本控制) */
   try{
     var _mk = "nd_soulmem_count_" + (chatId || runId);
@@ -343,6 +379,42 @@ async function sendGroupSoul(runId, members, text, opts){
   return {history: h, speakers: woven.speakers, text: outText,
           stats: runR.stats, mode: "soul", turnId: turnId,
           conflicts: woven.conflicts};
+}
+
+/* 两阶段调用: 便宜模型"想" (inner+action), 好模型"说" (dialogue)
+ * soul 绑定两个 profile: {think: "便宜", speak: "好"} 时启用 */
+async function twoStageCall(soulName, card, soul, scene, userText, history, cfg, opts){
+  opts = opts || {};
+  var thinkCfg = cfg.think, speakCfg = cfg.speak;
+  if(!thinkCfg || !speakCfg) return null;
+
+  /* 阶段1: 想 */
+  var thinkPrompt = buildSoulPrompt(soulName, soul, scene, userText, history) +
+    "\n\n只输出内心独白和动作意向, JSON: {\"inner\": \"...\", \"action\": \"...\"}";
+  var thinkRaw = await RP_NET.complete(thinkCfg,
+    [{role: "user", content: thinkPrompt}], 0.7);
+  var thinkText = (typeof thinkRaw === "string") ? thinkRaw : (thinkRaw.text || "");
+  var m = thinkText.match(/\{[\s\S]*\}/);
+  var think = {inner: "", action: ""};
+  try{ if(m) think = JSON.parse(m[0]); }catch(e){}
+
+  /* 阶段2: 说 */
+  var speakPrompt = buildSoulPrompt(soulName, soul, scene, userText, history) +
+    "\n\n内心: " + (think.inner || "") + "\n动作意向: " + (think.action || "") +
+    "\n\n基于以上内心和动作, 只输出台词和最终动作, JSON: {\"dialogue\": \"...\", \"action\": \"...\"}";
+  var speakRaw = await RP_NET.complete(speakCfg,
+    [{role: "user", content: speakPrompt}], 0.8);
+  var speakText = (typeof speakRaw === "string") ? speakRaw : (speakRaw.text || "");
+  var m2 = speakText.match(/\{[\s\S]*\}/);
+  var speak = {dialogue: speakText, action: think.action};
+  try{ if(m2) speak = JSON.parse(m2[0]); }catch(e){}
+
+  return {ok: true, text: JSON.stringify({
+    dialogue: speak.dialogue || "",
+    action: speak.action || think.action || "",
+    inner: think.inner || "",
+    silence: false
+  }), model: speakCfg.model + "+" + thinkCfg.model, twoStage: true, soulName: soulName};
 }
 
 /* ============ per-soul 记忆更新 ============ */
@@ -412,7 +484,8 @@ sendGroupSoul: sendGroupSoul,
 shouldUseSoulMode: shouldUseSoulMode,
 setSoulMode: setSoulMode,
 extractSoulMemory: extractSoulMemory,
-detectEmotion: detectEmotion
+detectEmotion: detectEmotion,
+twoStageCall: twoStageCall
 };
 
 })();

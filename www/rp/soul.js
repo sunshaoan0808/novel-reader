@@ -103,7 +103,8 @@ function blankSoul(){
       short_term: {context: {}, recent: []},
       long_term: {facts: [], emotional: [], by_perspective: {}}
     },
-    trajectory: []
+    trajectory: [],
+    character_book: []
   };
 }
 
@@ -167,6 +168,34 @@ function read(card, path){
   if(!soul) return undefined;
   if(!path) return deepClone(soul);
   return deepClone(getPath(soul, path));
+}
+
+/* 角色专属世界书: 只有该 soul 可见的私有知识 */
+function addLore(card, keys, content){
+  var soul = getSoul(card);
+  if(!soul || !content) return false;
+  soul.character_book = soul.character_book || [];
+  soul.character_book.push({
+    keys: Array.isArray(keys) ? keys : [String(keys)],
+    content: String(content).slice(0, 2000),
+    enabled: true,
+    t: new Date().toISOString()
+  });
+  return true;
+}
+function getLore(card){
+  var soul = getSoul(card);
+  return soul ? (soul.character_book || []) : [];
+}
+function matchLore(card, text){
+  var book = getLore(card);
+  var t = String(text || "").toLowerCase();
+  return book.filter(function(e){
+    if(e.enabled === false) return false;
+    return (e.keys || []).some(function(k){
+      return t.indexOf(String(k).toLowerCase()) >= 0;
+    });
+  });
 }
 
 /* trajectory: 追加一条 {t, actor, action, result} */
@@ -285,6 +314,7 @@ return {
   write: write,
   read: read,
   log: log,
+  addLore: addLore, getLore: getLore, matchLore: matchLore,
   compress: compress,
   addFact: addFact,
   addEmotional: addEmotional,

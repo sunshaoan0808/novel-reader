@@ -2191,6 +2191,16 @@ mes: e.content
 /* 扩展数据透传: 消息级 extra(如 gouhua_snapshot)原样写回 */
 if(e.stExtra && typeof e.stExtra === "object" && Object.keys(e.stExtra).length)
 line.extra = e.stExtra;
+/* Soul 元数据: _soul/_speakers/_turnId/_conflicts 进 extra.soul */
+if(e._soul){
+  line.extra = line.extra || {};
+  line.extra.soul = {
+    speakers: e._speakers || [],
+    turnId: e._turnId || "",
+    conflicts: (e._conflicts || []).map(function(c){ return {a: c.a, b: c.b}; }),
+    conflictResolved: !!e._conflictResolved
+  };
+}
 lines.push(JSON.stringify(line));
 });
 return lines.join("\n");
@@ -2951,8 +2961,11 @@ const needFold = body.length > 600;
 const bubbleInner = needFold
 ? `<div class="foldbody">${rendered}</div><button class="foldtoggle" onclick="event.stopPropagation();foldToggle(this)">展开全文</button>`
 : rendered;
+/* Soul 冲突徽章 */
+const conflictBadge = (m._conflicts && m._conflicts.length && !m._conflictResolved && typeof RP_SOUL_CFG !== "undefined")
+? RP_SOUL_CFG.conflictBadgeHTML(m._conflicts, idx) : "";
 return `<div class="msg ${m.role==="user"?"me":""}${mtype==="narr"?" narr":""}${mtype==="npc"?" npc":""}${isCur?" curhit":""}" id="smsg-${idx}" onclick="toggleTools(event,${idx})" oncontextmenu="event.preventDefault();msgMenu(${idx});return false;" ontouchstart="msgPressStart(event,${idx})" ontouchend="msgPressEnd()" ontouchmove="msgPressEnd()">`
-+ `<div class="msgcol">${showWho?`<div class="who">${esc(who)}</div>`:""}<div class="bubble${needFold?" foldable collapsed":""}">${bubbleInner}</div>${extra}</div>`
++ `<div class="msgcol">${showWho?`<div class="who">${esc(who)}</div>`:""}<div class="bubble${needFold?" foldable collapsed":""}">${bubbleInner}${conflictBadge}</div>${extra}</div>`
 + `</div>`;
 }).join("") || `<div class="empty">还没有对话，打个招呼吧<br><span style="font-size:12px">试试：你是谁？</span></div>`;
 renderCtxBar();
@@ -4799,7 +4812,7 @@ document.body.classList.remove("chatmode");
 const card = RP.findCard(runId, nm) || {name:nm, fields:{}};
 const run = (window.__DATA__.runs||{})[runId] || {};
 titleEl.innerHTML = icon("user")+" "+esc(nm); subEl.textContent = run.novel || "";
-const tabs = [["info","资料"],["memory","记忆"],["chat","最近聊天"],["arc","人物弧光"]];
+const tabs = [["info","资料"],["memory","记忆"],["chat","最近聊天"],["arc","人物弧光"],["soul","灵魂包"]];
 let body = "";
 if(DETAIL.tab === "info"){
 /* P0 卡片详情落地页：徽章/数据条/CTA/简介/规格/开场/玩法说明/标签/档案 */
@@ -4830,6 +4843,8 @@ body = `<div class="card"><div class="name" style="font-size:14px">铁律记忆 
 + `<div class="btnrow" style="margin-top:8px"><button class="btn" onclick="detailOpenAlbum()">${icon("books")} 打开记忆事件簿</button></div></div>`;
 } else if(DETAIL.tab === "arc"){
 body = renderArcBody(runId, nm, card, q);
+} else if(DETAIL.tab === "soul"){
+body = (typeof RP_SOUL_CFG !== "undefined") ? RP_SOUL_CFG.soulViewHTML(card, runId, nm) : "<div class=\"empty\">Soul 模块未加载</div>";
 } else {
 const h = getHist(`nd_chat_${runId}_${nm}`).slice(-10);
 body = (h.map(m=>{
