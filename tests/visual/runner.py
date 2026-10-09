@@ -197,7 +197,7 @@ async def case_hidebars(c):
       out.simGone = !!sim && (sim.style.display === "none" || (function(){
         var st = sim.style.transform || "";
         return st.indexOf("translateY(") >= 0 && parseFloat(st.replace(/[^0-9.-]/g, "")) < -50;
-      })();
+      })());
       out.h0 = Math.round(h0); out.h1 = Math.round(h1);
       out.grown = true; /* 渐进式用纯 transform，无布局补位，不断言高度增长 */
       var brect = bar.getBoundingClientRect();
