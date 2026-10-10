@@ -86,23 +86,20 @@ function showRuns(){
 __backAction = null;
 titleEl.textContent = "浮生";
 subEl.textContent = `${INDEX.length} 个蒸馏任务 · 离线浏览`;
-view.innerHTML = INDEX.map(r=>{
+if(!INDEX.length){ view.innerHTML = `<div class="empty">暂无任务</div>`; return; }
+view.innerHTML = `<div class="bookwall">` + INDEX.map(r=>{
 const cover = (window.BOOKCOVER||{})[r.novel];
+const coverHtml = cover
+  ? `<img class="bw-cover" src="${esc(cover)}" alt="${esc(r.novel)}封面" loading="lazy" onerror="this.src='bg/book_cover_default.jpg'">`
+  : `<div class="bw-cover-default"><img src="bg/book_cover_default.jpg" alt=""><span>${esc(r.novel)}</span></div>`;
 return `
-<div class="card bookcard" onclick='openRun(${JSON.stringify(r.run_id)})'>
-<div class="row">
-${cover?`<img class="bookcover" src="${esc(cover)}" alt="${esc(r.novel)}封面" loading="lazy" onerror="this.src='bg/book_cover_default.jpg'">`:`<div class="bookcover-default"><img src="bg/book_cover_default.jpg" alt=""><span>${esc(r.novel)}</span></div>`}
-<div>
-<div class="name">${esc(r.novel)}</div>
-<div class="meta">${esc(r.run_id)} · ${r.n_chunks} 块</div>
+<div class="bw-card" onclick='openRun(${JSON.stringify(r.run_id)})'>
+${coverHtml}
+<div class="bw-info">
+<div class="bw-name">${esc(r.novel)}</div>
+<div class="bw-meta">${r.characters.length} 角色${r.has_plot?" · 剧情":""}${r.has_worldcard?" · 世界卡":""}</div>
 </div>
-</div>
-<div style="margin-top:8px">
-${r.characters.map(c=>`<span class="badge">${esc(c)}</span>`).join("")}
-${r.scope?`<span class="badge warn">范围蒸馏</span>`:""}
-${r.has_plot?`<span class="badge stat">有剧情层</span>`:""}${r.has_worldcard?`<span class="badge stat">有世界卡</span>`:""}
-</div>
-</div>`;}).join("") || `<div class="empty">暂无任务</div>`;
+</div>`;}).join("") + `</div>`;
 }
 
 function openRun(runId){
@@ -6823,7 +6820,7 @@ function showTraverse(){
   <div class="hint">看图写卡：选一张没有内嵌卡片数据的图片，AI 识别图中人物并写成角色卡（一图多人会自动拆成多张）。需要 vision 模型。</div>
   <div id="impList" style="margin-top:8px">${importedListHTML()}</div></div>
   <h2 class="sec">最近穿越</h2>
-  <div>${recents.length ? recents.map(travRecentHTML).join("") : `<div class="empty">还没有穿越过，从上面选一种模式开始吧</div>`}</div>
+  <div>${recents.length ? recents.map(travRecentHTML).join("") : `<div class="empty-illust"><img src="bg/empty_state.jpg" alt=""><div>还没有穿越过，从上面选一种模式开始吧</div></div>`}</div>
   <input type="file" id="travFile" accept=".png,.json" style="display:none" onchange="travImportFile(this)">
   <input type="file" id="travVisionFile" accept="image/*" style="display:none" onchange="travVisionFile(this)">`;
   window.scrollTo(0,0);

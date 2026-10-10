@@ -1074,8 +1074,12 @@ input::-webkit-input-placeholder, textarea::-webkit-input-placeholder{color:#9a9
 
 /* ================= 穿越 P0 ================= */
 .travmodes{display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:6px}
-.travmode{background:#1a1611;border:1px solid var(--line);border-radius:12px;padding:14px 12px;display:flex;gap:10px;align-items:center;cursor:pointer;transition:transform .15s ease,border-color .15s ease;animation:cardin .45s ease both;position:relative;overflow:hidden}
+.travmode{background:linear-gradient(180deg,var(--card2),var(--card));border:1px solid var(--line);border-radius:var(--r);padding:16px 14px;display:flex;gap:12px;align-items:center;cursor:pointer;transition:transform .12s ease,border-color .12s ease;animation:cardin .45s ease both;position:relative;overflow:hidden;box-shadow:var(--shadow-s)}
 .travmode:nth-child(2){animation-delay:.06s}.travmode:nth-child(3){animation-delay:.12s}.travmode:nth-child(4){animation-delay:.18s}
+.travmode .tm-icon{width:44px;height:44px;flex:none;display:flex;align-items:center;justify-content:center;
+  border-radius:12px;background:rgba(212,162,78,.10);border:1px solid rgba(212,162,78,.25);color:var(--gold-soft);}
+.travmode .tm-name{font-family:var(--serif);font-size:16px;font-weight:600;color:var(--ink);}
+.travmode .tm-desc{font-size:12px;color:var(--ink-dim);margin-top:2px;line-height:1.5;}
 /* 模式印章：一字 seal，选身份的仪式感 */
 .tm-seal{position:absolute;top:10px;right:40px;width:26px;height:26px;border-radius:7px;
   background:linear-gradient(160deg,#b54634,#8e2f1e);color:#fdf3e7;
@@ -1205,10 +1209,14 @@ body.chatmode.immersive #scenbar{ min-height:0; }
 .tl-meta{font-size:11.5px; color:var(--ink-faint); margin-top:4px;}
 
 /* ===== 方向三/四：黄金路径 & 走原著线（主题感知：金色系，跟随 --gold） ===== */
-.golden-hero{display:flex;align-items:center;justify-content:space-between;gap:10px;
-  padding:14px 16px;border-radius:14px;margin-bottom:12px;cursor:pointer;color:var(--ink);
-  background:linear-gradient(135deg,var(--card),var(--bg2));border:1px solid var(--line)}
-.golden-hero .gh-title{color:var(--gold-soft)}
+.golden-hero{position:relative;display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:18px 16px;border-radius:var(--r);margin-bottom:12px;cursor:pointer;color:var(--ink);
+  background:url('bg/splash.jpg') center/cover;border:1px solid var(--line);overflow:hidden;
+  box-shadow:var(--shadow);}
+.golden-hero::before{content:"";position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(18,16,13,.55),rgba(18,16,13,.82));}
+.golden-hero > *{position:relative;z-index:1;}
+.golden-hero .gh-title{color:var(--gold-soft);font-family:var(--serif);font-size:18px;letter-spacing:.06em;}
 .gh-title{font-size:16px;font-weight:700}
 .gh-desc{font-size:12px;opacity:.75;margin-top:3px;color:var(--ink-dim)}
 .gchars{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}
@@ -1277,6 +1285,25 @@ body.chatmode.immersive #scenbar{ min-height:0; }
 .bookcover-default span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   font-family:var(--serif);font-size:13px;font-weight:700;color:var(--gold-soft);letter-spacing:.1em;
   text-shadow:0 1px 8px rgba(0,0,0,.8);padding:4px;text-align:center}
+/* ===== 空状态插图 ===== */
+.empty-illust{text-align:center;padding:24px 16px;color:var(--ink-faint);font-size:13px;}
+.empty-illust img{width:180px;height:180px;object-fit:cover;border-radius:50%;
+  border:1px solid var(--line);margin-bottom:12px;opacity:.9;}
+/* ===== 书架封面墙 ===== */
+.bookwall{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:4px 2px;}
+.bw-card{position:relative;border-radius:var(--r);overflow:hidden;background:var(--card);
+  border:1px solid var(--line);box-shadow:var(--shadow);cursor:pointer;
+  transition:transform .12s ease, border-color .12s ease;}
+.bw-card:active{transform:scale(.97);border-color:var(--gold-deep);}
+.bw-cover{width:100%;aspect-ratio:3/4;object-fit:cover;display:block;}
+.bw-cover-default{position:relative;width:100%;aspect-ratio:3/4;overflow:hidden;}
+.bw-cover-default img{width:100%;height:100%;object-fit:cover;}
+.bw-cover-default span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:var(--serif);font-size:18px;font-weight:700;color:var(--gold-soft);
+  letter-spacing:.12em;text-shadow:0 2px 12px rgba(0,0,0,.85);padding:8px;text-align:center;}
+.bw-info{padding:10px 12px;}
+.bw-name{font-family:var(--serif);font-size:15px;font-weight:600;color:var(--ink);}
+.bw-meta{font-size:11px;color:var(--ink-faint);margin-top:3px;}
 /* ===== run 详情页封面横幅 ===== */
 .runbanner{position:relative;height:138px;border-radius:14px;overflow:hidden;
   margin-bottom:12px;border:1px solid var(--line-soft);box-shadow:var(--shadow-s)}
