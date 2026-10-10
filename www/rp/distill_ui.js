@@ -145,20 +145,30 @@ function renderConfig(){
     return renderConfigQA();
   }
   var selCount = Object.keys(S.selected).filter(function(k){ return S.selected[k]; }).length;
-  /* LLM 配置：优先复用主设置页（nd_api_cfg_v1），用户只选模型，不填 Key */
+  /* LLM 配置：优先复用主设置页（nd_api_cfg_v1），用户只选模型，不填 Key。
+     模型下拉框读设置页缓存的模型列表（nd_models），默认选中用户已配置的模型，
+     也支持手动输入（对齐设置页行为，不再写死模型名） */
   var llmBlock;
   if(llmCfg.key){
     var keySrc = llmCfg._fromMain ? "设置页已配置" : "蒸馏独立配置";
+    var modelList = [];
+    try{ modelList = JSON.parse(localStorage.getItem("nd_models") || "[]"); }catch(e){}
+    var curModel = llmCfg.model || "";
+    var modelOpts = modelList.map(function(m){
+      return `<option value="${esc(m)}"${m === curModel ? " selected" : ""}>${esc(m)}</option>`;
+    }).join("");
+    // 用户已配的模型不在列表里时，补一项保证选中态
+    if(curModel && modelList.indexOf(curModel) < 0){
+      modelOpts = `<option value="${esc(curModel)}" selected>${esc(curModel)}</option>` + modelOpts;
+    }
     llmBlock = `<div class="field">
       <label>LLM <span style="font-size:11px;color:var(--gold)">✓ ${keySrc}的 Key，无需填写</span></label>
       <div style="font-size:12px;color:var(--ink-faint)">Key: ${esc(llmCfg.key.slice(0,4))}****${esc(llmCfg.key.slice(-4))}</div>
     </div>
     <div class="field">
       <label>模型</label>
-      <select id="d_model" style="width:100%;padding:8px">
-        <option value="mimo-v2.6-flash-free"${llmCfg.model==="mimo-v2.6-flash-free"?" selected":""}>mimo-v2.6-flash-free（默认）</option>
-        <option value="mimo-v2.5-free"${llmCfg.model==="mimo-v2.5-free"?" selected":""}>mimo-v2.5-free（备用）</option>
-      </select>
+      <select id="d_model" style="width:100%;padding:8px">${modelOpts}</select>
+      <input id="d_model_custom" placeholder="或手动输入模型名" value="" style="width:100%;margin-top:6px">
     </div>`;
   }else{
     llmBlock = `<div class="field">
@@ -242,7 +252,9 @@ async function onGenPlan(){
     c.key = key; c._fromMain = false; DISTILL_LLM.saveCfg(c);
   }else{
     var modelSel = document.getElementById("d_model");
-    if(modelSel && modelSel.value){ c.model = modelSel.value; DISTILL_LLM.saveCfg(c); }
+    var modelCustom = document.getElementById("d_model_custom");
+    var picked = (modelCustom && modelCustom.value.trim()) || (modelSel && modelSel.value);
+    if(picked){ c.model = picked; DISTILL_LLM.saveCfg(c); }
   }
   if(!c.key){ alert("未配置 LLM API Key"); return; }
   S.depth = document.getElementById("d_depth").value;
