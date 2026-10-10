@@ -17,6 +17,12 @@ function isGeneric(name){
   return GENERIC_WORDS.indexOf(name) >= 0;
 }
 
+// 停用词: 姓氏滑窗误伤的高频非人名词（2026-10-10 实测补）
+var STOP_WORDS = {};
+var STOP_PHRASES = ("那个 那些 这个 这些 这里 那里 哪里 什么 怎么 为什么 如此 这样 那样 别的 别处 每当 当时 同时 之后 之前 之间 之中 之下 之上 以内 以外 以来 一起 一样 一般 一同 一切 一共 一度 一番 一家 一事 一种 一旁 一侧 一头 一边 一面 一会儿 一时 一刻 一秒 一分 一天 一月 一年 一世 一生 一辈子 东西 南北 上下 左右 前后 里外 中间 中央 当中 之内 之外 以前 以后 期间 时候 时刻 时辰 时光 时间 年代 年份 月份 日期 春夏秋冬 晨昏昼夜 今明昨 早晚 午夜 半夜 凌晨 傍晚 黄昏 清晨 正午 天地 乾坤 宇宙 世界 人间 世间 尘世 红尘 江湖 武林 朝廷 官府 衙门 客栈 酒楼 茶馆 庙宇 寺庙 道观 祠堂 山洞 洞穴 山谷 山峰 山顶 山脚 山路 官道 大道 小道 小路 街巷 村庄 城镇 城池 都城 京城 皇宫 宫殿 大殿 书房 书院 学堂 广场 市场 集市 灯会 烟火 歌舞 戏曲 拳脚 刀枪 暗器 毒药 解药 丹药 灵丹 真气 灵力 法力 修为 境界 品级 实力 势力 帮派 门派 宗门 家族 世家 豪门 贵族 皇族 大臣 武将 文官 谋士 军师 卫兵 侍卫 宾客 客人 贵客 主人 奴仆 随从 跟班 小厮 书童 弟子 门徒 徒弟 师兄 师弟 师姐 师妹 同门 秘籍 宝典 阵法 禁制 结界 封印 符箓 咒语 因果 轮回 转世 温柔 怀里 双手 方才 任何 那根 那股 子的 里的 上的 人的 有一 那一 低声 高声 大声 轻声 低低 轻轻 微微 悄悄 默默 暗暗 偷偷 满足 满意 满意地 不清 不楚 都不知 正要 将要 就要 快要 每一 每个 各位 诸位 那双 这双 双眼 眼睛 目光 眼神 眉眼 口鼻 嘴唇 嘴角 舌尖 牙齿 头发 发丝 青丝 衣衫 衣裙 长袍 衣袖 袖口 领口 腰带 玉佩 香囊 荷包 手帕 帕子 棉被 被褥 枕头 床榻 床帐 帷幔 帘子 门帘 窗户 窗棂 房门 屋门 院门 院墙 围墙 高墙 城墙 房顶 屋顶 瓦片 青瓦 梁柱 门框 台阶 石阶 石径 小径 路边 道旁 林间 林中 树下 花下 月下 灯下 烛光 火光 电光 剑光 刀光 寒光 冷光 金光 银光 白光 红光 蓝光 绿光 紫光 黑光 灰光 暗光 微光 余光 眼角 眉梢 心头 心间 心底 心底深处 脑海 脑中 耳边 耳畔 身后 身前 身旁 身侧 左右 两侧 对面 前方 后方 上方 下方 头顶 脚下 足下 身下 体内 体外 周身 全身 浑身 满身 一身 通体 遍体 鳞伤 伤痕 血痕 血迹 血渍 汗水 泪水 雨水 露水 晨露 霜降 冰雪 风雪 雨雪 阴云 乌云 浓云 烟云 云雾 雾气 水汽 热气 暑气 寒气 冷气 凉气 暖气 香气 臭气 腥气 血腥 杀气 戾气 怨气 怒气 火气 脾气 性子 性情 秉性 本性 天性 野性 魔性 妖性 鬼性 神性 佛性 慧根 灵根 仙骨 道骨 凡骨 肉身 法身 金身 真身 化身 分身 投影 虚影 残影 幻影 幻象 假象 真相 实情 内情 隐情 苦衷 难处 处境 境地 田地 下场 结局 收场 落幕 开场 开端 肇始 缘起 前缘 宿缘 孽缘 情缘 尘缘 佛缘 仙缘 机缘 造化 气数 定数 变数 异数").split(" ");
+STOP_PHRASES.forEach(function(w){ STOP_WORDS[w] = true; });
+function isStopWord(name){ return !!STOP_WORDS[name]; }
+
 // 别名清洗: 去动词尾，去截断碎片
 var VERB_TAIL = "说道问叹笑应答喊骂哭嚷道着了过";
 function cleanAlias(alias, canonical){
@@ -37,15 +43,23 @@ function extractCandidates(text, opts){
   opts = opts || {};
   var minCount = opts.minCount || 5;
   var freq = {};
+  var tagBonus = {}; // 对话标签命中的候选，质量更高
 
   // 1. 对话标签中的名字 (复用 speaker 逻辑简化版)
-  var tagRe = /([\u4e00-\u9fa5]{2,4})(?:笑道|问道|说道|叹道|忙道|答道|回道|骂道|哭道|喊道|道|说|笑|问)/g;
+  // 收紧：排除"的/他/她/它/这/那"开头（"他说"不是名字），排除"接着说"类副词+说；
+  // 只取 2-3 字（4 字多为"压低声音"类状语）；
+  // 强信号：名字前是标点/句首（"，凌安说道"），"微微一笑"这类紧贴动词的状语会被弱化
+  var tagRe = /(^|[，。！？；：“”"'\s])([\u4e00-\u9fa5]{2,3})(?:笑道|问道|说道|叹道|忙道|答道|回道|骂道|哭道|喊道|道|说|笑|问)/g;
   var m;
   var TAIL = "笑说道问叹应的了着过";
   function cleanTail(s){ while(s.length > 2 && TAIL.indexOf(s[s.length-1]) >= 0) s = s.slice(0, -1); return s; }
   while((m = tagRe.exec(text))){
-    var name = cleanTail(m[1]);
-    if(name.length >= 2) freq[name] = (freq[name] || 0) + 1;
+    var name = cleanTail(m[2]);
+    // 过滤：代词开头、副词+说结构、尾部否定词（"凌安没说"→"凌安没"非名）
+    if(/^[他她它这那]/.test(name)) continue;
+    if(/[没不别]$/.test(name)) continue;
+    if(/(?:接着|跟着|随后|于是|然后|便|就|却|倒|竟|还|又|也|都|只|单|空|白|硬|死|苦|笑|哭|喊|骂)说$/.test(m[0])) continue;
+    if(name.length >= 2){ freq[name] = (freq[name] || 0) + 1; tagBonus[name] = true; }
   }
 
   // 2. 高频 2-4 字词 (简化版，不用分词，用滑动窗口统计)
@@ -76,14 +90,26 @@ function extractCandidates(text, opts){
     }
   }
 
-  // 过滤低频 + 泛称
-  var cands = [];
+  // 过滤低频 + 泛称 + 停用词；剥离尾部的"的"并合并计数（"凌安的"→"凌安"）
+  var merged = {};
   Object.keys(freq).forEach(function(name){
-    if(freq[name] >= minCount && name.length >= 2 && !isGeneric(name)){
-      cands.push({name: name, count: freq[name]});
+    var base = name;
+    if(base.length > 2 && base[base.length-1] === "的") base = base.slice(0, -1);
+    if(base.length < 2) return;
+    merged[base] = (merged[base] || 0) + freq[name];
+    if(tagBonus[name]) tagBonus[base] = true;
+  });
+  var cands = [];
+  Object.keys(merged).forEach(function(name){
+    if(merged[name] >= minCount && !isGeneric(name) && !isStopWord(name)){
+      cands.push({name: name, count: merged[name], tagHit: !!tagBonus[name]});
     }
   });
-  cands.sort(function(a, b){ return b.count - a.count; });
+  // 对话标签命中的优先，其次按频次
+  cands.sort(function(a, b){
+    if(!!a.tagHit !== !!b.tagHit) return a.tagHit ? -1 : 1;
+    return b.count - a.count;
+  });
   return cands.slice(0, 100); // 取 Top 100
 }
 

@@ -145,13 +145,31 @@ function renderConfig(){
     return renderConfigQA();
   }
   var selCount = Object.keys(S.selected).filter(function(k){ return S.selected[k]; }).length;
+  /* LLM 配置：优先复用主设置页（nd_api_cfg_v1），用户只选模型，不填 Key */
+  var llmBlock;
+  if(llmCfg.key){
+    var keySrc = llmCfg._fromMain ? "设置页已配置" : "蒸馏独立配置";
+    llmBlock = `<div class="field">
+      <label>LLM <span style="font-size:11px;color:var(--gold)">✓ ${keySrc}的 Key，无需填写</span></label>
+      <div style="font-size:12px;color:var(--ink-faint)">Key: ${esc(llmCfg.key.slice(0,4))}****${esc(llmCfg.key.slice(-4))}</div>
+    </div>
+    <div class="field">
+      <label>模型</label>
+      <select id="d_model" style="width:100%;padding:8px">
+        <option value="mimo-v2.6-flash-free"${llmCfg.model==="mimo-v2.6-flash-free"?" selected":""}>mimo-v2.6-flash-free（默认）</option>
+        <option value="mimo-v2.5-free"${llmCfg.model==="mimo-v2.5-free"?" selected":""}>mimo-v2.5-free（备用）</option>
+      </select>
+    </div>`;
+  }else{
+    llmBlock = `<div class="field">
+      <label>LLM API Key <span style="font-size:11px;color:var(--ink-faint)">（设置页也未配置，请填写）</span></label>
+      <input type="password" id="d_key" value="" placeholder="OpenAI 兼容接口 Key" style="width:100%">
+    </div>`;
+  }
   return `<div class="card">
     <div style="font-size:13px;margin-bottom:12px">已选 <b>${selCount}</b> 个角色
       <a href="javascript:void(0)" onclick="DISTILL_UI.qaMode(true)" style="font-size:12px;margin-left:8px">💬 换问答式</a></div>
-    <div class="field">
-      <label>LLM API Key</label>
-      <input type="password" id="d_key" value="${esc(llmCfg.key || "")}" placeholder="OpenAI 兼容接口 Key" style="width:100%">
-    </div>
+    ${llmBlock}
     <div class="field">
       <label>蒸馏深度</label>
       <select id="d_depth" style="width:100%;padding:8px">
@@ -161,7 +179,6 @@ function renderConfig(){
     </div>
     <div class="btnrow">
       <button class="btn" id="d_back2">← 上一步</button>
-      <button class="btn" id="d_savekey">保存 Key</button>
       <button class="btn primary" id="d_plan">生成计划书 →</button>
     </div>
   </div>`;
@@ -216,9 +233,18 @@ function renderPlan(){
 }
 
 async function onGenPlan(){
-  var key = document.getElementById("d_key").value.trim();
-  if(!key){ alert("请填写 API Key"); return; }
-  var c = DISTILL_LLM.cfg(); c.key = key; DISTILL_LLM.saveCfg(c);
+  /* LLM 配置：有复用 Key 时只读模型选择；无 Key 时才要求填写 */
+  var c = DISTILL_LLM.cfg();
+  var keyInput = document.getElementById("d_key");
+  if(keyInput){
+    var key = keyInput.value.trim();
+    if(!key){ alert("请填写 API Key（设置页也未配置）"); return; }
+    c.key = key; c._fromMain = false; DISTILL_LLM.saveCfg(c);
+  }else{
+    var modelSel = document.getElementById("d_model");
+    if(modelSel && modelSel.value){ c.model = modelSel.value; DISTILL_LLM.saveCfg(c); }
+  }
+  if(!c.key){ alert("未配置 LLM API Key"); return; }
   S.depth = document.getElementById("d_depth").value;
   var chars = Object.keys(S.selected).filter(function(k){ return S.selected[k]; });
   if(!chars.length){ alert("请至少选一个角色"); return; }
@@ -337,13 +363,6 @@ function wire(){
 
   var b2 = document.getElementById("d_back2");
   if(b2) b2.addEventListener("click", function(){ S.step = 1; render(); });
-  var sk = document.getElementById("d_savekey");
-  if(sk) sk.addEventListener("click", function(){
-    var c = DISTILL_LLM.cfg();
-    c.key = document.getElementById("d_key").value.trim();
-    DISTILL_LLM.saveCfg(c);
-    alert("已保存");
-  });
   var pl = document.getElementById("d_plan");
   if(pl) pl.addEventListener("click", onGenPlan);
   var cf = document.getElementById("d_confirm");

@@ -13,6 +13,16 @@ function cfg(){
     if(s.key) c.key = s.key;
     if(s.model) c.model = s.model;
   }catch(e){}
+  /* 复用主设置页已配置的 LLM（用户投诉：蒸馏不应再填一遍 Key）。
+     优先级：蒸馏独立配置 > 主设置 nd_api_cfg_v1 */
+  if(!c.key){
+    try{
+      var main = JSON.parse(localStorage.getItem("nd_api_cfg_v1") || "{}");
+      if(main.key){ c.key = main.key; c._fromMain = true; }
+      if(main.base && !s.baseUrl) c.baseUrl = main.base;
+      if(main.model && !s.model) c.model = main.model;
+    }catch(e){}
+  }
   return c;
 }
 
