@@ -1923,35 +1923,45 @@ function setBars(v){
 setBars(false);
 /* 兼容旧测试钩子：__setHeadHidden(true)=隐藏，(false)=显示 */
 window.__setHeadHidden = (hide)=>setBars(!hide);
-/* 点按中间 toggles：只响应 chatlog 本体的点按（消息气泡/按钮不触发），
-   且为轻点（非滑动），点击位置在屏幕中部 20%~80% */
+/* 点按中间呼出/隐藏：栏隐藏时，点中部任意位置（包括消息气泡）只呼出栏，
+   不触发消息的编辑栏（capture 拦截 + 吞掉事件）；栏显示时点空白处隐藏栏。
+   轻点判定：位移<12px、时长<400ms；中部区域为屏幕 20%~80%。 */
 let tsX=0, tsY=0, tsT=0;
 log.addEventListener("touchstart", (e)=>{
   const t = e.touches[0];
   tsX = t.clientX; tsY = t.clientY; tsT = Date.now();
 }, {passive:true});
+function isTap(clientX, clientY){
+  /* 移动端用 touchstart 记录的起点；桌面端直接视为 tap */
+  if(tsT){
+    const dx = clientX - tsX, dy = clientY - tsY;
+    if(Math.hypot(dx, dy) > 12 || Date.now() - tsT > 400) return false;
+  }
+  const h = window.innerHeight;
+  return clientY >= h*0.2 && clientY <= h*0.8;
+}
+/* 移动端：touchend 先行，呼出栏并立 flag 供 toggleTools 吞掉随后到来的 click */
 log.addEventListener("touchend", (e)=>{
   const t = e.changedTouches[0];
-  const dx = t.clientX - tsX, dy = t.clientY - tsY;
-  const dt = Date.now() - tsT;
-  /* 轻点：位移<12px，时长<400ms */
-  if(Math.hypot(dx, dy) > 12 || dt > 400) return;
-  /* 只响应点在 chatlog 本体（非消息/按钮） */
-  if(e.target !== log) return;
-  /* 中部区域 */
-  const y = t.clientY, h = window.innerHeight;
-  if(y < h*0.2 || y > h*0.8) return;
-  setBars(!barsVisible);
+  if(!isTap(t.clientX, t.clientY)) return;
+  if(!barsVisible){
+    setBars(true);
+    window.__barsRevealTs = Date.now();
+  }
 }, {passive:true});
-/* mouse 兼容（桌面测试） */
+/* 桌面端 + 兜底：capture 阶段拦截，栏隐藏时吞掉消息的 click */
 log.addEventListener("click", (e)=>{
-  if(e.target !== log) return;
-  const y = e.clientY, h = window.innerHeight;
-  if(y < h*0.2 || y > h*0.8) return;
-  /* 避免 touchend 后又触发 click 导致 toggles 两次 */
-  if(Date.now() - tsT < 500) return;
-  setBars(!barsVisible);
-});
+  if(!isTap(e.clientX, e.clientY)) return;
+  /* 避免 touchend 已处理后又触发一次 */
+  if(Date.now() - tsT < 500 && tsT) return;
+  if(!barsVisible){
+    e.stopPropagation();
+    e.preventDefault();
+    setBars(true);
+  }else if(e.target === log){
+    setBars(false);
+  }
+}, true);
 /* 滑动隐藏：栏显示时一旦滚动就藏 */
 let lastST = log.scrollTop;
 log.addEventListener("scroll", ()=>{
@@ -2507,6 +2517,11 @@ const collapsed = b.classList.toggle("collapsed");
 btn.textContent = collapsed ? "展开全文" : "收起";
 };
 window.toggleTools = (ev, idx)=>{
+/* 沉浸式呼出栏的点按：吞掉，不弹编辑栏 */
+if(window.__barsRevealTs && Date.now() - window.__barsRevealTs < 600){
+  window.__barsRevealTs = 0;
+  return;
+}
 if(_pressFired){ _pressFired = false; return; }
 /* P2: 打字机动画中点气泡 = 立即打断完成 */
 if(typeof twFinish!=="undefined" && TW.timer && TW.idx===idx){ twFinish(); return; }
