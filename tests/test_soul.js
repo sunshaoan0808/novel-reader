@@ -134,5 +134,21 @@ function mkCard(){
   t("getSoul: 兼容 raw.extensions", RP_SOUL.getSoul(card) !== null);
 })();
 
+/* 11. ensureSoul 收养 raw.extensions 里的导入 soul，不建空盖掉 */
+(function(){
+  var imported = RP_SOUL.blankSoul();
+  imported.memory = {facts: ["imported-fact"]};
+  var card = {raw: {extensions: {soul: imported}}};
+  var s = RP_SOUL.ensureSoul(card);
+  t("ensureSoul: 返回导入的 soul（非空对象）",
+    s && s.memory && s.memory.facts[0] === "imported-fact");
+  t("ensureSoul: 已收养到顶层 card.extensions.soul",
+    card.extensions && card.extensions.soul === s);
+  /* 写操作落到被收养的对象上 */
+  RP_SOUL.write(card, {kind: "fact", text: "new-fact"});
+  t("ensureSoul: 写操作不丢导入数据",
+    s.memory.facts.indexOf("imported-fact") >= 0);
+})();
+
 console.log("\nPASS: " + pass + " FAIL: " + fail);
 process.exit(fail ? 1 : 0);

@@ -83,10 +83,15 @@ function getSoul(card){
 
 /* 确保 card.extensions.soul 存在, 返回 soul 对象 (可写引用) */
 function ensureSoul(card){
-  card.extensions = card.extensions || {};
-  if(!card.extensions.soul || typeof card.extensions.soul !== "object"){
-    card.extensions.soul = blankSoul();
+  /* 先收养已存在的 soul（包括 raw.extensions 里的导入残留），避免建空对象盖掉导入数据 */
+  var existing = getSoul(card);
+  if(existing && typeof existing === "object"){
+    card.extensions = card.extensions || {};
+    if(card.extensions.soul !== existing) card.extensions.soul = existing;
+    return existing;
   }
+  card.extensions = card.extensions || {};
+  card.extensions.soul = blankSoul();
   return card.extensions.soul;
 }
 
