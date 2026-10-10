@@ -23,7 +23,9 @@ function show(){
 }
 
 function stepDots(){
-  var labels = ["上传", "发现角色", "配置", "计划书", "蒸馏", "剧本包"];
+  /* 顺序：上传 → 配置LLM → 发现角色 → 计划书 → 蒸馏 → 剧本包
+     LLM 必须在发现之前配好，否则发现时的 LLM 确认直接报错 */
+  var labels = ["上传", "配置", "发现角色", "计划书", "蒸馏", "剧本包"];
   return `<div style="display:flex;gap:4px;margin-bottom:16px">` +
     labels.map(function(l, i){
       var c = i === S.step ? "var(--gold)" : i < S.step ? "var(--ink)" : "var(--line)";
@@ -42,8 +44,8 @@ function render(){
   }catch(e){}
   var html = `<h2 class="sec">手机蒸馏</h2>` + stepDots() + banner;
   if(S.step === 0) html += renderUpload();
-  else if(S.step === 1) html += renderDiscover();
-  else if(S.step === 2) html += renderConfig();
+  else if(S.step === 1) html += renderConfig();
+  else if(S.step === 2) html += renderDiscover();
   else if(S.step === 3) html += renderPlan();
   else if(S.step === 4) html += renderDistill();
   else if(S.step === 5) html += renderPackages();
@@ -120,7 +122,7 @@ function renderDiscover(){
     </div>
     <div class="btnrow" style="margin-top:12px">
       <button class="btn" id="d_back1">← 上一步</button>
-      <button class="btn primary" id="d_next1">下一步 →</button>
+      <button class="btn primary" id="d_plan">生成计划书 →</button>
     </div>
   </div>`;
 }
@@ -144,7 +146,6 @@ function renderConfig(){
   if(S.qaMode){
     return renderConfigQA();
   }
-  var selCount = Object.keys(S.selected).filter(function(k){ return S.selected[k]; }).length;
   /* LLM 配置：优先复用主设置页（nd_api_cfg_v1），用户只选模型，不填 Key。
      模型下拉框读设置页缓存的模型列表（nd_models），默认选中用户已配置的模型，
      也支持手动输入（对齐设置页行为，不再写死模型名） */
@@ -177,7 +178,7 @@ function renderConfig(){
     </div>`;
   }
   return `<div class="card">
-    <div style="font-size:13px;margin-bottom:12px">已选 <b>${selCount}</b> 个角色
+    <div style="font-size:13px;margin-bottom:12px">先配置 LLM，再发现角色
       <a href="javascript:void(0)" onclick="DISTILL_UI.qaMode(true)" style="font-size:12px;margin-left:8px">💬 换问答式</a></div>
     ${llmBlock}
     <div class="field">
@@ -189,7 +190,7 @@ function renderConfig(){
     </div>
     <div class="btnrow">
       <button class="btn" id="d_back2">← 上一步</button>
-      <button class="btn primary" id="d_plan">生成计划书 →</button>
+      <button class="btn primary" id="d_todiscover">开始发现角色 →</button>
     </div>
   </div>`;
 }
@@ -242,13 +243,13 @@ function renderPlan(){
   </div>`;
 }
 
-async function onGenPlan(){
-  /* LLM 配置：有复用 Key 时只读模型选择；无 Key 时才要求填写 */
+/* 从配置页保存 LLM 选择（点"开始发现角色"时调用） */
+function saveLlmChoice(){
   var c = DISTILL_LLM.cfg();
   var keyInput = document.getElementById("d_key");
   if(keyInput){
     var key = keyInput.value.trim();
-    if(!key){ alert("请填写 API Key（设置页也未配置）"); return; }
+    if(!key){ alert("请填写 API Key（设置页也未配置）"); return false; }
     c.key = key; c._fromMain = false; DISTILL_LLM.saveCfg(c);
   }else{
     var modelSel = document.getElementById("d_model");
@@ -256,11 +257,18 @@ async function onGenPlan(){
     var picked = (modelCustom && modelCustom.value.trim()) || (modelSel && modelSel.value);
     if(picked){ c.model = picked; DISTILL_LLM.saveCfg(c); }
   }
-  if(!c.key){ alert("未配置 LLM API Key"); return; }
-  S.depth = document.getElementById("d_depth").value;
+  if(!DISTILL_LLM.cfg().key){ alert("未配置 LLM API Key"); return false; }
+  var depthSel = document.getElementById("d_depth");
+  if(depthSel) S.depth = depthSel.value;
+  return true;
+}
+
+async function onGenPlan(){
+  /* 配置页已在"开始发现角色"时保存 LLM 选择，这里直接读 */
+  var c = DISTILL_LLM.cfg();
+  if(!c.key){ alert("未配置 LLM API Key，请返回上一步配置"); return; }
   var chars = Object.keys(S.selected).filter(function(k){ return S.selected[k]; });
   if(!chars.length){ alert("请至少选一个角色"); return; }
-
   S.step = 3; render();
 
   // 生成推荐理由 (LLM)
@@ -360,23 +368,28 @@ function wire(){
   if(f) f.addEventListener("change", onFile);
 
   var n0 = document.getElementById("d_next0");
-  if(n0) n0.addEventListener("click", function(){ S.step = 1; render(); runDiscover(); });
+  if(n0) n0.addEventListener("click", function(){ S.step = 1; render(); });
+
+  /* 配置页 → 发现页：先保存 LLM 选择，再跑发现 */
+  var td = document.getElementById("d_todiscover");
+  if(td) td.addEventListener("click", function(){
+    if(!saveLlmChoice()) return;
+    S.step = 2; render(); runDiscover();
+  });
+
+  var b2 = document.getElementById("d_back2");
+  if(b2) b2.addEventListener("click", function(){ S.step = 0; render(); });
 
   var b1 = document.getElementById("d_back1");
-  if(b1) b1.addEventListener("click", function(){ S.step = 0; render(); });
-  var n1 = document.getElementById("d_next1");
-  if(n1) n1.addEventListener("click", function(){
+  if(b1) b1.addEventListener("click", function(){ S.step = 1; render(); });
+  var pl = document.getElementById("d_plan");
+  if(pl) pl.addEventListener("click", function(){
     // 收集选中
     document.querySelectorAll("[data-char]").forEach(function(cb){
       S.selected[cb.getAttribute("data-char")] = cb.checked;
     });
-    S.step = 2; render();
+    onGenPlan();
   });
-
-  var b2 = document.getElementById("d_back2");
-  if(b2) b2.addEventListener("click", function(){ S.step = 1; render(); });
-  var pl = document.getElementById("d_plan");
-  if(pl) pl.addEventListener("click", onGenPlan);
   var cf = document.getElementById("d_confirm");
   if(cf) cf.addEventListener("click", onStartDistill);
   var bp = document.getElementById("d_backplan");

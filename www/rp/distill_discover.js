@@ -114,20 +114,39 @@ function extractCandidates(text, opts){
 }
 
 // 第二遍: LLM 确认 + 别名归一
+// 为每个候选提取 N 条证据句（名字出现的原句），供 LLM 快速判断是否为真角色
+function extractEvidence(text, name, n){
+  n = n || 5;
+  var out = [];
+  // 按句切分（。！？\n），找包含名字的句子
+  var sentences = text.split(/[。！？\n]+/);
+  for(var i = 0; i < sentences.length && out.length < n; i++){
+    var s = sentences[i].trim();
+    if(s.indexOf(name) >= 0 && s.length >= 8 && s.length <= 120){
+      // 去重：太相似的跳过
+      var dup = out.some(function(e){ return e === s; });
+      if(!dup) out.push(s);
+    }
+  }
+  return out;
+}
+
 async function confirmCharacters(candidates, text, opts, warnings){
   opts = opts || {};
   warnings = warnings || [];
   var onProgress = opts.onProgress || function(){};
   // 取 Top 30 让 LLM 确认
   var top = candidates.slice(0, 30);
+  onProgress(0, 1, "提取证据句...");
+  // 每个候选附 5 条证据句
+  var candsWithEv = top.map(function(c){
+    return {name: c.name, count: c.count, evidence: extractEvidence(text, c.name, 5)};
+  });
   onProgress(0, 1, "LLM 确认角色...");
   try{
     var r = await DISTILL_LLM.chat([
-      {role: "system", content: "你是小说角色识别器。从候选名单中确认哪些是真实人物角色，合并别名。返回 JSON: {\"characters\": [{\"name\": \"正名\", \"aliases\": [\"别名\"], \"importance\": 1-10, \"reason\": \"一句话推荐理由\"}]}。importance 按戏份打分，reason 说明为什么值得蒸馏（如：主角/关键情节推动者/有完整成长弧）。"},
-      {role: "user", content: JSON.stringify({
-        candidates: top.map(function(c){ return {name: c.name, count: c.count}; }),
-        sample: text.slice(0, 2000)
-      })}
+      {role: "system", content: "你是小说角色识别器。从候选名单中确认哪些是真实人物角色，合并别名。每个候选附了 5 条原文证据句，帮你快速判断（证据句里名字若指代物品/状语/泛称则不是角色）。返回 JSON: {\"characters\": [{\"name\": \"正名\", \"aliases\": [\"别名\"], \"importance\": 1-10, \"reason\": \"一句话推荐理由\"}]}。importance 按戏份打分，reason 说明为什么值得蒸馏（如：主角/关键情节推动者/有完整成长弧）。"},
+      {role: "user", content: JSON.stringify({candidates: candsWithEv})}
     ]);
     var m = r.content.match(/\{[\s\S]*\}/);
     if(m){
