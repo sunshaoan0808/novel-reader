@@ -161,7 +161,9 @@ body{
 .bubble{
   background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.07); border-radius:12px;
   box-shadow:none; padding:10px 16px; font-size:16px; line-height:24px; word-break:break-word;
+  transition:transform .12s ease, border-color .12s ease;
 }
+.bubble:active{transform:scale(.985);}
 .bubble p{margin:.4em 0;} .bubble p:first-child{margin-top:0;} .bubble p:last-child{margin-bottom:0;}
 .bubble ul{margin:.4em 0; padding-left:1.2em;}
 .bubble code{background:#100e0b; padding:1px 6px; border-radius:5px; font-size:13px; color:var(--gold-soft);}
@@ -170,9 +172,14 @@ body{
 .bubble h1:first-child,.bubble h2:first-child,.bubble h3:first-child{margin-top:0;}
 .bubble blockquote{margin:.4em 0; padding:2px 0 2px 10px; border-left:2px solid rgba(212,162,78,.4); color:rgba(236,228,211,.78); font-style:italic;}
 .msg.me .bubble{background:rgba(212,162,78,.13); border-color:rgba(212,162,78,.20); color:#f4ead2;}
-.typing{align-self:flex-start; font-size:12px; color:var(--ink-faint); padding:6px 4px;
-  animation:pulse 1.2s infinite;}
-@keyframes pulse{0%,100%{opacity:.5;} 50%{opacity:1;}}
+.typing{align-self:flex-start; padding:8px 4px; display:flex; gap:4px; align-items:center;
+  font-size:12px; color:var(--ink-faint);}
+.typing i{width:6px; height:6px; border-radius:50%; background:var(--gold); opacity:.4;
+  animation:tdot 1.2s infinite;}
+.typing i:nth-child(2){animation-delay:.2s;}
+.typing i:nth-child(3){animation-delay:.4s;}
+@keyframes tdot{0%,100%{opacity:.25; transform:none;} 50%{opacity:1; transform:translateY(-3px);}}
+@media (prefers-reduced-motion:reduce){.typing i{animation:none; opacity:.6;}}
 .chatbar{display:flex; gap:8px; padding:10px; background:var(--nav-bg);
   border-top:1px solid var(--line-soft);}
 .chatbar input{
@@ -1263,6 +1270,13 @@ body.chatmode.immersive #scenbar{ min-height:0; }
 .bookcover{width:54px;height:72px;object-fit:cover;border-radius:6px;flex:none;
   box-shadow:var(--shadow-s);border:1px solid var(--line-soft)}
 .bookcover.gbk{width:64px;height:86px}
+/* 默认书封面：底图 + 书名叠字 */
+.bookcover-default{position:relative;width:54px;height:72px;flex:none;border-radius:6px;overflow:hidden;
+  box-shadow:var(--shadow-s);border:1px solid var(--line-soft)}
+.bookcover-default img{width:100%;height:100%;object-fit:cover}
+.bookcover-default span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:var(--serif);font-size:13px;font-weight:700;color:var(--gold-soft);letter-spacing:.1em;
+  text-shadow:0 1px 8px rgba(0,0,0,.8);padding:4px;text-align:center}
 /* ===== run 详情页封面横幅 ===== */
 .runbanner{position:relative;height:138px;border-radius:14px;overflow:hidden;
   margin-bottom:12px;border:1px solid var(--line-soft);box-shadow:var(--shadow-s)}

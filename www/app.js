@@ -91,7 +91,7 @@ const cover = (window.BOOKCOVER||{})[r.novel];
 return `
 <div class="card bookcard" onclick='openRun(${JSON.stringify(r.run_id)})'>
 <div class="row">
-${cover?`<img class="bookcover" src="${esc(cover)}" alt="${esc(r.novel)}封面" loading="lazy" onerror="this.remove()">`:`<div class="avatar">${esc(r.novel[0]||"书")}</div>`}
+${cover?`<img class="bookcover" src="${esc(cover)}" alt="${esc(r.novel)}封面" loading="lazy" onerror="this.src='bg/book_cover_default.jpg'">`:`<div class="bookcover-default"><img src="bg/book_cover_default.jpg" alt=""><span>${esc(r.novel)}</span></div>`}
 <div>
 <div class="name">${esc(r.novel)}</div>
 <div class="meta">${esc(r.run_id)} · ${r.n_chunks} 块</div>
@@ -158,7 +158,7 @@ function charCardHTML(o){
 return `<div class="charcard" onclick="${o.oncard}">`
 + `<div class="charcover ${charCoverCls(o.name)}">`
 + (o.tag?`<div class="tag">${esc(o.tag)}</div>`:"")
-+ (o.img?`<img class="charimg" src="${esc(o.img)}" alt="" loading="lazy" onerror="this.remove()">`:`<div class="big">${esc((o.name||"?")[0])}</div>`)
++ (o.img?`<img class="charimg" src="${esc(o.img)}" alt="" loading="lazy" onerror="this.src='bg/avatar_default.jpg'">`:`<img class="charimg" src="bg/avatar_default.jpg" alt="">`)
 + `</div>`
 + `<div class="charbody"><div class="n">${esc(o.name)}</div>`
 + (o.stat?`<div class="statline">${esc(o.stat)}</div>`:"")
