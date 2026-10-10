@@ -4767,9 +4767,12 @@ function cardLandingHTML(runId, nm, card, run){
   const tags = cardTags(card);
   let h = "";
   /* 1. 封面头：头像 + 名字 + 出处 + 徽章 */
-  h += `<div class="card" style="text-align:center;padding:22px 14px 16px">`
-    + `<div class="avatar" style="width:76px;height:76px;font-size:32px;margin:0 auto">${esc((nm || "?")[0])}</div>`
-    + `<div class="name" style="font-size:20px;margin-top:10px">${esc(nm)}</div>`
+  const _cimg = card.img || card.avatar || "";
+  h += `<div class="card char-hero">`
+    + (_cimg
+      ? `<img class="char-hero-avatar" src="${esc(_cimg)}" alt="" loading="lazy" onerror="this.src='bg/avatar_default.jpg'">`
+      : `<img class="char-hero-avatar" src="bg/avatar_default.jpg" alt="">`)
+    + `<div class="char-hero-name">${esc(nm)}</div>`
     + (novel ? `<div class="kv" style="margin-top:3px">${esc(novel)}</div>` : "")
     + (badges.length ? `<div style="margin-top:10px">` + badges.map(b=>`<span class="tagchip clickable" onclick="badgeTip('${b}')">${esc(badgeLabel(b))}</span>`).join("") + `</div>` : "")
     + `</div>`;

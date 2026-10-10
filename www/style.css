@@ -1285,6 +1285,40 @@ body.chatmode.immersive #scenbar{ min-height:0; }
 .bookcover-default span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   font-family:var(--serif);font-size:13px;font-weight:700;color:var(--gold-soft);letter-spacing:.1em;
   text-shadow:0 1px 8px rgba(0,0,0,.8);padding:4px;text-align:center}
+/* ===== 角色详情 hero ===== */
+.char-hero{position:relative;text-align:center;padding:0 0 18px;overflow:hidden;}
+.char-hero::before{content:"";position:absolute;top:0;left:0;right:0;height:120px;
+  background:url('bg/splash.jpg') center/cover;opacity:.35;}
+.char-hero::after{content:"";position:absolute;top:0;left:0;right:0;height:120px;
+  background:linear-gradient(180deg,transparent 40%,var(--card) 100%);}
+.char-hero-avatar{position:relative;z-index:1;width:88px;height:88px;border-radius:50%;object-fit:cover;
+  margin:36px auto 0;border:2px solid var(--gold-deep);box-shadow:0 0 24px rgba(212,162,78,.3);}
+.char-hero-name{position:relative;z-index:1;font-family:var(--serif);font-size:22px;font-weight:700;
+  color:var(--ink);margin-top:12px;letter-spacing:.08em;}
+.char-hero .kv{position:relative;z-index:1;}
+/* ===== 蒸馏角色选择卡 ===== */
+.dchar{display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid var(--line-soft);cursor:pointer;}
+.dchar input[type="checkbox"]{width:20px;height:20px;flex:none;accent-color:var(--gold);}
+.dchar-avatar{width:48px;height:48px;border-radius:50%;object-fit:cover;flex:none;
+  border:1px solid var(--line);}
+.dchar-name{font-family:var(--serif);font-size:15px;font-weight:600;color:var(--ink);}
+.dchar-star{font-size:11px;color:var(--gold);margin-left:6px;}
+.dchar-meta{font-size:11px;color:var(--ink-faint);margin-top:2px;}
+.dchar-reason{font-size:11px;color:var(--gold-soft);margin-top:3px;line-height:1.5;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+/* ===== 蒸馏步骤指示器 ===== */
+.dsteps{display:flex;align-items:flex-start;margin-bottom:18px;padding:0 4px;}
+.dstep{display:flex;flex-direction:column;align-items:center;flex:none;}
+.ds-dot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:700;background:var(--card);border:1px solid var(--line);color:var(--ink-faint);}
+.dstep.cur .ds-dot{background:rgba(212,162,78,.15);border-color:var(--gold);color:var(--gold-soft);
+  box-shadow:0 0 12px rgba(212,162,78,.25);}
+.dstep.done .ds-dot{background:var(--gold-deep);border-color:var(--gold-deep);color:#12100d;}
+.ds-label{font-size:10px;color:var(--ink-faint);margin-top:4px;white-space:nowrap;}
+.dstep.cur .ds-label{color:var(--gold-soft);}
+.dstep.done .ds-label{color:var(--ink-dim);}
+.ds-line{flex:1;height:1px;background:var(--line);margin:14px 2px 0;}
+.ds-line.done{background:var(--gold-deep);}
 /* ===== 空状态插图 ===== */
 .empty-illust{text-align:center;padding:24px 16px;color:var(--ink-faint);font-size:13px;}
 .empty-illust img{width:180px;height:180px;object-fit:cover;border-radius:50%;

@@ -26,11 +26,11 @@ function stepDots(){
   /* 顺序：上传 → 配置LLM → 发现角色 → 计划书 → 蒸馏 → 剧本包
      LLM 必须在发现之前配好，否则发现时的 LLM 确认直接报错 */
   var labels = ["上传", "配置", "发现角色", "计划书", "蒸馏", "剧本包"];
-  return `<div style="display:flex;gap:4px;margin-bottom:16px">` +
+  return `<div class="dsteps">` +
     labels.map(function(l, i){
-      var c = i === S.step ? "var(--gold)" : i < S.step ? "var(--ink)" : "var(--line)";
-      return `<div style="flex:1;text-align:center;font-size:11px;color:${c}">
-        <div style="height:4px;background:${c};border-radius:2px;margin-bottom:4px"></div>${l}</div>`;
+      var st = i === S.step ? "cur" : i < S.step ? "done" : "";
+      return `<div class="dstep ${st}"><div class="ds-dot">${i < S.step ? "✓" : (i+1)}</div><div class="ds-label">${l}</div></div>` +
+        (i < labels.length - 1 ? `<div class="ds-line ${i < S.step ? "done" : ""}"></div>` : "");
     }).join("") + `</div>`;
 }
 
@@ -108,14 +108,15 @@ function renderDiscover(){
     <div style="max-height:400px;overflow-y:auto">
     ${S.discovered.map(function(c, i){
       var checked = S.selected[c.name] !== false ? "checked" : "";
-      return `<label style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)">
-        <input type="checkbox" data-char="${esc(c.name)}" ${checked} style="margin-right:10px">
-        <div style="flex:1">
-          <div style="font-weight:600">${esc(c.name)}
-            <span style="font-size:11px;color:var(--gold)">★${c.importance}</span></div>
-          <div style="font-size:11px;color:var(--ink-faint)">
+      return `<label class="dchar">
+        <input type="checkbox" data-char="${esc(c.name)}" ${checked}>
+        <img class="dchar-avatar" src="bg/avatar_default.jpg" alt="">
+        <div style="flex:1;min-width:0">
+          <div class="dchar-name">${esc(c.name)}
+            <span class="dchar-star">★${c.importance}</span></div>
+          <div class="dchar-meta">
             出现 ${c.count} 次${c.aliases.length ? " · 别名: " + c.aliases.map(esc).join("、") : ""}</div>
-          ${c.reason ? `<div style="font-size:11px;color:var(--gold);margin-top:2px">💡 ${esc(c.reason)}</div>` : ""}
+          ${c.reason ? `<div class="dchar-reason">💡 ${esc(c.reason)}</div>` : ""}
         </div>
       </label>`;
     }).join("")}
