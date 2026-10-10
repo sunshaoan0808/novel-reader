@@ -377,7 +377,7 @@ async function runDiscover(){
     S.discovered = await DISTILL_DISCOVER.discover(S.text, {
       onProgress: function(d, t, m){
         var me = msgEl(); if(me) me.textContent = m;
-        var be = barEl(); if(be && be.firstChild) be.firstChild.style.width = (d / t * 100) + "%";
+        var be = barEl(); if(be && be.firstElementChild) be.firstElementChild.style.width = (d / t * 100) + "%";
       }
     });
     // 默认选中 Top 12
@@ -436,7 +436,7 @@ async function onStartDistill(){
   function prog(msg, pct){
     var stat = (window.DISTILL_LLM && DISTILL_LLM.fmtStats) ? DISTILL_LLM.fmtStats() : "";
     var m = document.getElementById("d_msg"); if(m) m.textContent = msg + (stat ? "  [" + stat + "]" : "");
-    var b = document.getElementById("d_bar"); if(b && b.firstChild) b.firstChild.style.width = (pct || 0) + "%";
+    var b = document.getElementById("d_bar"); if(b && b.firstElementChild) b.firstElementChild.style.width = (pct || 0) + "%";
   }
 
   var ckptKey = "nd_distill_ckpt_" + S.pkg.id;
