@@ -22,8 +22,8 @@
    "name": "scroll-no-jitter",
    "ok": true,
    "detail": {
-    "s0": 0,
-    "s1": 0,
+    "s0": 60,
+    "s1": 60,
     "s2": 60,
     "s3": 60,
     "lastAI": 17,
@@ -36,44 +36,10 @@
    "name": "scroll-hidebars",
    "ok": true,
    "detail": {
-    "preHidden": false,
-    "cleanStart": true,
-    "maxST": 2104,
-    "immediate": true,
-    "distAfter20": 20,
-    "trace": [
-     true,
-     true,
-     true,
-     true,
-     true,
-     true
-    ],
-    "noFlickerSlow": true,
-    "hidden": true,
-    "scenGone": true,
-    "simGone": true,
-    "h0": 328,
-    "h1": 624,
-    "grown": true,
-    "barTop": 797,
-    "winH": 800,
-    "barGone": true,
-    "flick": [
-     true,
-     true,
-     true,
-     true,
-     true,
-     true
-    ],
-    "noFlickerTop": true,
-    "stillHidden": true,
-    "shown": true,
-    "shownGeo": true,
-    "scenBack": true,
-    "simBack": true,
-    "distEnd": 0
+    "initHidden": true,
+    "tapShown": true,
+    "scrollHidden": true,
+    "tapShown2": true
    }
   },
   {
@@ -119,7 +85,7 @@
      "overlaps": 0,
      "overflows": 0,
      "pageOverflow": false,
-     "nLeaf": 116,
+     "nLeaf": 99,
      "overlapSample": [],
      "overflowSample": []
     },
@@ -127,7 +93,7 @@
      "overlaps": 0,
      "overflows": 0,
      "pageOverflow": false,
-     "nLeaf": 186,
+     "nLeaf": 181,
      "overlapSample": [],
      "overflowSample": []
     },
@@ -135,7 +101,7 @@
      "overlaps": 0,
      "overflows": 0,
      "pageOverflow": false,
-     "nLeaf": 45,
+     "nLeaf": 40,
      "overlapSample": [],
      "overflowSample": []
     }
