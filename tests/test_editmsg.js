@@ -49,7 +49,7 @@ ctx.window = ctx; ctx.globalThis = ctx; ctx.__DATA__ = DATA;
 vm.createContext(ctx);
 for(const f of ["data.js", "icons.js", "rp/prompt.js", "rp/persona.js",
 "rp/memory.js", "rp/tasks.js", "rp/cardwriter.js", "rp/ooc.js", "rp/chat.js",
-"rp/group.js", "rp/traverse.js", "app.js"]){
+"rp/group.js", "rp/traverse.js", "rp/escutil.js", "app.js"]){
 vm.runInContext(fs.readFileSync(WWW + "/" + f, "utf8"), ctx, {filename: f});
 }
 vm.runInContext("window.__DATA__=" + JSON.stringify(DATA), ctx);
@@ -120,7 +120,7 @@ t("editMsgCancel恢复", bub.innerHTML.indexOf('id="editbox"') < 0);
 
 // ---- 模板里有编辑按钮 ----
 const src = fs.readFileSync(WWW + "/app.js", "utf8");
-t("renderChat有编辑按钮", (src.match(/editMsg\(\$\{idx\}\)">编辑/g) || []).length >= 2);
+t("renderChat有编辑按钮", (src.match(/editMsg\(\$\{jq\(idx\)\}\)">编辑/g) || []).length >= 2); /* P0-1: 已改 jq() 转义 */
 
 console.log(`editmsg: ${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);

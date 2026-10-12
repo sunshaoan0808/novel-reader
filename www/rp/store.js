@@ -21,13 +21,21 @@ var BIG_MIN_BYTES = 64 * 1024;
 var FILE_MIN_BYTES = 256 * 1024; /* 超过此体积且有原生桥接时走文件层（2GB），否则走 IDB */
 
 /* 大键前缀表：命中即视为候选大体积数据 */
+/* P1-7: 补齐全部单调增长的大键前缀，否则它们永不迁移、只挤 5MB localStorage */
 var BIG_PREFIXES = [
   "nd_chat_",          /* 单聊历史 */
   "nd_group_",         /* 群聊历史 */
   "nd_travchat_",      /* 穿越聊天 */
+  "nd_trav_",          /* 穿越会话/世界状态 (traverse.js) */
+  "nd_travws_",        /* 穿越世界状态 (traverse.js) */
+  "nd_identity_",      /* 穿越身份 (traverse.js) */
   "nd_imported_cards", /* 导入的角色卡 */
   "nd_custom_chars",   /* 自定义角色 */
-  "nd_cw_"             /* 写卡草稿 */
+  "nd_cw_",            /* 写卡草稿 */
+  "nd_saves_",         /* 平行存档（内嵌整段 history） */
+  "nd_mem2_",          /* 长期记忆 (memory.js) */
+  "nd_lore_",          /* 世界书 (app.js) */
+  "nd_albums_v1"       /* 记忆事件簿 (album.js) */
 ];
 
 function SUPPORTED(){
@@ -260,18 +268,49 @@ function migrate(onProgress){
 function cacheGet(key){ var k = String(key); return (k in MEM)? MEM[k]: null; }
 function cacheSet(key, value){ MEM[String(key)] = String(value); }
 /* 同步读（v36）：MEM -> 文件层同步补读（冷启动预热未完成时） -> localStorage。
- * 解决冷启动快速点开聊天时 getHist 读空、进而 showChat 用空历史覆盖真实记录的问题。 */
+ * 解决冷启动快速点开聊天时 getHist 读空、进而 showChat 用空历史覆盖真实记录的问题。
+ * P0-2 修复：文件层瞬时读失败（抛错/哨兵）时重试一次；仍失败则**保留文件标记**、
+ * 返回 null，绝不删标记。标记只在"文件确实不存在"时才清除。 */
 function getSync(key){
   var k = String(key);
   if(k in MEM) return MEM[k];
   if(fileOK() && hasFileMark(k)){
-    var v = null;
-    try{ v = NDFILE.getItemSync(k); }catch(e){ v = null; }
+    var v = null, failed = false;
+    try{ v = NDFILE.getItemSync(k); }
+    catch(e){
+      /* 瞬时抖动重试一次 */
+      try{ v = NDFILE.getItemSync(k); }
+      catch(e2){ failed = true; }
+    }
+    if(failed) return null; /* 标记保留：下次还能读到，不可当作"无数据" */
     if(v != null){ MEM[k] = v; return v; }
-    /* 文件丢了但标记还在：清掉过期标记，回退下层，避免以后每次都走空 */
+    /* 桥明确返回 null = 文件确实不存在：清掉过期标记，回退下层 */
     _lsDel(FILE_PREFIX + k);
   }
   return _lsGet(k);
+}
+/* 严格同步读：与 getSync 相同，但文件层持续读失败时抛错而不是返回 null，
+ * 供 getHist 等关键路径区分"读失败"与"确实无数据"。 */
+function getSyncStrict(key){
+  var k = String(key);
+  if(k in MEM) return MEM[k];
+  if(fileOK() && hasFileMark(k)){
+    var v = null, err = null;
+    try{ v = NDFILE.getItemSync(k); }
+    catch(e){
+      try{ v = NDFILE.getItemSync(k); }
+      catch(e2){ err = e2; }
+    }
+    if(err) throw err; /* 标记保留，调用方按失败处理 */
+    if(v != null){ MEM[k] = v; return v; }
+    _lsDel(FILE_PREFIX + k);
+  }
+  var lv = _lsGet(k);
+  if(lv == null && hasFileMark(k)){
+    /* 标记还在但两处都读不到：视为读失败而非空数据 */
+    throw new Error("store: file marked but unreadable: " + k);
+  }
+  return lv;
 }
 /* 该键是否在文件层（有标记） */
 function hasFileKey(key){ return hasFileMark(String(key)); }
@@ -445,6 +484,7 @@ return {
   cacheGet: cacheGet,
   cacheSet: cacheSet,
   getSync: getSync,
+  getSyncStrict: getSyncStrict,
   hasFileKey: hasFileKey,
   evictFile: evictFile,
   syncBig: syncBig,

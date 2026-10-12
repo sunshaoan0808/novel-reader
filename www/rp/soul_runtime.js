@@ -191,7 +191,7 @@ async function doCall(opts){
     try{
       var c = cfgs[i].cfg;
       var p = (typeof RP_NET !== "undefined")
-        ? RP_NET.complete(c, opts.messages, opts.temperature, null, {maxTokens: opts.maxTokens})
+        ? RP_NET.complete(c, opts.messages, opts.temperature, null, {maxTokens: opts.maxTokens, signal: opts.signal})
         : Promise.reject(new Error("RP_NET 未加载"));
       var r = await withTimeout(p, opts.timeoutMs || getTimeoutMs(), soulName);
 

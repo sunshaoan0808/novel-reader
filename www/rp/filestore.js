@@ -9,6 +9,11 @@ var NDFILE = (function(){
 
 var QUOTA = 2 * 1024 * 1024 * 1024; /* 2GB：与 MainActivity.ND_BLOB_QUOTA 一致 */
 
+/* P0-2: 原生 ndFileRead 异常时返回该哨兵（而不是 null），以便与"文件不存在(null)"区分。
+ * 哨兵以 \u0000 开头，正常 UTF-8 文本文件内容不可能以此开头。 */
+var IO_ERR_SENTINEL = "\u0000ND_IO_ERROR";
+function isIoError(r){ return typeof r === "string" && r.indexOf(IO_ERR_SENTINEL) === 0; }
+
 function bridge(){
   try{
     if(typeof Android !== "undefined" && Android &&
@@ -34,9 +39,10 @@ function setItem(key, value){
 function getItem(key){
   var br = bridge();
   if(!br) return Promise.resolve(null);
-  return new Promise(function(resolve){
+  return new Promise(function(resolve, reject){
     var r = null;
-    try{ r = br.ndFileRead(String(key)); }catch(e){ r = null; }
+    try{ r = br.ndFileRead(String(key)); }catch(e){ reject(new Error("io")); return; }
+    if(isIoError(r)){ reject(new Error("io")); return; } /* P0-2: 原生侧 IO 异常 ≠ 文件不存在 */
     resolve(r == null ? null : String(r));
   });
 }
@@ -54,10 +60,10 @@ function removeItem(key){
 function getItemSync(key){
   var br = bridge();
   if(!br) return null;
-  try{
-    var r = br.ndFileRead(String(key));
-    return (r == null) ? null : String(r);
-  }catch(e){ return null; }
+  /* P0-2: 桥抛错或返回 IO 哨兵都向上抛，调用方(store.getSync)负责重试与保留标记 */
+  var r = br.ndFileRead(String(key));
+  if(isIoError(r)) throw new Error("ndfile io error");
+  return (r == null) ? null : String(r);
 }
 /* 清空整个文件区：不依赖 localStorage 标记（wipe 时标记可能已被删），直接删目录下所有文件 */
 function clearAll(){

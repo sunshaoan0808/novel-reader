@@ -74,7 +74,9 @@ async function continueOnce(cfg, messages, partial, temperature, extra){
     {base: cfg.base, key: cfg.key, model: cfg.model}, ms,
     {temperature: temperature, stream: false, topP: ex.topP, maxTokens: ex.maxTokens || 1024});
   var r = await fetch(q.url, {method: "POST", headers: q.headers,
-                              body: JSON.stringify(q.body)});
+                              body: JSON.stringify(q.body),
+                              /* P1-2: 透传取消信号（soul 并行等非流式调用也需要可取消） */
+                              signal: ex.signal || undefined});
   if(!r.ok) throw new Error("接口返回 " + r.status);
   var d = await r.json();
   var m = d.choices && d.choices[0] && d.choices[0].message;
@@ -88,7 +90,9 @@ async function complete(cfg, messages, temperature, modelOverride, extra){
   var q = adapterFor().buildRequest(c, messages, {temperature: temperature, stream: false,
     topP: ex.topP, maxTokens: ex.maxTokens});
   var r = await fetch(q.url, {method: "POST", headers: q.headers,
-                              body: JSON.stringify(q.body)});
+                              body: JSON.stringify(q.body),
+                              /* P1-2: 透传取消信号（soul 并行等非流式调用也需要可取消） */
+                              signal: ex.signal || undefined});
   if(!r.ok) throw new Error("接口返回 " + r.status);
   var d = await r.json();
   var ch = d.choices && d.choices[0];
@@ -883,6 +887,7 @@ async function sendGroup(runId, members, speakers, text, opts){
           cfg: cfg, history: h, temperature: opts.temperature,
           maxTokens: opts.maxTokens, chatId: _sChatId,
           scene: opts.scene || "", contextToken: opts.contextToken,
+          signal: opts.signal, /* P1-2: soul 并行可取消 */
           onSpeaker: opts.onSpeaker, selectMode: opts.soulSelectMode
         });
         /* trajectory 已在 sendGroupSoul 内记录 */

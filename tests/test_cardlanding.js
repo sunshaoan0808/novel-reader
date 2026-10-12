@@ -65,7 +65,8 @@ function mkCtx(over){
   // window 引用自身
   ctx.window.window = ctx.window;
   vm.createContext(ctx);
-  const src = pickConst("BADGE_DEFS")
+  const src = fs.readFileSync(WWW + "/rp/escutil.js", "utf8") /* P0-1: 提取的函数用 jq() */
+    + pickConst("BADGE_DEFS")
     + pick(["cardOpenings","cardSettingChars","cardBadges","cardTags","isChipTag","cardLandingHTML","badgeLabel"]);
   vm.runInContext(src, ctx);
   return ctx;

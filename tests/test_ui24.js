@@ -27,6 +27,7 @@ const RP_NET = {complete: async ()=> "Ruby 回复"};
 const chatWith = (r,n)=>{ globalThis.__chatWith = [r,n]; };
 `, ctx);
 vm.runInContext(fs.readFileSync(WWW+"/icons.js","utf8"), ctx);
+vm.runInContext(fs.readFileSync(WWW+"/rp/escutil.js","utf8"), ctx); /* P1-12: app.js 用到 jq() */
 vm.runInContext(fs.readFileSync(WWW+"/app.js","utf8"), ctx);
 let pass=0, fail=0;
 const t=(n,c)=>{c?pass++:(fail++,console.log("FAIL:",n));};
@@ -34,7 +35,7 @@ const t=(n,c)=>{c?pass++:(fail++,console.log("FAIL:",n));};
 // 1) charCardHTML 结构
 const h1 = vm.runInContext(`charCardHTML({name:"阿绫", tag:"测试小说", sum:"机灵少女", oncard:"go()", ops:"<button>开聊</button>"})`, ctx);
 t("charcard 结构", h1.includes('class="charcard"') && h1.includes('class="charcover cc') && h1.includes("阿绫") && h1.includes("机灵少女") && h1.includes("开聊"));
-t("封面首字", h1.includes('<div class="big">阿</div>'));
+t("封面默认头像", h1.includes('src="bg/avatar_default.jpg"')); /* v3: 首字大字已换成默认头像图 */
 
 // 2) charCoverCls 确定性
 const c1 = vm.runInContext(`charCoverCls("阿绫")`, ctx);

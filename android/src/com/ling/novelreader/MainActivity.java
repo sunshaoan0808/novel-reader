@@ -31,12 +31,24 @@ public class MainActivity extends Activity {
      *  否则 JS 点 input.click() 会被静默吞掉(导入角色卡没反应就是这个原因)。 */
     private ValueCallback<Uri[]> filePathCallback;
     private static final int REQ_FILE_CHOOSER = 1001;
+    /** P1-6: 当前页面 URL（WebViewClient.onPageStarted 维护），供 JS 桥做来源白名单校验 */
+    private volatile String lastPageUrl = null;
 
     /** JS 桥: 分享 PNG 角色卡。base64 解码后写 cache/shared, 经 SharedFileProvider
      *  以 content:// URI 调起系统分享面板。文件名做白名单过滤, 防路径穿越。 */
     public class JsBridge {
+        /** P0-2: ndFileRead 异常哨兵（与 filestore.js 的 IO_ERR_SENTINEL 对应）。
+         * 以 \u0000 开头，正常文本文件内容不可能以此开头。 */
+        private static final String ND_IO_ERROR = "\u0000ND_IO_ERROR";
+        /** P1-6: 桥调用来源白名单——只允许 file:///android_asset/ 下的页面调用。
+         * lastPageUrl 由 WebViewClient.onPageStarted 维护。 */
+        private boolean pageAllowed(){
+            String u = MainActivity.this.lastPageUrl;
+            return u != null && u.startsWith("file:///android_asset/");
+        }
         @JavascriptInterface
         public void sharePng(final String base64Png, final String fileName) {
+            if(!pageAllowed()) return;
             try {
                 byte[] data = Base64.decode(base64Png, Base64.DEFAULT);
                 File dir = new File(getCacheDir(), "shared");
@@ -116,6 +128,7 @@ public class MainActivity extends Activity {
         }
         @JavascriptInterface
         public String ndFileWrite(final String name, final String text){
+            if(!pageAllowed()) return "err:forbidden";
             try{
                 File dir = ndBlobDir();
                 File f = ndResolveFile(name); /* 命中老名时先迁移为新名 */
@@ -126,9 +139,16 @@ public class MainActivity extends Activity {
                 if(fs != null) for(File x : fs) total += x.length();
                 long old = f.exists() ? f.length() : 0;
                 if(total - old + data.length > ND_BLOB_QUOTA) return "err:quota";
-                FileOutputStream os = new FileOutputStream(f);
+                /* P1-11: 原子写——先写 tmp，fsync 落盘后再 rename，避免崩溃留下半截文件 */
+                File tmp = new File(dir, f.getName() + ".tmp");
+                FileOutputStream os = new FileOutputStream(tmp);
                 os.write(data);
+                os.getFD().sync();
                 os.close();
+                if(!tmp.renameTo(f)){
+                    tmp.delete();
+                    return "err:io";
+                }
                 return "ok";
             }catch(Exception e){
                 android.util.Log.e("novelreader", "ndFileWrite failed", e);
@@ -137,6 +157,7 @@ public class MainActivity extends Activity {
         }
         @JavascriptInterface
         public String ndFileRead(final String name){
+            if(!pageAllowed()) return ND_IO_ERROR;
             try{
                 File f = ndResolveFile(name);
                 if(!f.exists()) return null;
@@ -149,11 +170,13 @@ public class MainActivity extends Activity {
                 return bos.toString("UTF-8");
             }catch(Exception e){
                 android.util.Log.e("novelreader", "ndFileRead failed", e);
-                return null;
+                /* P0-2: 异常返回哨兵而非 null，让 JS 侧区分"IO 失败"与"文件不存在" */
+                return ND_IO_ERROR;
             }
         }
         @JavascriptInterface
         public boolean ndFileDelete(final String name){
+            if(!pageAllowed()) return false;
             try{
                 File f = ndResolveFile(name);
                 boolean ok = !f.exists() || f.delete();
@@ -166,6 +189,7 @@ public class MainActivity extends Activity {
         }
         @JavascriptInterface
         public long ndFileSize(final String name){
+            if(!pageAllowed()) return -1;
             try{
                 File f = ndResolveFile(name);
                 return f.exists() ? f.length() : -1;
@@ -175,6 +199,7 @@ public class MainActivity extends Activity {
          * 直接删目录，由 JS 侧 NDFILE.clearAll() 调用。 */
         @JavascriptInterface
         public boolean ndFileClear(){
+            if(!pageAllowed()) return false;
             try{
                 boolean ok = true;
                 File[] fs = ndBlobDir().listFiles();
@@ -184,6 +209,7 @@ public class MainActivity extends Activity {
         }
         @JavascriptInterface
         public long ndFileTotal(){
+            if(!pageAllowed()) return -1;
             try{
                 long total = 0;
                 File[] fs = ndBlobDir().listFiles();
@@ -193,6 +219,7 @@ public class MainActivity extends Activity {
         }
         @JavascriptInterface
         public String ndFileList(){
+            if(!pageAllowed()) return "[]";
             try{
                 StringBuilder sb = new StringBuilder("[");
                 File[] fs = ndBlobDir().listFiles();
@@ -212,6 +239,7 @@ public class MainActivity extends Activity {
          *  Android 13+ 需要 POST_NOTIFICATIONS 运行时权限：首次调用时申请，本次先跳过。 */
         @JavascriptInterface
         public void notifyLocal(final String title, final String text) {
+            if(!pageAllowed()) return;
             try {
                 if (Build.VERSION.SDK_INT >= 33 &&
                     checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
@@ -264,10 +292,19 @@ public class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setAllowFileAccess(true);
-        s.setAllowFileAccessFromFileURLs(true);
-        s.setAllowUniversalAccessFromFileURLs(true);
+        /* P1-6: 硬化——App 只从 android_asset 加载本地页，不需要 file:// 跨源能力。
+         * setAllowFileAccess(true) 保留（loadUrl("file:///android_asset/...") 依赖它）；
+         * 下面两项关闭后，file:// 页内的 XHR/fetch 只能访问同源，阻断 XSS 经 file:// 读任意文件。 */
+        s.setAllowFileAccessFromFileURLs(false);
+        s.setAllowUniversalAccessFromFileURLs(false);
         s.setMediaPlaybackRequiresUserGesture(false);
-        web.setWebViewClient(new WebViewClient());
+        web.setWebViewClient(new WebViewClient(){
+            @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon){
+                MainActivity.this.lastPageUrl = url; /* P1-6: 桥白名单用 */
+                super.onPageStarted(view, url, favicon);
+            }
+        });
         web.addJavascriptInterface(new JsBridge(), "Android");
         // JS 弹窗桥: alert/confirm/prompt 在 WebView 里默认被静默吞掉,
         // 这里用原生对话框实现, 否则大量按钮点了没反应

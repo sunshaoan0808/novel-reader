@@ -36,8 +36,13 @@ const sandbox = {
   LAST_STATS: null,
   icon: () => "",
   esc: (x) => String(x),
+  /* P1-12: 源码段如今用 setTimeout 做 lore 徽标防抖，沙箱补桩 */
+  setTimeout: () => 0,
+  clearTimeout: () => {},
 };
 sandbox.global = sandbox;
+/* P1-12: renderCtxBar 源码段尾部如今包含 window.toggleCtxLore 赋值，沙箱需提供 window */
+sandbox.window = sandbox;
 vm.createContext(sandbox);
 vm.runInContext(funcSrc + "\nthis.renderCtxBar = renderCtxBar;", sandbox);
 const run = vm.runInContext(`(function(stats){

@@ -2,14 +2,20 @@ const fs = require("fs"), vm = require("vm");
 const WWW = fs.existsSync("assets/www") ? "assets/www" : "www";
 // 回归: 穿越各页模板渲染 (用 mock DOM 跑真实函数), 重点防属性引号错乱
 function mkEl(){
-return {innerHTML: "", textContent: "", value: "", checked: false,
+/* P1-12: 记录 addEventListener 绑定，测试用 __fire(type) 触发（app 已改 addEventListener，不再用 onscroll 属性） */
+const _listeners = {};
+const el = {innerHTML: "", textContent: "", value: "", checked: false,
 classList: {add(){}, remove(){}, toggle(){}, contains(){ return false;}},
 style: {}, dataset: {},
 querySelector(){ return null;}, querySelectorAll(){ return [];},
-addEventListener(){}, removeEventListener(){}, appendChild(){}, remove(){},
+addEventListener(type, fn){ (_listeners[type] = _listeners[type] || []).push(fn); },
+removeEventListener(type, fn){ const a = _listeners[type]; if(a){ const i = a.indexOf(fn); if(i >= 0) a.splice(i, 1); } },
+__fire(type){ const a = _listeners[type] || []; const ev = {target: el}; a.slice().forEach(fn=>{ try{ fn(ev); }catch(e){} }); },
+appendChild(){}, remove(){},
 setAttribute(){}, getAttribute(){ return null;}, removeAttribute(){},
 closest(){ return null;}, scrollTo(){}, focus(){}, click(){},
 getBoundingClientRect(){ return {left:0,top:0,right:0,bottom:0,width:0,height:0};}};
+return el;
 }
 const els = {};
 const ls = (function(){ const m = {}; return {
@@ -20,6 +26,7 @@ key: i => Object.keys(m)[i] || null,
 get length(){ return Object.keys(m).length;}};})();
 const document = {
 body: mkEl(),
+head: mkEl(), /* P1-12: loadEventCal 等懒加载走 document.head.appendChild，桩补上 */
 getElementById: id => els[id] || (els[id] = mkEl()),
 querySelector: sel => {
 const mm = String(sel).match(/^#([\w-]+)$/);
@@ -37,11 +44,13 @@ rp_cards: {r1: [{name: "林黛玉", fields: {core_identity: "林如海之女", c
 const ctx = {localStorage: ls, document, console,
 alert(){}, confirm(){ return true;}, prompt(){ return null;},
 setTimeout: () => 0, clearTimeout(){}, fetch: () => Promise.reject(new Error("no net")),
-scrollTo(){}, devicePixelRatio: 2};
+scrollTo(){}, devicePixelRatio: 2,
+/* P1-12: paintChatBg 用 new Image() 预载壁纸，沙箱补桩 */
+Image: function(){ const el = mkEl(); el.src = ""; return el; }};
 ctx.window = ctx; ctx.globalThis = ctx; ctx.__DATA__ = DATA;
 ctx.CHAR_PLOTS = {"林黛玉": "\n· 黛玉进贾府：初见宝玉\n· 葬花吟：与宝钗夜话"};
 vm.createContext(ctx);
-for(const f of ["data.js", "icons.js", "data/char_plots.js", "rp/prompt.js", "rp/persona.js",
+for(const f of ["data.js", "icons.js", "data/char_plots.js", "rp/escutil.js", "rp/prompt.js", "rp/persona.js",
 "rp/memory.js", "rp/tasks.js", "rp/cardwriter.js", "rp/ooc.js", "rp/chat.js", "rp/aifill.js",
 "rp/group.js", "rp/cardexport.js", "rp/cardimport.js", "rp/traverse.js", "rp/traverse2.js", "app.js"]){
 vm.runInContext(fs.readFileSync(WWW+"/" + f, "utf8"), ctx, {filename: f});
@@ -66,7 +75,8 @@ if(q < 0 || q > gt) return false;
 return true;
 }
 function noBrokenClass(html){
-return html.indexOf('class=" ') < 0 && html.indexOf('""') < 0;
+/* P1-12: 只查破碎的 class 属性本身；alt="" 这类合法空属性不算破碎 */
+return html.indexOf('class=" ') < 0 && html.indexOf('class=""') < 0;
 }
 
 // ---- 穿越首页 ----
@@ -206,22 +216,19 @@ t("队伍页显示talkativeness", h.indexOf("talkativeness") >= 0 && h.indexOf("
 vm.runInContext("renderWsBar()", ctx);
 t("wsbar渲染", /潇湘馆|查看/.test(els["wsbar"].innerHTML));
 
-// ---- 回归: 顶栏隐藏必须收起布局占位, 不能只 translate 留黑条 ----
+// ---- 回归: v52 点按式沉浸——进页即隐藏栏（display:none），点按呼出，滑动再藏 ----
 (function(){
-const toggles = [];
 const head = mkEl();
-head.offsetHeight = 65;
-head.classList = {add(){}, remove(){},
-toggle(c, on){ toggles.push([c, !!on]); }, contains(){ return false; }};
 const log = mkEl(); log.scrollTop = 2400; log.scrollHeight = 3000; log.clientHeight = 600;
 els["chathead"] = head; els["chatlog"] = log;
 vm.runInContext("attachHeadHide()", ctx);
-log.scrollTop = 2000; log.onscroll();           // 上滑看历史(dist 0->400) -> 隐藏
-t("headhide: 加上hide类", toggles.some(x=>x[0]==="hide"&&x[1]));
-t("headhide: 收起占位marginTop=-65px", head.style.marginTop === "-65px");
-log.scrollTop = 2395; log.onscroll();           // 滑到底(dist=5<6) -> 显示
-t("headhide: 去掉hide类", toggles.some(x=>x[0]==="hide"&&!x[1]));
-t("headhide: 恢复marginTop", head.style.marginTop === "");
+t("headhide: 初始沉浸隐藏", head.style.display === "none");
+vm.runInContext("window.__setHeadHidden(false)", ctx);   // 点按呼出
+t("headhide: 呼出后显示", head.style.display === "");
+log.scrollTop = 2000; log.__fire("scroll");              // 上滑 |Δ|=400>8 -> 隐藏
+t("headhide: 滑动后隐藏", head.style.display === "none");
+vm.runInContext("window.__setHeadHidden(false)", ctx);
+t("headhide: 再次呼出", head.style.display === "");
 })();
 
 console.log(`traverse ui: ${pass} pass, ${fail} fail`);

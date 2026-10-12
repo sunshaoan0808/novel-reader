@@ -15,6 +15,9 @@ const appIdx = html.indexOf('src="app.js"');
 t("脚本全部加载", idx.every(i=>i >= 0));
 t("traverse2在traverse之后", idx[3] >= 0 && idx[4] > idx[3]);
 t("新脚本都在app.js之前", idx.every(i=>i >= 0 && i < appIdx));
+/* P0-1: jq() 转义工具必须在 app.js 之前加载 */
+const escIdx = html.indexOf('src="rp/escutil.js"');
+t("escutil在app.js之前", escIdx >= 0 && escIdx < appIdx);
 
 // --- P2 接线 ---
 t("设置页接typewriter", app.indexOf("RP_TYPEWRITER") >= 0);

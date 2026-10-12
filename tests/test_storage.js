@@ -40,7 +40,7 @@ ctx.window = ctx; ctx.globalThis = ctx; ctx.__DATA__ = DATA;
 vm.createContext(ctx);
 for(const f of ["data.js", "icons.js", "rp/prompt.js", "rp/persona.js",
 "rp/memory.js", "rp/tasks.js", "rp/cardwriter.js", "rp/ooc.js", "rp/chat.js",
-"rp/group.js", "rp/traverse.js", "app.js"]){
+"rp/group.js", "rp/traverse.js", "rp/escutil.js", "app.js"]){
 vm.runInContext(fs.readFileSync(WWW + "/" + f, "utf8"), ctx, {filename: f});
 }
 vm.runInContext("window.__DATA__=" + JSON.stringify(DATA), ctx);
@@ -104,14 +104,15 @@ t("fmtBytes MB", vm.runInContext("fmtBytes(5*1024*1024)", ctx) === "5.00 MB");
 t("fmtBytes GB", vm.runInContext("fmtBytes(2*1024*1024*1024)", ctx) === "2.00 GB");
 t("配额常量2GB", vm.runInContext("ND_QUOTA_BYTES", ctx) === 2*1024*1024*1024);
 
-// ---- 80% 告警（临时调小配额，确定性触发；2GB 下 4MB 不该告警） ----
+// ---- 80% 告警（临时调小 localStorage 配额，确定性触发；5MB 下小用量不该告警） ----
 const cardNoWarn = vm.runInContext("renderStorageCard()", ctx);
-t("2GB配额下小用量无告警", cardNoWarn.indexOf("空间告急") < 0);
-vm.runInContext("ND_QUOTA_BYTES = 1024", ctx); // 1KB 配额，种子约 5KB，必超 80%
+t("5MB配额下小用量无告警", cardNoWarn.indexOf("空间告急") < 0);
+t("卡片有5MB本地存储行", cardNoWarn.indexOf("上限 5MB") >= 0);
+vm.runInContext("ND_LS_QUOTA_BYTES = 1024", ctx); // 1KB 配额，种子约 5KB，必超 80%
 const card2 = vm.runInContext("renderStorageCard()", ctx);
 t("超80%显示告警", card2.indexOf("空间告急") >= 0);
 t("超80%进度条warn", card2.indexOf("storbar-fg warn") >= 0);
-vm.runInContext("ND_QUOTA_BYTES = 2*1024*1024*1024", ctx); // 还原
+vm.runInContext("ND_LS_QUOTA_BYTES = 5*1024*1024", ctx); // 还原
 
 // ---- 设置页顶部挂载 ----
 vm.runInContext("showSettings()", ctx);

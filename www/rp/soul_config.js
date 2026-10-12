@@ -98,10 +98,10 @@ function profilesCardHTML(){
     return "<div class=\"kv\" style=\"display:flex;justify-content:space-between;align-items:center\">" +
       "<span><b>" + escHtml(p.name) + "</b> <span class=\"dim\">" +
       escHtml(p.model || "(未设模型)") + "</span></span>" +
-      "<span><button class=\"btn ghost\" onclick=\"RP_SOUL_CFG.testProfile('" +
-      escHtml(p.name).replace(/'/g, "\\'") + "')\">测试</button> " +
-      "<button class=\"btn ghost\" onclick=\"RP_SOUL_CFG.delProfile('" +
-      escHtml(p.name).replace(/'/g, "\\'") + "')\">删除</button></span></div>";
+      "<span><button class=\"btn ghost\" data-sact=\"testProfile\" data-sname=\"" +
+      escHtml(p.name) + "\">测试</button> " +
+      "<button class=\"btn ghost\" data-sact=\"delProfile\" data-sname=\"" +
+      escHtml(p.name) + "\">删除</button></span></div>";
   }).join("");
   return "<div class=\"setcard\"><h3>🔌 多模型配置 <span class=\"dim\">Soul 多智能体用</span></h3>" +
     "<div class=\"kv\">每个配置 = 一套 API 地址/Key/模型。角色可单独绑定不同模型，避免同质化。不配则全部走上面的主配置。</div>" +
@@ -177,10 +177,10 @@ function refreshProfilesList(){
     return "<div class=\"kv\" style=\"display:flex;justify-content:space-between;align-items:center\">" +
       "<span><b>" + escHtml(p.name) + "</b> <span class=\"dim\">" +
       escHtml(p.model || "(未设模型)") + "</span></span>" +
-      "<span><button class=\"btn ghost\" onclick=\"RP_SOUL_CFG.testProfile('" +
-      escHtml(p.name).replace(/'/g, "\\'") + "')\">测试</button> " +
-      "<button class=\"btn ghost\" onclick=\"RP_SOUL_CFG.delProfile('" +
-      escHtml(p.name).replace(/'/g, "\\'") + "')\">删除</button></span></div>";
+      "<span><button class=\"btn ghost\" data-sact=\"testProfile\" data-sname=\"" +
+      escHtml(p.name) + "\">测试</button> " +
+      "<button class=\"btn ghost\" data-sact=\"delProfile\" data-sname=\"" +
+      escHtml(p.name) + "\">删除</button></span></div>";
   }).join("") || "<div class=\"dim\">暂无额外配置</div>";
 }
 
@@ -250,10 +250,10 @@ function promptPreviewHTML(){
   var rows = names.map(function(n){
     var p = prompts[n];
     return "<div class=\"kv\"><span><b>" + escHtml(n) + "</b> (" + p.length + "字)</span>" +
-      "<span><button class=\"btn ghost\" style=\"font-size:11px\" " +
-      "onclick=\"RP_SOUL_CFG.showPrompt('" + escHtml(n).replace(/'/g, "\\'") + "')\">查看</button> " +
-      "<button class=\"btn ghost\" style=\"font-size:11px\" " +
-      "onclick=\"RP_SOUL_CFG.replaySoulUI('" + escHtml(n).replace(/'/g, "\\'") + "')\">重跑</button></span></div>";
+      "<span><button class=\"btn ghost\" style=\"font-size:11px\" data-sact=\"showPrompt\" data-sname=\"" +
+      escHtml(n) + "\">查看</button> " +
+      "<button class=\"btn ghost\" style=\"font-size:11px\" data-sact=\"replaySoulUI\" data-sname=\"" +
+      escHtml(n) + "\">重跑</button></span></div>";
   }).join("");
   return "<div class=\"setcard\"><h3>Prompt 预览</h3>" + rows + "</div>";
 }
@@ -342,9 +342,8 @@ function soulViewHTML(card, runId, name){
     return "<div class=\"card\"><div class=\"name\">还没有灵魂包</div>" +
       "<div class=\"meta\">Soul 包是角色的独立心智: 人设内核、记忆、行动日志。</div>" +
       "<div class=\"btnrow\" style=\"margin-top:8px\">" +
-      "<button class=\"btn\" onclick=\"RP_SOUL_CFG.genSoulUI('" +
-      escHtml(runId).replace(/'/g, "\\'") + "','" +
-      escHtml(name).replace(/'/g, "\\'") + "')\">一键生成 Soul 包</button></div></div>";
+      "<button class=\"btn\" data-sact=\"genSoulUI\" data-sid=\"" + escHtml(runId) +
+      "\" data-sname=\"" + escHtml(name) + "\">一键生成 Soul 包</button></div></div>";
   }
   var pp = soul.persona || {}, bg = soul.background || {};
   var mem = (soul.memory || {}).long_term || {};
@@ -380,9 +379,8 @@ function soulViewHTML(card, runId, name){
     ((mem.facts || []).length) + " 条)</div>" +
     (facts || "<div class=\"dim\">暂无</div>") + (emos || "") +
     "<div class=\"btnrow\" style=\"margin-top:8px\">" +
-    "<button class=\"btn ghost\" style=\"font-size:12px\" onclick=\"RP_SOUL_CFG.editMemoryUI('" +
-    escHtml(runId).replace(/'/g, "\\'") + "','" +
-    escHtml(name).replace(/'/g, "\\'") + "')\">编辑记忆</button></div></div>" +
+    "<button class=\"btn ghost\" style=\"font-size:12px\" data-sact=\"editMemoryUI\" data-sid=\"" +
+    escHtml(runId) + "\" data-sname=\"" + escHtml(name) + "\">编辑记忆</button></div></div>" +
     "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">行动日志 (" + traj.length + " 条)</div>" +
     (trajs || "<div class=\"dim\">暂无</div>") + "</div>" +
     (function(){
@@ -399,7 +397,7 @@ function soulViewHTML(card, runId, name){
     "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">绑定模型</div>" +
     "<div class=\"kv\">" + escHtml(profile || "默认") + "</div></div>" +
     (function(){
-      var q2 = escHtml(runId).replace(/'/g, "\\'"), n2 = escHtml(name).replace(/'/g, "\\'");
+      var q2 = escHtml(runId), n2 = escHtml(name);
       var cur = "normal";
       try{ cur = localStorage.getItem("nd_soul_chatty_" + name) || "normal"; }catch(e){}
       return "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">发言频率</div>" +
@@ -407,19 +405,19 @@ function soulViewHTML(card, runId, name){
         ["quiet", "normal", "chatty"].map(function(lv){
           var label = lv === "quiet" ? "沉默" : (lv === "normal" ? "适中" : "话痨");
           return "<button class=\"btn" + (cur === lv ? "" : " ghost") + "\" style=\"font-size:12px\" " +
-            "onclick=\"RP_SOUL_CFG.setChattyUI('" + q2 + "','" + n2 + "','" + lv + "')\">" + label + "</button>";
+            "data-sact=\"setChattyUI\" data-sid=\"" + q2 + "\" data-sname=\"" + n2 + "\" data-slv=\"" + lv + "\">" + label + "</button>";
         }).join("") + "</div></div>";
     })() +
     (function(){
       var h = soulHealth(card);
-      var q = escHtml(runId).replace(/'/g, "\\'"), n = escHtml(name).replace(/'/g, "\\'");
+      var q = escHtml(runId), n = escHtml(name);
       return "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">健康度 " + h.score + "分</div>" +
         (h.issues.length ? "<div class=\"kv\" style=\"color:var(--danger)\">" + escHtml(h.issues.join("、")) + "</div>"
           : "<div class=\"kv\" style=\"color:green\">完整</div>") +
         "<div class=\"btnrow\" style=\"margin-top:8px;flex-wrap:wrap\">" +
-        "<button class=\"btn ghost\" style=\"font-size:12px\" onclick=\"RP_SOUL_CFG.exportSoulUI('" + q + "','" + n + "')\">导出</button>" +
-        "<button class=\"btn ghost\" style=\"font-size:12px\" onclick=\"RP_SOUL_CFG.importSoulUI('" + q + "','" + n + "')\">导入</button>" +
-        "<button class=\"btn ghost\" style=\"font-size:12px\" onclick=\"RP_SOUL_CFG.applyTemplateUI('" + q + "','" + n + "')\">人格模板</button>" +
+        "<button class=\"btn ghost\" style=\"font-size:12px\" data-sact=\"exportSoulUI\" data-sid=\"" + q + "\" data-sname=\"" + n + "\">导出</button>" +
+        "<button class=\"btn ghost\" style=\"font-size:12px\" data-sact=\"importSoulUI\" data-sid=\"" + q + "\" data-sname=\"" + n + "\">导入</button>" +
+        "<button class=\"btn ghost\" style=\"font-size:12px\" data-sact=\"applyTemplateUI\" data-sid=\"" + q + "\" data-sname=\"" + n + "\">人格模板</button>" +
         "</div></div>";
     })();
 }
@@ -656,7 +654,7 @@ function editMemoryUI(runId, name){
   if(typeof renderDetail === "function") renderDetail();
 }
 
-return {
+var api = {
   list: list, save: save, add: add, del: del, get: get,
   resolveForSoul: resolveForSoul,
   setChatOverride: setChatOverride, getChatOverride: getChatOverride,
@@ -678,6 +676,35 @@ return {
   showPrompt: showPrompt, replaySoulUI: replaySoulUI
 };
 
+/* 点击事件委托（XSS 修复 2026-10-13）：替代内联 onclick 字符串模板。
+ * escHtml 含 " → &quot; 转义，data-* 属性值安全；dataset 读出即原文，
+ * 不再经过 JS 字符串解析层，故反斜杠 / 引号均无害。静态 onclick 保留。 */
+function onSoulCfgClick(e){
+  var el = null;
+  try{ el = (e.target && e.target.closest) ? e.target.closest("[data-sact]") : null; }
+  catch(err){ el = null; }
+  if(!el) return;
+  var d = el.dataset || {}, act = d.sact;
+  try{
+    switch(act){
+      case "testProfile": api.testProfile(d.sname); break;
+      case "delProfile": api.delProfile(d.sname); break;
+      case "showPrompt": api.showPrompt(d.sname); break;
+      case "replaySoulUI": api.replaySoulUI(d.sname); break;
+      case "genSoulUI": api.genSoulUI(d.sid, d.sname); break;
+      case "editMemoryUI": api.editMemoryUI(d.sid, d.sname); break;
+      case "setChattyUI": api.setChattyUI(d.sid, d.sname, d.slv); break;
+      case "exportSoulUI": api.exportSoulUI(d.sid, d.sname); break;
+      case "importSoulUI": api.importSoulUI(d.sid, d.sname); break;
+      case "applyTemplateUI": api.applyTemplateUI(d.sid, d.sname); break;
+    }
+  }catch(err){ try{ console.warn("[soul_config] sact failed:", act, err); }catch(e2){} }
+}
+if(typeof document !== "undefined" && document && typeof document.addEventListener === "function"){
+  document.addEventListener("click", onSoulCfgClick);
+}
+
+return api;
 })();
 if(typeof window !== "undefined") window.RP_SOUL_CFG = RP_SOUL_CFG;
 if(typeof module !== "undefined") module.exports = RP_SOUL_CFG;

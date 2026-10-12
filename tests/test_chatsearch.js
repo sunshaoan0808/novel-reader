@@ -45,7 +45,7 @@ ctx.window = ctx; ctx.globalThis = ctx; ctx.__DATA__ = DATA;
 vm.createContext(ctx);
 for(const f of ["data.js", "icons.js", "rp/prompt.js", "rp/persona.js",
 "rp/memory.js", "rp/tasks.js", "rp/cardwriter.js", "rp/ooc.js", "rp/chat.js",
-"rp/group.js", "rp/traverse.js", "app.js"]){
+"rp/group.js", "rp/traverse.js", "rp/escutil.js", "app.js"]){
 vm.runInContext(fs.readFileSync(WWW + "/" + f, "utf8"), ctx, {filename: f});
 }
 vm.runInContext("window.__DATA__=" + JSON.stringify(DATA), ctx);

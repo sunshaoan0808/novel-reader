@@ -56,7 +56,10 @@ t("scenario", n.scenario === "2077 年的夜之城");
 t("sysNote", n.sysNote.indexOf("说话简短") >= 0);
 t("worldbook过滤空", n.worldbook.length === 1 && n.worldbook[0].title === "夜之城");
 t("novel取tags", n.novel === "赛博朋克");
-t("exampleLines防正则注入", X.exampleLines("{{char}}: hi", "a)b").length >= 0);
+/* P1-13: 原断言恒真(length>=0)。真断言：名字里的正则元字符必须被字面量转义 */
+t("exampleLines防正则注入-字面匹配", JSON.stringify(X.exampleLines("a)b: 你好", "a)b")) === JSON.stringify(["你好"]));
+t("exampleLines防正则注入-不误杀", X.exampleLines("axb: 你好", "a)b").length === 0);
+t("exampleLines防正则注入-点号字面", JSON.stringify(X.exampleLines("a.b: 嗨", "a.b")) === JSON.stringify(["嗨"]));
 
 // --- 本地库 ---
 X.add(n);

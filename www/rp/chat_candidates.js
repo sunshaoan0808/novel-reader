@@ -43,11 +43,11 @@ function current(runId, name, msgIdx){
 function renderSwitcher(runId, name, msgIdx){
   var c = current(runId, name, msgIdx);
   if(!c || c.total < 2) return "";
-  return `<div style="font-size:11px;color:var(--ink-faint);margin-top:4px;display:flex;gap:8px;align-items:center">
-    <a href="javascript:void(0)" onclick="CHAT_CANDIDATES.uiSwitch('${runId}','${name}',${msgIdx},-1)">◀</a>
+  return `<div style="font-size:11px;color:var(--ink-faint);margin-top:4px;display:flex;gap:8px;align-items:center" data-ccrun="${ccEsc(runId)}" data-ccname="${ccEsc(name)}" data-ccidx="${msgIdx}">
+    <a href="javascript:void(0)" data-ccact="switch" data-ccdir="-1">◀</a>
     <span>${c.idx + 1}/${c.total}</span>
-    <a href="javascript:void(0)" onclick="CHAT_CANDIDATES.uiSwitch('${runId}','${name}',${msgIdx},1)">▶</a>
-    <a href="javascript:void(0)" onclick="CHAT_CANDIDATES.uiRegen('${runId}','${name}',${msgIdx})" style="margin-left:8px">↻ 再生成</a>
+    <a href="javascript:void(0)" data-ccact="switch" data-ccdir="1">▶</a>
+    <a href="javascript:void(0)" data-ccact="regen" style="margin-left:8px">↻ 再生成</a>
   </div>`;
 }
 
@@ -68,6 +68,32 @@ async function uiRegen(runId, name, msgIdx){
     var text = await requestRegen(runId, name, msgIdx);
     if(text) add(runId, name, msgIdx, text);
   }
+}
+
+/* HTML 属性转义（XSS 修复 2026-10-13）：data-* 属性值用，含双引号转义 */
+function ccEsc(s){
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/* 点击事件委托：替代内联 onclick 字符串模板，runId/name 走 data-* 属性 */
+function onCcClick(e){
+  var el = null;
+  try{ el = (e.target && e.target.closest) ? e.target.closest("[data-ccact]") : null; }
+  catch(err){ el = null; }
+  if(!el) return;
+  var wrap = null;
+  try{ wrap = el.closest("[data-ccrun]"); }catch(err){ wrap = null; }
+  var d = (wrap && wrap.dataset) || {};
+  var runId = d.ccrun, name = d.ccname, msgIdx = parseInt(d.ccidx, 10);
+  var act = el.getAttribute("data-ccact");
+  try{
+    if(act === "switch") uiSwitch(runId, name, msgIdx, parseInt(el.getAttribute("data-ccdir"), 10));
+    else if(act === "regen") uiRegen(runId, name, msgIdx);
+  }catch(err){ try{ console.warn("[chat_candidates] ccact failed:", act, err); }catch(e2){} }
+}
+if(typeof document !== "undefined" && document && typeof document.addEventListener === "function"){
+  document.addEventListener("click", onCcClick);
 }
 
 return {

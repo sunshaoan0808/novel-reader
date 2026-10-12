@@ -224,7 +224,8 @@ cfg: cfg,
 messages: messages,
 temperature: opts.temperature!= null? opts.temperature: 0.8,
 maxTokens: opts.maxTokens || 800,
-contextToken: opts.contextToken
+contextToken: opts.contextToken,
+signal: opts.signal /* P1-2: 停止按钮可取消 soul 并行请求 */
 }).then(function(r){
 if(!r.ok) return {name: s.name, ok: false, error: r.error};
 return {name: s.name, ok: true, reply: parseSoulReply(r.text),
@@ -378,7 +379,8 @@ async function sendGroupSoul(runId, members, text, opts){
   var runR = await run(active, opts.scene || "", text, h.slice(-10), {
     cfg: cfg, turnId: turnId,
     temperature: opts.temperature, maxTokens: opts.maxTokens,
-    contextToken: opts.contextToken
+    contextToken: opts.contextToken,
+    signal: opts.signal /* P1-2 */
   });
   var woven = weave(runR.results, {reactions: sel.reactions});
   var outText = woven.text || "(无回应)";
@@ -449,7 +451,7 @@ async function twoStageCall(soulName, card, soul, scene, userText, history, cfg,
   var thinkPrompt = buildSoulPrompt(soulName, soul, scene, userText, history) +
     "\n\n只输出内心独白和动作意向, JSON: {\"inner\": \"...\", \"action\": \"...\"}";
   var thinkRaw = await RP_NET.complete(thinkCfg,
-    [{role: "user", content: thinkPrompt}], 0.7);
+    [{role: "user", content: thinkPrompt}], 0.7, null, {signal: opts.signal});
   var thinkText = (typeof thinkRaw === "string") ? thinkRaw : (thinkRaw.text || "");
   var m = thinkText.match(/\{[\s\S]*\}/);
   var think = {inner: "", action: ""};
@@ -460,7 +462,7 @@ async function twoStageCall(soulName, card, soul, scene, userText, history, cfg,
     "\n\n内心: " + (think.inner || "") + "\n动作意向: " + (think.action || "") +
     "\n\n基于以上内心和动作, 只输出台词和最终动作, JSON: {\"dialogue\": \"...\", \"action\": \"...\"}";
   var speakRaw = await RP_NET.complete(speakCfg,
-    [{role: "user", content: speakPrompt}], 0.8);
+    [{role: "user", content: speakPrompt}], 0.8, null, {signal: opts.signal});
   var speakText = (typeof speakRaw === "string") ? speakRaw : (speakRaw.text || "");
   var m2 = speakText.match(/\{[\s\S]*\}/);
   var speak = {dialogue: speakText, action: think.action};

@@ -45,9 +45,11 @@ v.innerHTML = `
       <button class="btn primary" onclick="DISTILL_PLAYGROUND.send()">发送</button>
 </div>
 <div class="btnrow" style="margin-top:12px">
-<button class="btn" onclick="DISTILL_UI.openCharacter('${pkgId}','${esc(name)}')">← 返回</button>
+<button class="btn" id="pgBack">← 返回</button>
 <button class="btn primary" id="pgConfirm" style="display:none" onclick="DISTILL_PLAYGROUND.confirm()">✅ 满意，确认</button>
 </div>`;
+// 返回按钮改直接绑定（XSS 修复 2026-10-13）：pkgId/name 取模块内 S，不再拼进 onclick 字符串
+document.getElementById("pgBack").onclick = function(){ DISTILL_UI.openCharacter(S.pkgId, S.name); };
 
 // AI 先打招呼
 var greeting = card.first_mes || (card._distill && card._distill.typical_lines) || "你好。";

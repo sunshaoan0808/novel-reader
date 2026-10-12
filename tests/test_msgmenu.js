@@ -55,7 +55,7 @@ ctx.window = ctx; ctx.globalThis = ctx; ctx.__DATA__ = DATA;
 vm.createContext(ctx);
 for(const f of ["data.js", "icons.js", "rp/prompt.js", "rp/persona.js",
 "rp/memory.js", "rp/tasks.js", "rp/cardwriter.js", "rp/ooc.js", "rp/chat.js",
-"rp/group.js", "rp/traverse.js", "app.js"]){
+"rp/group.js", "rp/traverse.js", "rp/escutil.js", "app.js"]){
 vm.runInContext(fs.readFileSync(WWW + "/" + f, "utf8"), ctx, {filename: f});
 }
 vm.runInContext("window.__DATA__=" + JSON.stringify(DATA), ctx);
@@ -122,8 +122,8 @@ t("关闭sheet不崩", true);
 
 // ---- renderChat 模板带长按绑定 ----
 const src = fs.readFileSync(WWW + "/app.js", "utf8");
-t("模板有oncontextmenu", src.indexOf("oncontextmenu=\"event.preventDefault();msgMenu(${idx})") >= 0);
-t("模板有ontouchstart", src.indexOf("ontouchstart=\"msgPressStart(event,${idx})\"") >= 0);
+t("模板有oncontextmenu", src.indexOf("oncontextmenu=\"event.preventDefault();msgMenu(${jq(idx)})") >= 0); /* P0-1: 已改 jq() 转义 */
+t("模板有ontouchstart", src.indexOf("ontouchstart=\"msgPressStart(event,${jq(idx)})\"") >= 0); /* P0-1: 已改 jq() 转义 */
 
 // ---- 图标补齐 ----
 const isrc = fs.readFileSync(WWW + "/icons.js", "utf8");

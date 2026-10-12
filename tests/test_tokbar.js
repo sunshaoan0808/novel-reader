@@ -33,7 +33,7 @@ const ctx = {console, localStorage, document, alert(){}, confirm(){ return true;
 setTimeout: () => 0, clearTimeout(){}};
 ctx.window = ctx; ctx.globalThis = ctx;
 vm.createContext(ctx);
-for(const f of ["rp/prompt.js", "rp/persona.js", "app.js"]){
+for(const f of ["rp/prompt.js", "rp/persona.js", "rp/escutil.js", "app.js"]){
 vm.runInContext(fs.readFileSync(WWW + "/" + f, "utf8"), ctx, {filename: f});
 }
 

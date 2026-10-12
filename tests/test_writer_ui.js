@@ -24,6 +24,7 @@ const RP_NET = {complete: async ()=> "Ruby 回复"};
 const chatWith = (r,n)=>{ globalThis.__chatWith = [r,n]; };
 `, ctx);
 vm.runInContext(fs.readFileSync(WWW+"/icons.js","utf8"), ctx);
+vm.runInContext(fs.readFileSync(WWW+"/rp/escutil.js","utf8"), ctx); /* P0-1: app.js 用 jq() */
 vm.runInContext(fs.readFileSync(WWW+"/app.js","utf8"), ctx);
 let pass=0, fail=0;
 const t=(n,c)=>{c?pass++:(fail++,console.log("FAIL:",n));};

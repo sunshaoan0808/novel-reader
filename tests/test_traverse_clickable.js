@@ -45,7 +45,7 @@ ctx.CHAR_PLOTS = {"林黛玉": "\n· 黛玉进贾府：初见宝玉"};
 vm.createContext(ctx);
 for(const f of ["data.js", "icons.js", "data/char_plots.js", "rp/prompt.js", "rp/persona.js",
 "rp/memory.js", "rp/tasks.js", "rp/cardwriter.js", "rp/ooc.js", "rp/chat.js", "rp/aifill.js",
-"rp/group.js", "rp/cardexport.js", "rp/cardimport.js", "rp/traverse.js", "rp/traverse2.js", "app.js"]){
+"rp/group.js", "rp/cardexport.js", "rp/cardimport.js", "rp/traverse.js", "rp/traverse2.js", "rp/escutil.js", "app.js"]){
 vm.runInContext(fs.readFileSync(WWW+ "/" + f, "utf8"), ctx, {filename: f});
 }
 vm.runInContext("window.__DATA__=" + JSON.stringify(DATA), ctx);

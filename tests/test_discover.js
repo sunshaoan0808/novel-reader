@@ -50,7 +50,8 @@ function mkCtx(){
   };
   vm.createContext(ctx);
   vm.runInContext(
-    pickConst("BADGE_DEFS")
+    fs.readFileSync(WWW + "/rp/escutil.js", "utf8") /* P0-1: 提取的函数用 jq() */
+    + pickConst("BADGE_DEFS")
     + pick(["badgeLabel","cardBadges","cardOpenings","cardTags","isChipTag","charTagsOf",
             "tagCountsOf","recentPlayed","shuffle","railHTML","chipsHTML"]),
     ctx);

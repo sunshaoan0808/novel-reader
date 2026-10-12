@@ -92,6 +92,7 @@ const ctx = {console, window:{},
 vm.createContext(ctx);
 ctx.window = ctx;
 vm.runInContext(fs.readFileSync(WWW+"/icons.js","utf8"), ctx);
+vm.runInContext(fs.readFileSync(WWW+"/rp/escutil.js","utf8"), ctx); /* P0-1: povChipsHTML 用 jq() */
 vm.runInContext(extract("POVS"), ctx);
 vm.runInContext(extract("PERSONS"), ctx);
 vm.runInContext(extract("povStoreKey"), ctx);

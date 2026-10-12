@@ -132,7 +132,7 @@ ok("M6 警告消息跳过改写", msgs[0].content === "⚠️ 警告内容");
 }
 // 长按菜单有改写入口(仅可改写消息)
 ok("M6 长按菜单: rewritable  gating + 改写项",
-src.indexOf("rewritable") >= 0 && src.indexOf("rewriteMsg(${idx})") >= 0
+src.indexOf("rewritable") >= 0 && src.indexOf("rewriteMsg(${jq(idx)})") >= 0 /* P0-1: 已改 jq() 转义 */
 && src.indexOf('m.content.indexOf("⚠️")!==0') >= 0);
 
 /* ---------- S5/S6: 模板 ---------- */

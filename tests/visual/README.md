@@ -47,11 +47,12 @@ bash ~/workspace/github/novel-reader/tests/visual/run.sh || exit 1
    （顶栏/底栏显隐测试钩子）。
 3. 先造 bug 复现副本验证用例能红，再在修复代码上确认变绿。
 
-## 已知问题（2026-09-30 首次运行发现）
+## 已知问题（2026-09-30 首次运行发现，2026-10-13 已修复关闭）
 
-`scroll-hidebars` 的 `barGone` 子项在当前代码上**失败**：隐藏后底栏 rect
-隐藏前 722–791、隐藏后 722–791，位移为 0——v33 的底栏隐藏实现有残留 bug。
+`scroll-hidebars` 的 `barGone` 子项曾在当前代码上**失败**（2026-09-30）：
+隐藏后底栏 rect 隐藏前 722–791、隐藏后 722–791，位移为 0——v33 的底栏隐藏实现有残留 bug。
 根因：`.chatbar{position:sticky;bottom:0}` 在 `margin-bottom:-69px` 时被浏览器
-重新锚定上拉，恰好抵消 `translateY(110%)` 的下移。运行时验证过两个可行修法：
-`translateY(230%)` 或隐藏时改 `position:static`，底栏都能完全移出视口。
-App 侧修复后本用例即变绿，此前 `run.sh` 会如实报红。
+重新锚定上拉，恰好抵消 `translateY(110%)` 的下移。
+**状态（2026-10-13）**：App 侧已修复（隐藏时改 `position:fixed` 脱离文档流收占位，
+见 AGENTS.md 沉浸式条目），`tests/visual/assert_log.json` 最近一次运行 7 个用例全部通过。
+本节保留作历史记录；若未来某次回归变红，先查僵尸 chrome 端口冲突再查代码。

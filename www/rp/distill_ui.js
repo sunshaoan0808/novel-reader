@@ -17,6 +17,13 @@ function esc(s){
   return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/* HTML 属性转义：esc + 双引号。用于 data-* 属性值；dataset 读出即原文，
+ * 无 JS 解析层，故只需 HTML 层转义 —— 但 " 必须转义，否则可破出双引号属性
+ *（XSS 修复 2026-10-13；已实测 \" 不能阻止 HTML 属性截断）。 */
+function escA(s){
+  return esc(s).replace(/"/g, "&quot;");
+}
+
 function show(){
   S.step = 0;
   render();
@@ -85,7 +92,7 @@ function renderUpload(){
   ${renderTaskHistory()}
   ${pkgs.length ? `<h2 class="sec">已有剧本包 (${pkgs.length})</h2>` +
     pkgs.map(function(p){
-      return `<div class="card" style="padding:12px" onclick="DISTILL_UI.openPackage('${p.id}')">
+      return `<div class="card" style="padding:12px" data-dact="openPackage" data-did="${p.id}">
         <div style="font-weight:600">${esc(p.novel)}</div>
         <div style="font-size:12px;color:var(--ink-faint)">${p.charCount} 个角色 · ${new Date(p.created).toLocaleDateString()}</div>
       </div>`;
@@ -203,7 +210,7 @@ function renderConfigQA(){
     <div style="font-size:13px;margin-bottom:12px">💬 ${esc(q.q)}
       <a href="javascript:void(0)" onclick="DISTILL_UI.qaMode(false)" style="font-size:12px;margin-left:8px">切回表单</a></div>`;
   q.options.forEach(function(o){
-    html += `<button class="btn" style="width:100%;margin-bottom:8px;text-align:left" onclick="DISTILL_UI.qaAnswer('${q.id}','${o.v}')">
+    html += `<button class="btn" style="width:100%;margin-bottom:8px;text-align:left" data-dact="qaAnswer" data-dqid="${q.id}" data-dv="${o.v}">
       <b>${esc(o.t)}</b>${o.rec ? ' <span style="color:var(--gold);font-size:11px">推荐</span>' : ""}
       ${o.d ? `<div style="font-size:12px;color:var(--ink-faint)">${esc(o.d)}</div>` : ""}
     </button>`;
@@ -352,7 +359,7 @@ function renderPackages(){
   if(!pkgs.length) return `<div class="empty">还没有剧本包</div>`;
   var citeWarn = S.citationWarnings ? `<div style="font-size:12px;color:#f0ad4e;margin:8px 0">⚠️ ${esc(S.citationWarnings)}</div>` : "";
   return `<h2 class="sec">剧本包 (${pkgs.length})</h2>` + citeWarn + pkgs.map(function(p){
-    return `<div class="card" style="padding:12px" onclick="DISTILL_UI.openPackage('${p.id}')">
+    return `<div class="card" style="padding:12px" data-dact="openPackage" data-did="${p.id}">
       <div style="font-weight:600">${esc(p.novel)}</div>
       <div style="font-size:12px;color:var(--ink-faint)">${p.charCount} 个角色</div>
     </div>`;
@@ -640,13 +647,13 @@ function openPackage(id){
     <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">剧本包 · ${cards.length} 个角色${wbCount ? " · " + wbCount + " 条世界书" : ""}</div>
     ${qualityHtml}
     ${memHtml}
-    ${wbCount ? `<button class="btn" style="margin-bottom:12px" onclick="DISTILL_UI.showWorldbook('${id}')">📖 世界书 (${wbCount})</button>` : ""}
-    <button class="btn" style="margin-bottom:12px;margin-left:8px" onclick="DISTILL_UI.runAudit('${id}')">🔍 审计员</button>
-    <button class="btn" style="margin-bottom:12px;margin-left:8px" onclick="DISTILL_UI.runProbes('${id}')">🎭 人格探针</button>
+    ${wbCount ? `<button class="btn" style="margin-bottom:12px" data-dact="showWorldbook" data-did="${id}">📖 世界书 (${wbCount})</button>` : ""}
+    <button class="btn" style="margin-bottom:12px;margin-left:8px" data-dact="runAudit" data-did="${id}">🔍 审计员</button>
+    <button class="btn" style="margin-bottom:12px;margin-left:8px" data-dact="runProbes" data-did="${id}">🎭 人格探针</button>
     <button class="btn" style="margin-bottom:12px;margin-left:8px" onclick="DISTILL_UI.showStyles()">✒️ 文风库</button>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
     ${cards.map(function(c){
-      return `<div class="card" style="padding:12px" onclick="DISTILL_UI.openCharacter('${id}','${esc(c.name)}')">
+      return `<div class="card" style="padding:12px" data-dact="openCharacter" data-did="${id}" data-dname="${escA(c.name)}">
         <div style="font-weight:600">${esc(c.name)}</div>
         <div style="font-size:11px;color:var(--ink-faint)">★${c.importance} ${c.hasCard ? "· 已蒸馏" : ""}</div>
       </div>`;
@@ -654,7 +661,7 @@ function openPackage(id){
     </div>
     <div class="btnrow" style="margin-top:16px">
       <button class="btn" onclick="DISTILL_UI.show()">← 返回</button>
-      <button class="btn" onclick="DISTILL_UI.exportPkg('${id}')">📤 导出</button>
+      <button class="btn" data-dact="exportPkg" data-did="${id}">📤 导出</button>
       <button class="btn" onclick="document.getElementById('d_import_pkg').click()">📥 导入</button>
       <input type="file" id="d_import_pkg" accept=".json" style="display:none">
     </div>`;
@@ -697,7 +704,7 @@ function openCharacter(pkgId, name, stage){
       ${["early","mid","late"].map(function(s){
         var label = s === "early" ? "前期" : s === "mid" ? "中期" : "后期";
         var active = s === stage ? "var(--gold)" : "var(--line)";
-        return `<button class="btn" style="flex:1;border-color:${active}" onclick="DISTILL_UI.openCharacter('${pkgId}','${esc(name)}','${s}')">${label}</button>`;
+        return `<button class="btn" style="flex:1;border-color:${active}" data-dact="openCharacter" data-did="${pkgId}" data-dname="${escA(name)}" data-dstage="${s}">${label}</button>`;
       }).join("")}
     </div>
     <div style="font-size:11px;color:var(--ink-faint);margin-bottom:8px">当前查看: ${stage === "early" ? "前期 (防剧透)" : stage === "mid" ? "中期" : "后期 (全量)"}</div>
@@ -720,7 +727,7 @@ function openCharacter(pkgId, name, stage){
         <span style="color:${DISTILL_PROVENANCE.SOURCE_COLOR.ref};margin-left:8px">●</span> 间接旁证 ${provStats.ref || 0}
         <span style="color:${DISTILL_PROVENANCE.SOURCE_COLOR.inference};margin-left:8px">●</span> 合理推断 ${provStats.inference || 0}
       </div>
-      <button class="btn" style="margin-top:8px" onclick="DISTILL_UI.showProvenance('${pkgId}','${esc(name)}')">查看出处索引</button>
+      <button class="btn" style="margin-top:8px" data-dact="showProvenance" data-did="${pkgId}" data-dname="${escA(name)}">查看出处索引</button>
     </div>` : ""}
     ${function(){
       var openings = [];
@@ -737,7 +744,7 @@ function openCharacter(pkgId, name, stage){
             <div style="margin-top:2px">${esc(o.text.slice(0, 120))}${o.text.length > 120 ? "..." : ""}</div>
           </div>`;
         }).join("")}
-        <button class="btn" style="margin-top:8px" onclick="DISTILL_UI.regenOpenings('${pkgId}','${esc(name)}')">🔄 重新生成</button>
+        <button class="btn" style="margin-top:8px" data-dact="regenOpenings" data-did="${pkgId}" data-dname="${escA(name)}">🔄 重新生成</button>
       </div>`;
     }()}
     <div class="card" style="margin-top:12px">
@@ -760,11 +767,11 @@ function openCharacter(pkgId, name, stage){
     </div>
     <div class="btnrow" style="margin-top:12px">
       <button class="btn" onclick="DISTILL_UI.show()">← 返回</button>
-      <button class="btn" onclick="DISTILL_UI.requestChange('${pkgId}','${esc(name)}')">✏️ 改动</button>
-      <button class="btn" onclick="DISTILL_UI.polishCard('${pkgId}','${esc(name)}')">✨ 去AI腔</button>
-      <button class="btn" onclick="DISTILL_PLAYGROUND.open('${pkgId}','${esc(name)}')">🎮 试玩</button>
-      <button class="btn" onclick="DISTILL_UI.dynamicGreeting('${pkgId}','${esc(name)}')">✨ 动态开场</button>
-      <button class="btn primary" onclick="chatWith('distill_${pkgId}','${esc(name)}')">开聊</button>
+      <button class="btn" data-dact="requestChange" data-did="${pkgId}" data-dname="${escA(name)}">✏️ 改动</button>
+      <button class="btn" data-dact="polishCard" data-did="${pkgId}" data-dname="${escA(name)}">✨ 去AI腔</button>
+      <button class="btn" data-dact="playground" data-did="${pkgId}" data-dname="${escA(name)}">🎮 试玩</button>
+      <button class="btn" data-dact="dynamicGreeting" data-did="${pkgId}" data-dname="${escA(name)}">✨ 动态开场</button>
+      <button class="btn primary" data-dact="chat" data-did="${pkgId}" data-dname="${escA(name)}">开聊</button>
     </div>`;
 }
 
@@ -778,7 +785,7 @@ function showProvenance(pkgId, name){
   var facts = prov.facts.filter(function(f){ return !name || f.character === name; });
   var libStats = (typeof DISTILL_LIBRARY !== "undefined") ? DISTILL_LIBRARY.stats(pkgId) : null;
   v.innerHTML = `<h2 class="sec">📚 资料库 ${name ? "· " + esc(name) : ""}
-    ${name ? `<button class="btn" style="font-size:12px;margin-left:8px" onclick="DISTILL_UI.autoExtractFacts('${pkgId}','${esc(name)}')">⚡ 自动抽取</button>` : ""}</h2>
+    ${name ? `<button class="btn" style="font-size:12px;margin-left:8px" data-dact="autoExtractFacts" data-did="${pkgId}" data-dname="${escA(name)}">⚡ 自动抽取</button>` : ""}</h2>
     <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">
       ${facts.length} 条事实${libStats && libStats.edited ? " · " + libStats.edited + " 条已编辑" : ""}
     </div>
@@ -795,17 +802,17 @@ function showProvenance(pkgId, name){
         <div style="font-size:12px"><b>${esc(f.field)}</b>:
           <span style="color:${color};font-size:11px;margin-left:6px">${label}${f.chunk_id ? " · " + esc(f.chunk_id) : ""}${f.edited ? " · ✏️已编辑" : ""}</span>
           ${name ? `<span style="float:right">
-            <a href="javascript:void(0)" onclick="DISTILL_UI.editFact('${pkgId}','${esc(f.character)}',${fidx})" style="font-size:11px;color:var(--gold)">编辑</a>
-            <a href="javascript:void(0)" onclick="DISTILL_UI.deleteFact('${pkgId}','${esc(f.character)}',${fidx})" style="font-size:11px;color:#e74c3c;margin-left:8px">删除</a>
+            <a href="javascript:void(0)" data-dact="editFact" data-did="${pkgId}" data-dname="${escA(f.character)}" data-didx="${fidx}" style="font-size:11px;color:var(--gold)">编辑</a>
+            <a href="javascript:void(0)" data-dact="deleteFact" data-did="${pkgId}" data-dname="${escA(f.character)}" data-didx="${fidx}" style="font-size:11px;color:#e74c3c;margin-left:8px">删除</a>
           </span>` : ""}
         </div>
         <div style="font-size:13px;margin-top:4px">${esc(f.value)}</div>
       </div>`;
     }).join("")}
     <div class="btnrow" style="margin-top:12px">
-      <button class="btn" onclick="DISTILL_UI.openCharacter('${pkgId}','${esc(name || "")}')">← 返回</button>
-      ${name ? `<button class="btn" onclick="DISTILL_UI.addFact('${pkgId}','${esc(name)}')">+ 新增事实</button>
-      <button class="btn primary" onclick="DISTILL_UI.recompileCard('${pkgId}','${esc(name)}')">🔄 重新编译角色卡</button>` : ""}
+      <button class="btn" data-dact="openCharacter" data-did="${pkgId}" data-dname="${escA(name || "")}">← 返回</button>
+      ${name ? `<button class="btn" data-dact="addFact" data-did="${pkgId}" data-dname="${escA(name)}">+ 新增事实</button>
+      <button class="btn primary" data-dact="recompileCard" data-did="${pkgId}" data-dname="${escA(name)}">🔄 重新编译角色卡</button>` : ""}
     </div>`;
 }
 
@@ -819,7 +826,7 @@ async function requestChange(pkgId, name){
       <div style="font-size:13px;margin-bottom:8px">一句话描述你想怎么改：</div>
       <textarea id="d_change_req" rows="3" style="width:100%;font-size:14px;padding:8px;border:1px solid var(--line);border-radius:6px" placeholder="例如：把她改得更活泼一点，少一点忧郁"></textarea>
       <div class="btnrow" style="margin-top:12px">
-        <button class="btn" onclick="DISTILL_UI.openCharacter('${pkgId}','${esc(name)}')">取消</button>
+        <button class="btn" data-dact="openCharacter" data-did="${pkgId}" data-dname="${escA(name)}">取消</button>
         <button class="btn primary" id="d_change_go">分析影响 →</button>
       </div>
       <div id="d_change_msg" style="font-size:12px;margin-top:8px;color:var(--ink-faint)"></div>
@@ -862,7 +869,7 @@ function showChangeImpacts(){
       </div>`;
     }).join("")}
     <div class="btnrow" style="margin-top:12px">
-      <button class="btn" onclick="DISTILL_UI.openCharacter('${p.pkgId}','${esc(p.name)}')">取消</button>
+      <button class="btn" data-dact="openCharacter" data-did="${p.pkgId}" data-dname="${escA(p.name)}">取消</button>
       <button class="btn primary" onclick="DISTILL_UI.confirmChange()">确认改动</button>
     </div>
     <div style="font-size:11px;color:var(--ink-faint);margin-top:8px">改动将标记为 [inference] 来源</div>`;
@@ -945,7 +952,7 @@ function showWorldbook(pkgId){
   var wb = DISTILL_PACKAGE.getData(pkgId, "worldbook");
   var v = document.getElementById("view");
   if(!wb || (!(wb.rules || []).length && !(wb.locations || []).length && !(wb.factions || []).length)){
-    v.innerHTML = `<div class="empty">暂无世界书</div><button class="btn" onclick="DISTILL_UI.openPackage('${pkgId}')">← 返回</button>`;
+    v.innerHTML = `<div class="empty">暂无世界书</div><button class="btn" data-dact="openPackage" data-did="${pkgId}">← 返回</button>`;
     return;
   }
   function ruleCard(r){
@@ -974,7 +981,7 @@ function showWorldbook(pkgId){
       </div>`;
     }).join("") : ""}
     <div class="btnrow" style="margin-top:12px">
-      <button class="btn" onclick="DISTILL_UI.openPackage('${pkgId}')">← 返回</button>
+      <button class="btn" data-dact="openPackage" data-did="${pkgId}">← 返回</button>
     </div>`;
 }
 
@@ -989,8 +996,8 @@ function editFact(pkgId, charName, factIndex){
       <div style="font-size:12px;color:var(--ink-faint);margin-bottom:8px">${esc(f.field)} · ${esc(f.source)}${f.chunk_id ? " · " + esc(f.chunk_id) : ""}</div>
       <textarea id="d_fact_val" rows="4" style="width:100%;font-size:14px;padding:8px;border:1px solid var(--line);border-radius:6px">${esc(f.value)}</textarea>
       <div class="btnrow" style="margin-top:12px">
-        <button class="btn" onclick="DISTILL_UI.showProvenance('${pkgId}','${esc(charName)}')">取消</button>
-        <button class="btn primary" onclick="DISTILL_UI.saveFact('${pkgId}','${esc(charName)}',${factIndex})">保存</button>
+        <button class="btn" data-dact="showProvenance" data-did="${pkgId}" data-dname="${escA(charName)}">取消</button>
+        <button class="btn primary" data-dact="saveFact" data-did="${pkgId}" data-dname="${escA(charName)}" data-didx="${factIndex}">保存</button>
       </div>
     </div>`;
 }
@@ -1021,7 +1028,7 @@ function addFact(pkgId, charName){
       <div style="font-size:13px;margin-bottom:8px">内容：</div>
       <textarea id="d_fact_val" rows="4" style="width:100%;font-size:14px;padding:8px;border:1px solid var(--line);border-radius:6px"></textarea>
       <div class="btnrow" style="margin-top:12px">
-        <button class="btn" onclick="DISTILL_UI.showProvenance('${pkgId}','${esc(charName)}')">取消</button>
+        <button class="btn" data-dact="showProvenance" data-did="${pkgId}" data-dname="${escA(charName)}">取消</button>
         <button class="btn primary" id="d_fact_add_go">添加</button>
       </div>
     </div>`;
@@ -1064,7 +1071,7 @@ async function regenOpenings(pkgId, charName){
   }
 }
 
-return {show: show, openPackage: openPackage, openCharacter: openCharacter, showProvenance: showProvenance,
+var api = {show: show, openPackage: openPackage, openCharacter: openCharacter, showProvenance: showProvenance,
   requestChange: requestChange, confirmChange: confirmChange,
   editFact: editFact, saveFact: saveFact, deleteFact: deleteFact, addFact: addFact, recompileCard: recompileCard,
   showWorldbook: showWorldbook,
@@ -1078,7 +1085,7 @@ return {show: show, openPackage: openPackage, openCharacter: openCharacter, show
     }
     cards.forEach(function(c){
       var total = Object.keys(c.sheet || {}).reduce(function(n, k){ return n + (c.sheet[k] || []).length; }, 0);
-      html += `<div class="card" style="margin-bottom:8px;padding:12px" onclick="DISTILL_UI.showStyleDetail('${c.id}')">
+      html += `<div class="card" style="margin-bottom:8px;padding:12px" data-dact="showStyleDetail" data-did="${c.id}">
         <div style="font-weight:600">${esc(c.name)}</div>
         <div style="font-size:12px;color:var(--ink-faint)">${total} 条风格特征 · ${c.signature_lines.length} 句式</div>
       </div>`;
@@ -1110,8 +1117,8 @@ return {show: show, openPackage: openPackage, openCharacter: openCharacter, show
     }
     html += `<div class="btnrow" style="margin-top:12px">
       <button class="btn" onclick="DISTILL_UI.showStyles()">← 返回</button>
-      <button class="btn" style="color:#e74c3c" onclick="if(confirm('删除？')){DISTILL_STYLE.deleteCard('${id}');DISTILL_UI.showStyles();}">删除</button>
-      <button class="btn primary" onclick="DISTILL_UI.useStyle('${id}')">✍️ 用此文风续写</button>
+      <button class="btn" style="color:#e74c3c" data-dact="deleteStyle" data-did="${id}">删除</button>
+      <button class="btn primary" data-dact="useStyle" data-did="${id}">✍️ 用此文风续写</button>
     </div>`;
     v.innerHTML = html;
   },
@@ -1196,7 +1203,7 @@ return {show: show, openPackage: openPackage, openCharacter: openCharacter, show
         ${r.ooc ? `<div style="font-size:12px;color:#f0ad4e;margin-top:4px">OOC: ${esc(r.reason)}</div>` : ""}
       </div>`;
     });
-    html += `<button class="btn" onclick="DISTILL_UI.openPackage('${id}')">返回</button>`;
+    html += `<button class="btn" data-dact="openPackage" data-did="${id}">返回</button>`;
     v.innerHTML = html;
   },
   qaMode: function(on){
@@ -1262,7 +1269,56 @@ return {show: show, openPackage: openPackage, openCharacter: openCharacter, show
       if(!(r.issues || []).length) html += `<div style="font-size:13px;color:var(--ink-faint)">无问题</div>`;
       html += `</div>`;
     });
-    html += `<button class="btn" onclick="DISTILL_UI.openPackage('${id}')">返回</button>`;
+    html += `<button class="btn" data-dact="openPackage" data-did="${id}">返回</button>`;
     v.innerHTML = html;
   }, exportPkg: exportPkg, regenOpenings: regenOpenings};
+
+/* 点击事件委托（XSS 修复 2026-10-13）：替代全部内联 onclick 字符串模板。
+ * 动态值走 data-* 属性（escA 做 HTML 属性转义，含双引号）；dataset 读出即原文，
+ * 不再经过 JS 字符串解析层，故反斜杠 / 引号 / 换行均无害。静态 onclick 保留。 */
+function onDelegatedClick(e){
+  var el = null;
+  try{ el = (e.target && e.target.closest) ? e.target.closest("[data-dact]") : null; }
+  catch(err){ el = null; }
+  if(!el) return;
+  var d = el.dataset || {}, act = d.dact, idx = parseInt(d.didx, 10);
+  try{
+    switch(act){
+      case "openPackage": api.openPackage(d.did); break;
+      case "openCharacter": api.openCharacter(d.did, d.dname, d.dstage); break;
+      case "showProvenance": api.showProvenance(d.did, d.dname); break;
+      case "showWorldbook": api.showWorldbook(d.did); break;
+      case "runAudit": api.runAudit(d.did); break;
+      case "runProbes": api.runProbes(d.did); break;
+      case "exportPkg": api.exportPkg(d.did); break;
+      case "qaAnswer": api.qaAnswer(d.dqid, d.dv); break;
+      case "requestChange": api.requestChange(d.did, d.dname); break;
+      case "polishCard": api.polishCard(d.did, d.dname); break;
+      case "playground":
+        if(typeof DISTILL_PLAYGROUND !== "undefined") DISTILL_PLAYGROUND.open(d.did, d.dname);
+        break;
+      case "dynamicGreeting": api.dynamicGreeting(d.did, d.dname); break;
+      case "chat":
+        if(typeof chatWith === "function") chatWith("distill_" + d.did, d.dname);
+        break;
+      case "autoExtractFacts": api.autoExtractFacts(d.did, d.dname); break;
+      case "editFact": api.editFact(d.did, d.dname, idx); break;
+      case "deleteFact": api.deleteFact(d.did, d.dname, idx); break;
+      case "saveFact": api.saveFact(d.did, d.dname, idx); break;
+      case "addFact": api.addFact(d.did, d.dname); break;
+      case "recompileCard": api.recompileCard(d.did, d.dname); break;
+      case "showStyles": api.showStyles(); break;
+      case "showStyleDetail": api.showStyleDetail(d.did); break;
+      case "useStyle": api.useStyle(d.did); break;
+      case "deleteStyle":
+        if(confirm("删除？")){ DISTILL_STYLE.deleteCard(d.did); api.showStyles(); }
+        break;
+    }
+  }catch(err){ try{ console.warn("[distill_ui] dact failed:", act, err); }catch(e2){} }
+}
+if(typeof document !== "undefined" && document && typeof document.addEventListener === "function"){
+  document.addEventListener("click", onDelegatedClick);
+}
+
+return api;
 })();

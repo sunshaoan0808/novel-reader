@@ -53,7 +53,7 @@ setTimeout: () => 0, clearTimeout(){}, fetch: () => Promise.reject(new Error("no
 scrollTo(){}, devicePixelRatio: 2};
 ctx.window = ctx; ctx.globalThis = ctx; ctx.__DATA__ = DATA;
 vm.createContext(ctx);
-for(const f of ["data.js", "icons.js", "rp/prompt.js", "rp/persona.js",
+for(const f of ["data.js", "icons.js", "rp/escutil.js", "rp/prompt.js", "rp/persona.js",
 "rp/memory.js", "rp/tasks.js", "rp/cardwriter.js", "rp/ooc.js", "rp/chat.js",
 "rp/group.js", "rp/traverse.js", "rp/heartbeat.js", "app.js"]){
 vm.runInContext(fs.readFileSync(WWW + "/" + f, "utf8"), ctx, {filename: f});
@@ -126,7 +126,7 @@ t("22 atMention/at菜单函数存在", appsrc.indexOf("window.atMention")>=0 && 
 t("22 建群页有关系输入框", appsrc.indexOf('id="grel_in"')>=0);
 t("22 抽屉有关系编辑区", appsrc.indexOf('id="grelbox"')>=0 && appsrc.indexOf("renderGRelBox")>=0);
 const chatsrc = fs.readFileSync(WWW+"/rp/chat.js","utf8");
-t("22 群聊prompt注入", chatsrc.indexOf("")>=0);
+t("22 群聊prompt注入", chatsrc.indexOf("角色关系设定") >= 0); /* P1-13: 原断言恒真，现查真实注入点 */
 
 /* ================= 23. Memory Diary 时间线 ================= */
 t("23 今天标签", vm.runInContext("diaryDayLabel("+NOW+")", ctx).indexOf("今天")===0);

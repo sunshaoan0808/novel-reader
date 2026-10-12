@@ -93,7 +93,7 @@ const coverHtml = cover
   ? `<img class="bw-cover" src="${esc(cover)}" alt="${esc(r.novel)}封面" loading="lazy" onerror="this.src='bg/book_cover_default.jpg'">`
   : `<div class="bw-cover-default"><img src="bg/book_cover_default.jpg" alt=""><span>${esc(r.novel)}</span></div>`;
 return `
-<div class="bw-card" onclick='openRun(${JSON.stringify(r.run_id)})'>
+<div class="bw-card" onclick="openRun('${jq(r.run_id)}')">
 ${coverHtml}
 <div class="bw-info">
 <div class="bw-name">${esc(r.novel)}</div>
@@ -230,9 +230,9 @@ if(_s2.s > 0) _st2 = "开局" + _s2.s + "次 · 平均" + RP_STATS.avgTurns(_s2)
 }catch(e){}
 return charCardHTML({
 name:p.name, tag:RUN.novel, img:charImg(RUN.novel, p.name), sum:tagline(p)||"人物档案", stat:_st2,
-oncard:`openChar(${JSON.stringify(p.name)})`,
-ops:`<button class="go" onclick='event.stopPropagation();chatWith(${JSON.stringify(RUN.run_id)},${JSON.stringify(p.name)})'>开聊</button>`
-+`<button onclick='event.stopPropagation();openChar(${JSON.stringify(p.name)})'>详情</button>`
+oncard:`openChar('${jq(p.name)}')`,
+ops:`<button class="go" onclick="event.stopPropagation();chatWith('${jq(RUN.run_id)}','${jq(p.name)}')">开聊</button>`
++`<button onclick="event.stopPropagation();openChar('${jq(p.name)}')">详情</button>`
 });}).join("") + `</div>`;
 }
 window.filterChars = (kw)=>{
@@ -246,11 +246,11 @@ titleEl.textContent = p.name; subEl.textContent = RUN.novel;
 const cimg = charImg(RUN.novel, p.name);
 view.innerHTML = `<button class="back" onclick="setTab('chars')">${icon("back")} 返回人物</button>
 ${cimg?`<img class="charhero" src="${esc(cimg)}" alt="${esc(p.name)}画像" onerror="this.remove()">`:""}
-<div class="btnrow" style="margin-bottom:10px"><button class="btn ghost" onclick='genPortrait(${JSON.stringify(RUN.run_id)},${JSON.stringify(p.name)})'>${icon("palette")} 生成立绘</button></div>
+<div class="btnrow" style="margin-bottom:10px"><button class="btn ghost" onclick="genPortrait('${jq(RUN.run_id)}','${jq(p.name)}')">${icon("palette")} 生成立绘</button></div>
 <div class="card md">${md(p.md)}</div>
 ${charForetell(p.name)}
 <div style="height:76px"></div>
-<div class="actionbar"><button class="btn" style="flex:1" onclick='chatWith(${JSON.stringify(RUN.run_id)},${JSON.stringify(p.name)})'>和 ${esc(p.name)} 聊天</button></div>`;
+<div class="actionbar"><button class="btn" style="flex:1" onclick="chatWith('${jq(RUN.run_id)}','${jq(p.name)}')">和 ${esc(p.name)} 聊天</button></div>`;
 window.scrollTo(0,0);
 };
 
@@ -654,7 +654,7 @@ window.ttsMsg = async (idx)=>{
 const k = window.ttsKey(idx);
 if(TTS_PLAY && TTS_PLAY.key===k){ const i = TTS_PLAY.idx; ttsStop(); ttsPaintStopped(i); return; }
 ttsStop();
-const h = getHist(chatHistKey());
+const h = getHistSafe(chatHistKey());
 const m = h[idx]; if(!m || m.role!=="assistant") return;
 const cfg = getCfg();
 const text = ttsClean(m);
@@ -702,7 +702,7 @@ window.voiceBubbleHTML = (idx, m)=>{
 const k = window.ttsKey(idx);
 const playing = !!(TTS_PLAY && TTS_PLAY.key===k);
 const dur = window.ttsEstDur(ttsClean(m));
-return `<button class="voicebub${playing?" playing":""}" id="vb-${idx}" onclick="event.stopPropagation();ttsMsg(${idx})" title="点击播放/暂停">`
+return `<button class="voicebub${playing?" playing":""}" id="vb-${idx}" onclick="event.stopPropagation();ttsMsg(${jq(idx)})" title="点击播放/暂停">`
 + `<span class="vb-ico" id="vbico-${idx}">${icon(playing?"pause":"play",13)}</span>`
 + `<span class="vb-bar"><span class="vb-fg" id="vbfg-${idx}" style="width:${playing?Math.round((TTS_PLAY.prog||0)*100):0}%"></span></span>`
 + `<span class="vb-dur">${window.fmtDur(dur)}</span></button>`;
@@ -726,7 +726,11 @@ out.innerHTML = `<div class="tokbar"><div class="tokbar-fg ${cls}" style="width:
 };
 const loreKey = (runId)=> `nd_lore_${runId}`;
 const getLore = (runId)=>{ try{return JSON.parse(localStorage.getItem(loreKey(runId)))||[]}catch(e){return[]}} ;
-const saveLore = (runId, arr)=> localStorage.setItem(loreKey(runId), JSON.stringify(arr));
+const saveLore = (runId, arr)=>{
+  /* P1-8: 世界书增删改在 inline onclick 里调 saveLore，原先裸抛无提示且中断 renderLoreList */
+  try{ localStorage.setItem(loreKey(runId), JSON.stringify(arr)); }
+  catch(e){ rpToastOnce(isQuotaErr(e) ? "存储空间已满，世界书保存失败" : "世界书保存失败"); }
+};
 const loreBack = {to:null};
 window.loreEditor = (runId, backTo)=>{
 __backAction = ()=>loreGoBack();
@@ -749,7 +753,7 @@ function renderLoreList(runId){
 __backAction = ()=>loreGoBack();
 const arr = getLore(runId);
 view.innerHTML = `<button class="back" onclick="loreGoBack()">${icon("back")} 返回</button>
-<div class="btnrow" style="margin-bottom:10px"><button class="btn" onclick="loreForm('${runId}')">${icon("plus")} 新增条目</button><button class="btn" onclick="importStLore('${runId}')">导入 ST 世界书</button><button class="btn ghost" onclick="exportStLore('${runId}')">导出 ST 世界书</button></div>
+<div class="btnrow" style="margin-bottom:10px"><button class="btn" onclick="loreForm('${jq(runId)}')">${icon("plus")} 新增条目</button><button class="btn" onclick="importStLore('${jq(runId)}')">导入 ST 世界书</button><button class="btn ghost" onclick="exportStLore('${jq(runId)}')">导出 ST 世界书</button></div>
 <div class="hint">自建条目和蒸馏产出的世界书一起参与关键词触发（常驻条目每轮必进），存在本机。列表顺序即优先级（越靠上越强），用 ↑↓ 调整。</div>
 ${arr.map((e,i)=>{
 const n = normLore(e,i);
@@ -759,12 +763,12 @@ return `<div class="card"><div class="row"><div style="flex:1">
 <div class="meta">触发词：${esc((n.key||[]).join("、")||"无")} · P${n.priority} · 概率 ${n.probability}%${n.minMessages?` · ${n.minMessages}条后激活`:""}${n.placement!=="default"?` · 锚定:${esc(n.placement)}`:""} · 约 ${RP_PROMPT.estTokens(n.content||"")} tok</div>
 </div></div>
 <div class="btnrow" style="margin-top:8px">
-<button class="btn ghost" onclick="loreMove('${runId}',${i},-1)"${i===0?" disabled":""}>↑</button>
-<button class="btn ghost" onclick="loreMove('${runId}',${i},1)"${i===arr.length-1?" disabled":""}>↓</button>
-<button class="btn ghost" onclick="loreForm('${runId}',${i})">编辑</button>
-<button class="btn ghost" onclick="loreToggle('${runId}',${i})">${!n.enabled?"启用":"停用"}</button>
-<button class="btn danger" onclick="loreDel('${runId}',${i})">删除</button>
-</div></div>`;}).join("") || `<div class="empty">还没有自建条目<br><button class="btn" style="margin-top:10px" onclick="loreForm('${runId}')">新增第一条</button></div>`}`;
+<button class="btn ghost" onclick="loreMove('${jq(runId)}',${jq(i)},-1)"${i===0?" disabled":""}>↑</button>
+<button class="btn ghost" onclick="loreMove('${jq(runId)}',${jq(i)},1)"${i===arr.length-1?" disabled":""}>↓</button>
+<button class="btn ghost" onclick="loreForm('${jq(runId)}',${jq(i)})">编辑</button>
+<button class="btn ghost" onclick="loreToggle('${jq(runId)}',${jq(i)})">${!n.enabled?"启用":"停用"}</button>
+<button class="btn danger" onclick="loreDel('${jq(runId)}',${jq(i)})">删除</button>
+</div></div>`;}).join("") || `<div class="empty">还没有自建条目<br><button class="btn" style="margin-top:10px" onclick="loreForm('${jq(runId)}')">新增第一条</button></div>`}`;
 window.scrollTo(0,0);
 }
 /* 上移/下移: 交换位置后重算 priority=index+1 (Janitor: priority 由排序派生, 无数字输入框) */
@@ -844,7 +848,7 @@ titleEl.textContent = (_isNew?"新增":"编辑") + "世界书条目"; subEl.text
 /* AI 帮填上下文：小说名 */
 const _loreNovel = ((((window.__DATA__||{}).runs||{})[runId]||{}).novel)||"";
 const _loreCtx = "世界书条目" + (_loreNovel?("，出自小说《"+_loreNovel+"》"):"") + "；条目内容会被注入 AI 的 prompt";
-view.innerHTML = `<button class="back" onclick="renderLoreList('${runId}')">${icon("back")} 返回列表</button>
+view.innerHTML = `<button class="back" onclick="renderLoreList('${jq(runId)}')">${icon("back")} 返回列表</button>
 <div class="field"><label>标题${RP_AIFILL.btn("l_title","世界书条目标题","2~8个字的人物名/地点名/势力名/物品名",_loreCtx)}</label><input id="l_title" value="${esc(n.name||"")}"></div>
 <div class="field"><label>触发词（逗号/顿号分隔，消息里出现即触发；可用 /正则/flags 写法）${RP_AIFILL.btn("l_keys","世界书触发词","逗号/顿号分隔；根据标题联想读者聊天时可能提到的相关词，5~12个",_loreCtx)}</label><input id="l_keys" value="${esc((n.key||[]).join("、"))}" placeholder="如：大观园、贾府"></div>
 <div class="field"><label>内容（进 prompt 的正文）${RP_AIFILL.btn("l_content","世界书内容","100~300字的设定正文，客观叙述、设定向",_loreCtx)}</label><textarea id="l_content" oninput="tokCount('l_content','l_tok')" style="width:100%;min-height:120px;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:10px">${esc(n.content||"")}</textarea><div class="tokline" id="l_tok"></div></div>
@@ -867,7 +871,7 @@ view.innerHTML = `<button class="back" onclick="renderLoreList('${runId}')">${ic
 <div class="field"><label>扫描深度（检测最近 N 条消息，1-10，空=默认 4）</label><input id="l_depth" type="number" min="1" max="10" value="${n.depth||""}" placeholder="默认"></div>
 <div class="field"><label>备注（不进 prompt，仅自己看）${RP_AIFILL.btn("l_comment","世界书备注","一句话说明这条条目的用途，仅自己看",_loreCtx)}</label><input id="l_comment" value="${esc(n.comment||"")}"></div>
 </div></details>
-<div class="btnrow"><button class="btn" onclick="loreSave('${runId}',${i==null?"null":i})">保存</button></div>`;
+<div class="btnrow"><button class="btn" onclick="loreSave('${jq(runId)}',${jq(i==null?"null":i)})">保存</button></div>`;
 tokCount("l_content","l_tok");
 window.scrollTo(0,0);
 };
@@ -921,7 +925,7 @@ function regexCharSel(runId, cur){
 if(regexBack.to === "trav") return ""; /* 穿越: 角色固定, 不显示角色选择 */
 const ms = (CHAT.mode==="group") ? CHAT.members : (CHAT.name ? [CHAT.name] : []);
 if(!ms.length) return "";
-return `<div class="field"><label>角色</label><select id="rx_char" onchange="renderRegexList('${runId}',this.value)">`
+return `<div class="field"><label>角色</label><select id="rx_char" onchange="renderRegexList('${jq(runId)}',this.value)">`
 + ms.map(n=>`<option value="${esc(n)}" ${n===cur?"selected":""}>${esc(n)}</option>`).join("") + `</select></div>`;
 }
 window.renderRegexList = (runId, name)=>{
@@ -931,15 +935,15 @@ titleEl.textContent = "正则替换"; subEl.textContent = (name? name+" · ":"")
 const arr = name ? getRegexUI(runId, name) : [];
 view.innerHTML = `<button class="back" onclick="regexGoBack()">${icon("back")} 返回</button>
 ${regexCharSel(runId, name)}
-<div class="btnrow" style="margin-bottom:10px"><button class="btn" onclick="importStRegex()">${icon("download")} 导入 ST 脚本</button><button class="btn ghost" onclick="exportStRegex()">导出 ST 脚本</button><button class="btn" onclick="regexForm('${runId}','${name.replace(/'/g,"\\'")}')">${icon("plus")} 新增规则</button></div>
+<div class="btnrow" style="margin-bottom:10px"><button class="btn" onclick="importStRegex()">${icon("download")} 导入 ST 脚本</button><button class="btn ghost" onclick="exportStRegex()">导出 ST 脚本</button><button class="btn" onclick="regexForm('${jq(runId)}','${jq(name)}')">${icon("plus")} 新增规则</button></div>
 <div class="hint">AI 回复发出前按顺序执行：查找（正则）→ 替换为。如把"好的"替换成"好"，或统一口头禅。非法正则会被跳过。</div>
 ${arr.map((r,i)=>`
 <div class="card">${r.name?`<div class="kv" style="color:var(--gold)">${esc(r.name)}${r.flags&&r.flags!=="g"?` <span style="color:var(--ink-faint)">/${esc(r.flags)}</span>`:""}</div>`:""}<div class="name" style="font-size:13px">${esc(r.find||"")} <span style="color:var(--ink-faint)">→</span> ${esc(String(r.replace||"")).slice(0,60)}</div>
 <div class="meta">${r.enabled===false?"停用":"启用"}${r.markdownOnly?` · <span class="badge">markdown显示时</span>`:""}${r.promptOnly&&!r.markdownOnly?` · <span class="badge">纯prompt(不执行)</span>`:""}${r.minDepth!=null?` · 深度≥${r.minDepth}`:""}${r.maxDepth!=null?` · 深度≤${r.maxDepth}`:""}</div>
 <div class="btnrow" style="margin-top:8px">
-<button class="btn ghost" onclick="regexForm('${runId}','${name.replace(/'/g,"\\'")}',${i})">编辑</button>
-<button class="btn ghost" onclick="regexToggle('${runId}','${name.replace(/'/g,"\\'")}',${i})">${r.enabled===false?"启用":"停用"}</button>
-<button class="btn danger" onclick="regexDel('${runId}','${name.replace(/'/g,"\\'")}',${i})">删除</button>
+<button class="btn ghost" onclick="regexForm('${jq(runId)}','${jq(name)}',${jq(i)})">编辑</button>
+<button class="btn ghost" onclick="regexToggle('${jq(runId)}','${jq(name)}',${jq(i)})">${r.enabled===false?"启用":"停用"}</button>
+<button class="btn danger" onclick="regexDel('${jq(runId)}','${jq(name)}',${jq(i)})">删除</button>
 </div></div>`).join("") || `<div class="empty">还没有规则</div>`}`;
 window.scrollTo(0,0);
 };
@@ -1020,11 +1024,11 @@ __backAction = ()=>renderRegexList(runId, name);
 const _rl = getRegexUI(runId, name);
 const r = (i==null || !_rl[i]) ? {find:"", replace:"", enabled:true} : _rl[i];
 titleEl.textContent = (i==null?"新增":"编辑")+"正则规则"; subEl.textContent = name;
-view.innerHTML = `<button class="back" onclick="renderRegexList('${runId}','${name.replace(/'/g,"\\'")}')">${icon("back")} 返回列表</button>
+view.innerHTML = `<button class="back" onclick="renderRegexList('${jq(runId)}','${jq(name)}')">${icon("back")} 返回列表</button>
 <div class="field"><label>查找（正则表达式）${RP_AIFILL.btn("x_find","正则查找式","用自然语言描述想匹配的文本，只输出正则表达式本身，不要解释","文本替换规则")}</label><input id="x_find" value="${esc(r.find||"")}" placeholder="如：好的|嗯嗯"></div>
 <div class="field"><label>替换为（可用 $1 引用分组）${RP_AIFILL.btn("x_rep","正则替换文本","写替换后的文本，可用 $1 $2 引用分组，只输出替换文本","文本替换规则；查找式："+(r.find||"（未填）"))}</label><input id="x_rep" value="${esc(r.replace||"")}" oninput="tokCount('x_rep','x_tok')"><div class="tokline" id="x_tok"></div></div>
 <div class="field"><label><input type="checkbox" id="x_en" style="width:auto" ${r.enabled===false?"":"checked"}> 启用</label></div>
-<div class="btnrow"><button class="btn" onclick="regexSave('${runId}','${name.replace(/'/g,"\\'")}',${i==null?"null":i})">保存</button></div>`;
+<div class="btnrow"><button class="btn" onclick="regexSave('${jq(runId)}','${jq(name)}',${jq(i==null?"null":i)})">保存</button></div>`;
 tokCount("x_rep","x_tok");
 window.scrollTo(0,0);
 };
@@ -1063,8 +1067,8 @@ ${t.scope_chapters?`<div class="meta">章节: ${esc(t.scope_chapters)}</div>`:""
 ${t.scope_scenes?`<div class="meta">场景: ${esc(t.scope_scenes)}</div>`:""}
 ${t.note?`<div class="meta">备注: ${esc(t.note)}</div>`:""}
 <div class="btnrow">
-<button class="btn ghost" onclick='copyTask(${JSON.stringify(t.id)})'>复制发给 Muse</button>
-<button class="btn danger" onclick='delTask(${JSON.stringify(t.id)})'>删除</button>
+<button class="btn ghost" onclick="copyTask('${jq(t.id)}')">复制发给 Muse</button>
+<button class="btn danger" onclick="delTask('${jq(t.id)}')">删除</button>
 </div>
 </div>`).join("") || `<div class="empty">还没有任务, 点上面新建一个</div>`;
 }
@@ -1149,19 +1153,29 @@ return RP_PRESET.get(getRpCfg().stPreset) || null;
 }catch(e){ return null; }
 }
 const chatKey = (runId, name)=> `nd_chat_${runId}_${name}`;
-const getHist = (k)=>{ try{
-  let h = [];
-  /* P2: 优先读 IDB 内存镜像（localStorage 副本被清理后仍能命中），再回退 localStorage */
-  /* UI-00 修复: 缓存未命中必须回退 localStorage，否则冷启动后小键历史读成空，
-     showChat 的打招呼分支会把真实历史覆盖掉（数据丢失）。 */
-  /* v36: 改走 getSync —— MEM 未命中且键在文件层时同步补读原生文件，
-     冷启动预热没跑完就点开聊天也不会读空。 */
-  if(typeof RP_STORE!=="undefined"){
-    if(typeof RP_STORE.getSync==="function"){ const c = RP_STORE.getSync(k); if(c!=null) h = JSON.parse(c)||[]; }
-    else { const c = RP_STORE.cacheGet(k); if(c!=null) h = JSON.parse(c)||[]; }
+/* P0-2/P0-3 修复：getHist 读失败（IO 异常/JSON 损坏）时抛错，绝不折叠成 []。
+ * 调用方必须区分"读失败"与"确实无数据"：
+ * - 纯展示类调用点用 getHistSafe(k)（失败当空渲染，绝不写回）；
+ * - 任何"读后可能写回"的调用点必须 try/catch，失败时放弃写入并提示用户。 */
+const getHist = (k)=>{
+  let raw = null;
+  if(typeof RP_STORE!=="undefined" && typeof RP_STORE.getSyncStrict==="function"){
+    raw = RP_STORE.getSyncStrict(k); /* 文件层持续读失败时抛错 */
+  }else if(typeof RP_STORE!=="undefined"){
+    if(typeof RP_STORE.getSync==="function"){ raw = RP_STORE.getSync(k); }
+    else { raw = RP_STORE.cacheGet(k); }
   }
-  if(!h.length){ try{ h = JSON.parse(localStorage.getItem(k))||[]; }catch(e2){} }
-  /* P0-4: 老消息补 mid (摘要水位 msg_id 制), 只新增字段 */
+  if(raw == null){
+    try{ raw = localStorage.getItem(k); }
+    catch(e){ throw new Error("HIST_READ_FAIL"); }
+  }
+  let h = [];
+  if(raw != null){
+    try{ h = JSON.parse(raw); }
+    catch(e){ throw new Error("HIST_PARSE_FAIL"); }
+    if(!Array.isArray(h)) throw new Error("HIST_PARSE_FAIL");
+  }
+  /* 老消息补 mid（摘要水位 msg_id 制），只新增字段 */
   let dirty = false;
   for(const m of h){
     if(m && !m.mid && !m.id){
@@ -1172,9 +1186,28 @@ const getHist = (k)=>{ try{
   }
   if(dirty) saveHist(k, h);
   return h;
-}catch(e){return[]}};
-const saveHist = (k,h)=>{ const s = JSON.stringify(h.slice(-80));
-  localStorage.setItem(k, s);
+};
+/* 纯展示类调用：读失败当空历史渲染，调用方保证不写回 */
+const getHistSafe = (k)=>{ try{ return getHist(k); }catch(e){ return []; } };
+/* 配额类错误识别（Chrome 22 / Firefox 1014 / 标准名） */
+function isQuotaErr(e){ return !!e && (e.code===22 || e.code===1014 ||
+  e.name==="QuotaExceededError" || e.name==="NS_ERROR_DOM_QUOTA_REACHED"); }
+/* 节流 toast：同一消息 10 秒内只弹一次，避免刷屏 */
+let __toastOnceAt = {};
+function rpToastOnce(msg){
+  const now = Date.now();
+  if(__toastOnceAt[msg] && now - __toastOnceAt[msg] < 10000) return;
+  __toastOnceAt[msg] = now;
+  try{ rpToast(msg); }catch(e){}
+}
+const saveHist = (k,h)=>{
+  const s = JSON.stringify(h.slice(-80));
+  /* P0-3: localStorage 写入失败（配额满）必须让用户知道，不能静默，更不能抛到上层打断流程 */
+  try{
+    localStorage.setItem(k, s);
+  }catch(e){
+    rpToastOnce(isQuotaErr(e) ? "存储空间已满，聊天记录可能无法保存" : "聊天记录保存失败");
+  }
   /* P2: 大键双写 IDB（异步，失败静默回退 localStorage） */
   /* v36: 值缩小到文件层阈值下但旧文件还在时，必须把旧文件+标记清掉，
      否则下次冷启动 warmCache 会把旧大文件"复活"，盖掉 localStorage 里的新值。 */
@@ -1477,12 +1510,12 @@ ${chatBgHTML()}
 <div id="chatsearch"></div>
 <div id="chatlog"></div>
 <div id="scenbar" class="scenbar"></div>
-<div class="chatbar">${chatbarInner(false)}</div>
+<div class="chatbar">${chatbarInner(STREAMING)}</div>
 </div>
 <div class="scrim" id="scrim" onclick="toggleDrawer(false)"></div>
 <div class="drawer" id="drawer">
 <h3>切换角色</h3>
-${cs.map(c=>`<button class="whoami ${c.runId===CHAT.runId&&c.name===CHAT.name?"active":""}" onclick="switchChat('${c.runId}|${c.name}')">
+${cs.map(c=>`<button class="whoami ${c.runId===CHAT.runId&&c.name===CHAT.name?"active":""}" data-swrun="${esc(c.runId)}" data-swname="${esc(c.name)}">
 <div class="avatar sm">${esc(c.name[0])}</div>
 <div><div class="name">${esc(c.name)}</div><div class="kv">${esc(c.novel)}</div></div>
 </button>`).join("")}
@@ -1524,7 +1557,15 @@ paintChatBg();
 attachHeadHide();
 updateChapterBadge();
 const k = chatKey(CHAT.runId, CHAT.name);
-if(!getHist(k).length){
+/* P0-2/P0-3: 读失败≠空历史。读失败时显示错误态并直接返回，绝不写打招呼语覆盖。 */
+let __h0 = null, __h0ok = true;
+try{ __h0 = getHist(k); }catch(e){ __h0ok = false; }
+if(!__h0ok){
+const _log = document.getElementById("chatlog");
+if(_log) _log.innerHTML = `<div class="msg"><div class="msgcol"><div class="bubble">⚠️ 聊天记录读取失败（存储异常），未做任何写入。请稍后重进，历史数据仍在。</div></div></div>`;
+return;
+}
+if(!__h0.length){
 /* 游玩统计：空历史进聊天 = 一次开局（纯本地，RP_STATS） */
 try{ if(typeof RP_STATS !== "undefined") RP_STATS.recordSession(CHAT.runId, CHAT.name); }catch(e){}
 /* 指定开场开聊：详情页点某开场进来时，首条 AI 消息直接用该开场，不再随机/生成 */
@@ -1534,7 +1575,10 @@ if(_po != null && _ops[_po]){
 saveHist(k, [{mid:(typeof nextMsgId==="function"?nextMsgId():"m"+Date.now().toString(36)), role:"assistant", content:_ops[_po].text, ts:Date.now()}]); renderChat();
 }else{
 RP.greeting(CHAT.runId, CHAT.name, cfg, run.novel).then(g=>{
-if(getHist(k).length) return;
+/* P1-4: 写前再确认——await 窗口内用户可能已发消息；读失败则放弃写入 */
+let _h2 = null;
+try{ _h2 = getHist(k); }catch(e){ return; }
+if(_h2.length) return;
 saveHist(k, [{mid:(typeof nextMsgId==="function"?nextMsgId():"m"+Date.now().toString(36)), role:"assistant", content:g, ts:Date.now()}]); renderChat();
 });
 }
@@ -1565,7 +1609,7 @@ ${chatBgHTML()}
 <div id="chatsearch"></div>
 <div id="chatlog"></div>
 <div id="scenbar" class="scenbar"></div>
-<div class="chatbar">${chatbarInner(false)}</div>
+<div class="chatbar">${chatbarInner(STREAMING)}</div>
 </div>
 <div class="scrim" id="scrim" onclick="toggleDrawer(false)"></div>
 <div class="drawer" id="drawer">
@@ -1576,11 +1620,11 @@ ${chatBgHTML()}
 </div>
 <div class="hint" style="margin:0 0 4px">自然：被点名者优先，其余按发言欲随机加入，一轮最多 3 人依次发言</div>
 <h3>群聊成员 · 点名字定下一个人说</h3>
-${ms.map(n=>{const qn=n.replace(/'/g,"\\'"); const tv=RP_GROUP.getTalk(CHAT.runId,n);
-return `<div class="gmember"><button class="whoami ${CHAT.forcedSpeaker===n?"active":""}" onclick="forceSpeaker('${qn}')">
+${ms.map(n=>{const tv=RP_GROUP.getTalk(CHAT.runId,n);
+return `<div class="gmember"><button class="whoami ${CHAT.forcedSpeaker===n?"active":""}" onclick="forceSpeaker('${jq(n)}')">
 <div class="avatar sm">${esc(n[0])}</div>
 <div><div class="name">${esc(n)}${CHAT.forcedSpeaker===n?" · 下一个说":""}</div></div>
-</button><div class="talkrow"><span>发言欲</span><input type="range" min="0" max="100" step="5" value="${tv}" oninput="setTalkVal('${qn}',this.value)"><b>${tv}</b></div></div>`;}).join("")}
+</button><div class="talkrow"><span>发言欲</span><input type="range" min="0" max="100" step="5" value="${tv}" oninput="setTalkVal('${jq(n)}',this.value)"><b>${tv}</b></div></div>`;}).join("")}
 <h3>角色关系 · 注入群聊 prompt</h3>
 <div id="grelbox"></div>
 <h3>叙事视角</h3>
@@ -1610,11 +1654,20 @@ renderGRelBox();
 paintChatBg();
 attachHeadHide();
 updateChapterBadge();
-if(!getHist(k).length){
+/* P0-2/P0-3: 读失败≠空历史，失败时直接返回，绝不写打招呼语覆盖。 */
+let __gh0 = null;
+try{ __gh0 = getHist(k); }catch(e){
+const _glog = document.getElementById("chatlog");
+if(_glog) _glog.innerHTML = `<div class="msg"><div class="msgcol"><div class="bubble">⚠️ 聊天记录读取失败（存储异常），未做任何写入。请稍后重进，历史数据仍在。</div></div></div>`;
+return;
+}
+if(!__gh0.length){
 const sp = ms[Math.floor(Math.random()*ms.length)];
 const run = (window.__DATA__.runs||{})[CHAT.runId] || {};
 RP.greeting(CHAT.runId, sp, cfg, run.novel).then(g=>{
-if(getHist(k).length) return;
+let _gh2 = null;
+try{ _gh2 = getHist(k); }catch(e){ return; }
+if(_gh2.length) return;
 saveHist(k, [{role:"assistant", speaker:sp, content:g, ts:Date.now()}]); renderChat();
 });
 }
@@ -1687,7 +1740,7 @@ view.innerHTML = keyBanner + dailyStripHTML() +
 + railHTML(`🎲 换一批看看 <button class="btn ghost sm" style="margin-left:4px" onclick="event.stopPropagation();showChatPicker()">↻</button>`, shuffled)
 + chipsHTML(counts, active, cs.length)
 + `<h2 class="sec">全部角色 · ${list.length}</h2>`
-+ (list.length ? `<div class="chargrid">` + list.map(c=>{ const qn=c.name.replace(/'/g,"\\'");
++ (list.length ? `<div class="chargrid">` + list.map(c=>{
 /* 游玩统计：卡片上显示开局次数与平均轮数（纯本地，RP_STATS） */
 let _sum = charSumFor(c.runId,c.name)||"点我直接开聊";
 let _stat = "";
@@ -1698,9 +1751,9 @@ if(_st.s > 0) _stat = "开局" + _st.s + "次 · 平均" + RP_STATS.avgTurns(_st
 }
 }catch(e){}
 return charCardHTML({name:c.name, tag:c.novel, img:charImg(c.novel, c.name), sum:_sum, stat:_stat,
-oncard:`chatWith('${c.runId}','${qn}')`,
-ops:`<button class="go" onclick="event.stopPropagation();chatWith('${c.runId}','${qn}')">开聊</button>`
-+`<button onclick="event.stopPropagation();charDetail('${c.runId}','${qn}','picker')">详情</button>`});
+oncard:`chatWith('${jq(c.runId)}','${jq(c.name)}')`,
+ops:`<button class="go" onclick="event.stopPropagation();chatWith('${jq(c.runId)}','${jq(c.name)}')">开聊</button>`
++`<button onclick="event.stopPropagation();charDetail('${jq(c.runId)}','${jq(c.name)}','picker')">详情</button>`});
 }).join("") + `</div>` : `<div class="empty">这个标签下还没有角色<br><button class="btn ghost sm" style="margin-top:8px" onclick="pickTag('')">清除筛选</button></div>`);
 try{ window.scrollTo(0,0); }catch(e){}
 }
@@ -1716,7 +1769,7 @@ h += `<input type="file" id="albumFile" accept=".json" style="display:none" onch
 h += `<div class="rail">`;
 h += albums.map(a=>{
 const cover = a.cards.length ? esc((a.cards[0].name || "?")[0]) : "💿";
-return `<div class="railcard" onclick="albumPage('${a.id}')">`
+return `<div class="railcard" onclick="albumPage('${jq(a.id)}')">`
 + `<div class="avatar">${cover}</div><div class="rn">${esc(a.name)}</div>`
 + `<div class="rk">${a.cards.length} 张</div></div>`;
 }).join("");
@@ -1741,22 +1794,21 @@ subEl.textContent = `共 ${alb.cards.length} 张卡 · 纯本地`;
 let grid = "";
 if(alb.cards.length){
 grid = `<div class="chargrid">` + alb.cards.map(c=>{
-const qn = c.name.replace(/'/g, "\\'");
 let sum = "";
 try{ sum = charSumFor(c.runId, c.name) || ""; }catch(e){}
 return charCardHTML({name: c.name, tag: c.novel || "", img: charImg(c.novel, c.name), sum: sum,
-oncard: `chatWith('${c.runId}','${qn}')`,
-ops: `<button class="go" onclick="event.stopPropagation();chatWith('${c.runId}','${qn}')">开聊</button>`
-+ `<button onclick="event.stopPropagation();albumRemoveCard('${id}','${c.runId}','${qn}')">移除</button>`});
+oncard: `chatWith('${jq(c.runId)}','${jq(c.name)}')`,
+ops: `<button class="go" onclick="event.stopPropagation();chatWith('${jq(c.runId)}','${jq(c.name)}')">开聊</button>`
++ `<button onclick="event.stopPropagation();albumRemoveCard('${jq(id)}','${jq(c.runId)}','${jq(c.name)}')">移除</button>`});
 }).join("") + `</div>`;
 }else{
 grid = `<div class="empty">还没有卡，点「加卡」装满它</div>`;
 }
 view.innerHTML = `<button class="back" onclick="showChatPicker()">${icon("back")} 返回发现</button>`
-+ `<div class="btnrow"><button class="btn" onclick="albumPick('${id}')">＋ 加卡</button>`
-+ `<button class="btn ghost" onclick="albumExport('${id}')">导出</button>`
-+ `<button class="btn ghost" onclick="albumRename('${id}')">改名</button>`
-+ `<button class="btn danger" onclick="albumDel('${id}')">删除</button></div>`
++ `<div class="btnrow"><button class="btn" onclick="albumPick('${jq(id)}')">＋ 加卡</button>`
++ `<button class="btn ghost" onclick="albumExport('${jq(id)}')">导出</button>`
++ `<button class="btn ghost" onclick="albumRename('${jq(id)}')">改名</button>`
++ `<button class="btn danger" onclick="albumDel('${jq(id)}')">删除</button></div>`
 + grid + `<div style="height:40px"></div>`;
 try{ window.scrollTo(0,0); }catch(e){}
 };
@@ -1770,17 +1822,16 @@ titleEl.textContent = "加卡到专辑"; subEl.textContent = `「${alb.name}」�
 const cs = allChars();
 const inMap = {};
 alb.cards.forEach(c=>{ inMap[c.runId + "|" + c.name] = 1; });
-view.innerHTML = `<button class="back" onclick="albumPage('${id}')">${icon("back")} 返回专辑</button>`
+view.innerHTML = `<button class="back" onclick="albumPage('${jq(id)}')">${icon("back")} 返回专辑</button>`
 + `<div class="chargrid">` + cs.map(c=>{
-const qn = c.name.replace(/'/g, "\\'");
 const has = inMap[c.runId + "|" + c.name];
 let sum = "";
 try{ sum = charSumFor(c.runId, c.name) || "点我直接开聊"; }catch(e){}
 return charCardHTML({name: c.name, tag: c.novel, img: charImg(c.novel, c.name),
 sum: has ? "已在专辑中" : sum,
-oncard: has ? "" : `albumAdd('${id}','${c.runId}','${qn}')`,
+oncard: has ? "" : `albumAdd('${jq(id)}','${jq(c.runId)}','${jq(c.name)}')`,
 ops: has ? `<button disabled>已加入</button>`
-: `<button class="go" onclick="event.stopPropagation();albumAdd('${id}','${c.runId}','${qn}')">＋ 加入</button>`});
+: `<button class="go" onclick="event.stopPropagation();albumAdd('${jq(id)}','${jq(c.runId)}','${jq(c.name)}')">＋ 加入</button>`});
 }).join("") + `</div><div style="height:40px"></div>`;
 try{ window.scrollTo(0,0); }catch(e){}
 };
@@ -1841,8 +1892,7 @@ return {c:c, last:(st && st.last) || 0, s:(st && st.s) || 0}; })
 /* 横滑轨道 */
 function railHTML(title, cs){
 return `<h2 class="sec">${title}</h2><div class="rail">` + cs.map(c=>{
-const qn = c.name.replace(/'/g, "\\'");
-return `<div class="railcard" onclick="chatWith('${c.runId}','${qn}')">`
+return `<div class="railcard" onclick="chatWith('${jq(c.runId)}','${jq(c.name)}')">`
 + `<div class="avatar">${esc((c.name || "?")[0])}</div>`
 + `<div class="rn">${esc(c.name)}</div>`
 + `<div class="rk">${esc(c.novel || "")}</div></div>`;
@@ -1864,7 +1914,7 @@ return Object.keys(m).map(k=>({tag:k, n:m[k]})).sort((a,b)=>b.n - a.n).slice(0, 
 function chipsHTML(counts, active, total){
 let h = `<div class="chiprow"><button class="pickchip${!active ? " on" : ""}" onclick="pickTag('')">全部 ${total}</button>`;
 counts.forEach(x=>{
-h += `<button class="pickchip${active === x.tag ? " on" : ""}" onclick="pickTag('${x.tag.replace(/'/g, "\\'")}')">${esc(x.tag)} <span class="n">${x.n}</span></button>`;
+h += `<button class="pickchip${active === x.tag ? " on" : ""}" onclick="pickTag('${jq(x.tag)}')">${esc(x.tag)} <span class="n">${x.n}</span></button>`;
 });
 return h + `</div>`;
 }
@@ -1979,7 +2029,7 @@ log.addEventListener("scroll", ()=>{
 ensureToBottom(); /* M3: 注入回到底部按钮（单聊/群聊/穿越共用） */
 } /* attachHeadHide end */
 window.exportChat = ()=>{
-const h = getHist(chatHistKey());
+const h = getHistSafe(chatHistKey());
 const txt = h.map(m=>`${m.role==="user"?"我":(CHAT.mode==="group"?(m.speaker||"?"):CHAT.name)}：${m.content}`).join("\n\n");
 copyText(txt);
 alert(`已复制 ${h.length} 条消息到剪贴板`);
@@ -2005,7 +2055,7 @@ const CAP = 200;
 const cards = list.slice(0, CAP).map(x=>{
 const e = x.e;
 const resolved = RP_FORE.isResolved(e);
-return `<div class="card" onclick="foreshadowChapter(${e.ch})" style="cursor:pointer">
+return `<div class="card" onclick="foreshadowChapter(${jq(e.ch)})" style="cursor:pointer">
 <div style="font-size:13px;margin-bottom:6px">${esc(e.s || "")}</div>
 <div class="row"><span class="badge" style="${resolved?"":"background:#f5e6c8;color:#8a6d2f"}">${esc(RP_FORE.statusText(e))}</span>
 <span class="kv">第 ${e.ch} 回</span>
@@ -2069,7 +2119,7 @@ setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); }catch(e){} a.remove(); }, 80
 }catch(e){ copyText(text); rpToast("下载失败, 已复制到剪贴板"); }
 }
 window.exportChatTxt = ()=>{
-const h = getHist(chatHistKey());
+const h = getHistSafe(chatHistKey());
 if(!h.length){ rpToast("没有可导出的聊天记录"); return; }
 const who = (m)=> m.role === "user" ? "我"
   : (CHAT.mode === "group" ? (m.speaker || "?") : (CHAT.name || "?"));
@@ -2083,7 +2133,7 @@ rpToast(`已导出 ${h.length} 条`);
 };
 /* ST 聊天记录导出(JSONL): 与 stChatParse/stChatToEntries 互逆, 可导回 ST */
 window.exportChatJsonl = ()=>{
-const h = getHist(chatHistKey());
+const h = getHistSafe(chatHistKey());
 if(!h.length){ rpToast("没有可导出的聊天记录"); return; }
 const p = (typeof RP_PERSONA !== "undefined") ? RP_PERSONA.getGlobal() : null;
 const meta = {userName: (p && p.name) || "User",
@@ -2253,7 +2303,11 @@ const p = STCHAT_PENDING; if(!p) return;
 const mode = (document.querySelector('input[name="stchat_mode"]:checked') || {}).value || "append";
 if(mode === "replace" && !confirm("确定清空当前聊天记录并导入？")) return;
 const k = chatHistKey();
-const cur = mode === "append" ? getHist(k) : [];
+/* P0-3: 追加导入前严格读历史，读失败则中止导入（不能拿空数组覆盖真实历史） */
+let cur = [];
+if(mode === "append"){
+try{ cur = getHist(k); }catch(e){ rpToast("聊天记录读取失败，导入已中止"); return; }
+}
 const merged = cur.concat(p.entries);
 saveHist(k, merged);
 /* 扩展数据透传: 覆盖模式连首行 chat_metadata 一起换(构画点线面间数据跟聊天走);
@@ -2316,7 +2370,9 @@ saveLore(CHAT.runId, a);
 }
 if(chatEntries.length){
 const k = chatHistKey();
-saveHist(k, getHist(k).concat(chatEntries));
+let _gh = null;
+try{ _gh = getHist(k); }catch(e){ rpToast("聊天记录读取失败，导入已中止"); return; }
+saveHist(k, _gh.concat(chatEntries));
 }
 GOUHUA_PENDING = null;
 rpToast(`已导入构画数据：世界书 ${loreEntries.length} 条，聊天 ${chatEntries.length} 条`);
@@ -2330,12 +2386,13 @@ try{ document.execCommand("copy"); }catch(e){}
 document.body.removeChild(ta);
 }
 window.copyMsg = (idx)=>{
-const h = getHist(chatHistKey());
+const h = getHistSafe(chatHistKey());
 copyText(h[idx].content);
 };
 window.delMsg = (idx)=>{
 const k = chatHistKey();
-const h = getHist(k);
+let h = null;
+try{ h = getHist(k); }catch(e){ rpToast("聊天记录读取失败"); return; }
 h.splice(idx, 1);
 saveHist(k, h); renderChat();
 };
@@ -2343,7 +2400,7 @@ saveHist(k, h); renderChat();
  * 未进记忆 → 走旧 confirm 直删。 */
 window.delMsgAsk = (idx)=>{
 const k = chatHistKey();
-const h = getHist(k);
+const h = getHistSafe(k);
 const m = h[idx]; if(!m) return;
 msgSheet(false);
 let inMem = false;
@@ -2378,12 +2435,13 @@ if(document.getElementById("live")){ alert("等这条生成完再编辑"); retur
 const msgs = document.querySelectorAll("#chatlog .msg");
 const el = msgs[idx]; if(!el) return;
 const bub = el.querySelector(".bubble"); if(!bub || bub.querySelector("textarea")) return;
-const h = getHist(chatHistKey());
+let h = null;
+try{ h = getHist(chatHistKey()); }catch(e){ rpToast("聊天记录读取失败"); return; }
 const m = h[idx]; if(!m) return;
 bub.dataset.orig = bub.innerHTML;
 bub.innerHTML = `<textarea id="editbox" onclick="event.stopPropagation()" style="width:100%;min-height:80px;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px;font-size:14px">${esc(m.content)}</textarea>`
-+ `<div class="btnrow" style="margin-top:6px" onclick="event.stopPropagation()"><button class="btn" onclick="editMsgSave(${idx})">保存${m.role==="user"?"并重生成":""}</button>`
-+ `<button class="btn ghost" onclick="editMsgCancel(${idx})">取消</button></div>`;
++ `<div class="btnrow" style="margin-top:6px" onclick="event.stopPropagation()"><button class="btn" onclick="editMsgSave(${jq(idx)})">保存${m.role==="user"?"并重生成":""}</button>`
++ `<button class="btn ghost" onclick="editMsgCancel(${jq(idx)})">取消</button></div>`;
 const ta = document.getElementById("editbox");
 if(ta){ ta.focus(); try{ ta.setSelectionRange(ta.value.length, ta.value.length); }catch(e){} }
 };
@@ -2398,7 +2456,7 @@ window.pinChatMsg = (idx)=>{
 if(CHAT.mode !== "single") return;
 /* Tier2 #5: Pin 上限 5 条 (C.AI "Pin up to 5 messages") */
 if(!RP_MEM.canPinChatMsg(CHAT.runId, CHAT.name)){ msgSheet(false); alert(RP_MEM.msgPinLimitMsg()); return; }
-const h = getHist(chatHistKey());
+const h = getHistSafe(chatHistKey());
 const m = h[idx]; if(!m) return;
 const who = m.role === "user" ? "我" : (CHAT.name || "TA");
 const st = RP_MEM.get(CHAT.runId, CHAT.name) || {};
@@ -2450,7 +2508,7 @@ if(sh) sh.classList.remove("on");
 if(sc) sc.classList.remove("on");
 return;
 }
-const h = getHist(chatHistKey());
+const h = getHistSafe(chatHistKey());
 const m = h[idx]; if(!m) return;
 if(!sh){
 sc = document.createElement("div");
@@ -2469,15 +2527,15 @@ const item = (fn, ic, label, danger)=>
 `<button class="msitem${danger?" danger":""}" onclick="${fn}">${icon(ic,16)} ${label}</button>`;
 const close = "msgSheet(false);";
 sh.innerHTML = `<div class="mshandle"></div><div class="msprev">${esc(prev)}${m.content.length>40?"…":""}</div>`
-+ (canPin ? item(close+`pinChatMsg(${idx})`, "pin", "Pin 为长期记忆") : "")
-+ (isAI ? item(close+`rateMsg(${idx},1)`, "thumb-up", m.rating===1?"已赞同":"赞同")
-+ item(close+`rateMsg(${idx},-1)`, "thumb-down", m.rating===-1?"已反对":"反对") : "")
-+ (rewritable ? item(close+`rewriteMsg(${idx})`, "repeat", "改写") : "")
-+ item(close+`editMsg(${idx})`, "edit", "编辑")
-+ item(close+`copyMsg(${idx})`, "copy", "复制")
-+ (isAI ? item(close+`ttsMsg(${idx})`, "volume", "TTS 朗读") : "")
-+ item(close+`delMsgAsk(${idx})`, "trash", "删除", true)
-+ item(close+`rewindMsg(${idx})`, "history", "回溯到这里");
++ (canPin ? item(close+`pinChatMsg(${jq(idx)})`, "pin", "Pin 为长期记忆") : "")
++ (isAI ? item(close+`rateMsg(${jq(idx)},1)`, "thumb-up", m.rating===1?"已赞同":"赞同")
++ item(close+`rateMsg(${jq(idx)},-1)`, "thumb-down", m.rating===-1?"已反对":"反对") : "")
++ (rewritable ? item(close+`rewriteMsg(${jq(idx)})`, "repeat", "改写") : "")
++ item(close+`editMsg(${jq(idx)})`, "edit", "编辑")
++ item(close+`copyMsg(${jq(idx)})`, "copy", "复制")
++ (isAI ? item(close+`ttsMsg(${jq(idx)})`, "volume", "TTS 朗读") : "")
++ item(close+`delMsgAsk(${jq(idx)})`, "trash", "删除", true)
++ item(close+`rewindMsg(${jq(idx)})`, "history", "回溯到这里");
 document.getElementById("msgscrim").classList.add("on");
 sh.classList.add("on");
 };
@@ -2486,7 +2544,8 @@ const ta = document.getElementById("editbox");
 const nv = ta ? ta.value : "";
 if(!nv.trim()){ alert("内容不能为空"); return; }
 const k = chatHistKey();
-const h = getHist(k);
+let h = null;
+try{ h = getHist(k); }catch(e){ rpToast("聊天记录读取失败"); return; }
 const m = h[idx]; if(!m) return;
 achvUnlock("edit_1");
 if(m.role !== "user"){
@@ -2531,11 +2590,22 @@ msgs.forEach(m=>m.classList.remove("show-tools"));
 if(!was) el.classList.add("show-tools");
 };
 window.switchChat = (v)=>{
+/* P0-4: 切会话前先取消在飞的流，否则旧流的 token 会写进新会话（串台）且旧流不可取消 */
+abortStreaming();
 const [runId, name] = v.split("|");
 CHAT = {mode:"single", runId, name, members:[], forcedSpeaker:null};
 localStorage.setItem("nd_chat_last", v);
 showChat();
 };
+/* P0-1: 抽屉"切换角色"按钮改事件委托 —— runId/name 经 data-* 属性传递（esc 转义引号），
+ * 不再拼进 onclick 字符串；委托绑在 document 上一次，drawer 每次重建 innerHTML 不受影响。 */
+if(typeof document!=="undefined" && document.addEventListener){
+document.addEventListener("click", (e)=>{
+const b = e.target && e.target.closest ? e.target.closest("[data-swrun]") : null;
+if(!b || !b.dataset) return;
+switchChat(b.dataset.swrun + "|" + b.dataset.swname);
+});
+}
 window.chatWith = (runId, name)=>{
 /* P1 开场选择器：多开场卡片且非指定开场进入时，先弹半屏选开场 */
 if(window.__pendingOpening == null){
@@ -2587,7 +2657,7 @@ try{
 if(typeof RP_THEME === "undefined") return "";
 const cur = RP_THEME.get();
 return `<div class="themerow" style="margin-top:8px">` + RP_THEME.THEMES.map(t=>`
-<div class="themecard${cur===t.id?" on":""}" onclick="setThemeUI('${t.id}')">
+<div class="themecard${cur===t.id?" on":""}" onclick="setThemeUI('${jq(t.id)}')">
 <div class="dots"><span class="dot" style="background:${t.vars["--bg"]}"></span><span class="dot" style="background:${t.vars["--gold"]}"></span><span class="dot" style="background:${t.vars["--ink"]}"></span></div>
 <div class="tname">${esc(t.name)}</div><div class="tdesc">${esc(t.desc)}</div></div>`).join("") + `</div>`;
 }catch(e){ return ""; }
@@ -2603,7 +2673,7 @@ function fontScaleCardsHTML(){
   const fs = getFontScale();
   const opts = [[1,"标准"],[1.15,"大"],[1.3,"特大"]];
   return `<div class="chiprow" style="margin-top:8px">` + opts.map(o=>
-    `<button class="pickchip${fs===o[0]?" on":""}" onclick="setFontScale(${o[0]})">${o[1]}</button>`).join("") + `</div>`;
+    `<button class="pickchip${fs===o[0]?" on":""}" onclick="setFontScale(${jq(o[0])})">${o[1]}</button>`).join("") + `</div>`;
 }
 /* 选人页快捷条：签到 + 成就（把藏在设置里的游玩入口浮上来） */
 function dailyStripHTML(){
@@ -2787,7 +2857,7 @@ if(SEARCH.active){ const i = document.getElementById("cs_input"); if(i) i.focus(
 else renderChat();
 };
 function searchHits(){
-const h = getHist(chatHistKey());
+const h = getHistSafe(chatHistKey());
 const q = SEARCH.q.trim().toLowerCase();
 SEARCH.hits = [];
 if(!q) return;
@@ -2874,7 +2944,7 @@ if(done){ twStop(); renderChat(); /* M4: 播完重渲染，长消息挂上折叠
 }
 function renderChat(forceBottom){
 twStop(); /* 新渲染进来（发消息/切tab/新回复）先停掉旧动画 */
-const h = getHist(chatHistKey());
+const h = getHistSafe(chatHistKey());
 const log = $("#chatlog");
 if(!log) return;
 /* 用户上滑看历史时不强制回底(防抖动); 发出新消息等场景由调用方传 true */
@@ -2898,11 +2968,11 @@ const who = m.role==="user"
 const showWho = CHAT.mode==="group"; /* S6: 姓名行只在群聊保留（说话人辨识），单聊/穿越靠顶栏 */
 let extra = "";
 const rateBtns = m.role==="assistant"
-? `<button class="${m.rating===1?"on":""}" onclick="event.stopPropagation();rateMsg(${idx},1)">${icon("thumb-up",15)}</button>`
-+ `<button class="${m.rating===-1?"on":""}" onclick="event.stopPropagation();rateMsg(${idx},-1)">${icon("thumb-down",15)}</button>` : "";
+? `<button class="${m.rating===1?"on":""}" onclick="event.stopPropagation();rateMsg(${jq(idx)},1)">${icon("thumb-up",15)}</button>`
++ `<button class="${m.rating===-1?"on":""}" onclick="event.stopPropagation();rateMsg(${jq(idx)},-1)">${icon("thumb-down",15)}</button>` : "";
 /* S-4 召回指示器：本条 AI 回复注入了记忆/世界书时，气泡工具条出现 🧠 角标 */
 const memBtn = (m.role==="assistant" && ((m.memHits&&m.memHits.length)||(m.loreHits&&m.loreHits.length)))
-? `<button onclick="event.stopPropagation();toggleMemHits(${idx})" title="这次想起了什么">🧠</button>` : "";
+? `<button onclick="event.stopPropagation();toggleMemHits(${jq(idx)})" title="这次想起了什么">🧠</button>` : "";
 /* 🧠 命中透明度：第一次出现时解释一次含义 */
 if(memBtn){ try{
   if(!localStorage.getItem("nd_memhit_tip")){
@@ -2912,23 +2982,23 @@ if(memBtn){ try{
 }catch(e){} }
 if(m.role==="assistant" && idx===lastAI){
 if(m.candidates && m.candidates.length>1){
-extra += `<div class="swipe" onclick="event.stopPropagation()"><button onclick="swipeMsg(${idx},-1)">‹</button>`
+extra += `<div class="swipe" onclick="event.stopPropagation()"><button onclick="swipeMsg(${jq(idx)},-1)">‹</button>`
 + `<span>${(m.ci||0)+1}/${m.candidates.length}</span>`
-+ `<button onclick="swipeMsg(${idx},1)">›</button></div>`;
++ `<button onclick="swipeMsg(${jq(idx)},1)">›</button></div>`;
 }
 extra += `<div class="msgtools">` + rateBtns + memBtn
 + voiceBubbleHTML(idx, m)
 + (repickInfo() ? `<button onclick="event.stopPropagation();repickOption()" title="回到上一个决策点重新选择">↩ 重选</button>` : "")
-+ `<button onclick="event.stopPropagation();editMsg(${idx})">编辑</button>`
-+ `<button onclick="event.stopPropagation();copyMsg(${idx})">复制</button>`
++ `<button onclick="event.stopPropagation();editMsg(${jq(idx)})">编辑</button>`
++ `<button onclick="event.stopPropagation();copyMsg(${jq(idx)})">复制</button>`
 + `<button onclick="event.stopPropagation();regenMsg()">↻ 重生</button>`
-+ `<button onclick="event.stopPropagation();delMsg(${idx})">删除</button></div>`;
++ `<button onclick="event.stopPropagation();delMsg(${jq(idx)})">删除</button></div>`;
 } else {
 extra = `<div class="msgtools">` + rateBtns + memBtn
 + (m.role==="assistant"?voiceBubbleHTML(idx,m):"")
-+ `<button onclick="event.stopPropagation();editMsg(${idx})">编辑</button>`
-+ `<button onclick="event.stopPropagation();copyMsg(${idx})">复制</button>`
-+ `<button onclick="event.stopPropagation();delMsg(${idx})">删除</button></div>`;
++ `<button onclick="event.stopPropagation();editMsg(${jq(idx)})">编辑</button>`
++ `<button onclick="event.stopPropagation();copyMsg(${jq(idx)})">复制</button>`
++ `<button onclick="event.stopPropagation();delMsg(${jq(idx)})">删除</button></div>`;
 }
 let body = m.content, cardHTML = "";
 if(m.role==="assistant"){
@@ -2946,7 +3016,7 @@ const bubbleInner = needFold
 /* Soul 冲突徽章 */
 const conflictBadge = (m._conflicts && m._conflicts.length && !m._conflictResolved && typeof RP_SOUL_CFG !== "undefined")
 ? RP_SOUL_CFG.conflictBadgeHTML(m._conflicts, idx) : "";
-return `<div class="msg ${m.role==="user"?"me":""}${mtype==="narr"?" narr":""}${mtype==="npc"?" npc":""}${isCur?" curhit":""}" id="smsg-${idx}" onclick="toggleTools(event,${idx})" oncontextmenu="event.preventDefault();msgMenu(${idx});return false;" ontouchstart="msgPressStart(event,${idx})" ontouchend="msgPressEnd()" ontouchmove="msgPressEnd()">`
+return `<div class="msg ${m.role==="user"?"me":""}${mtype==="narr"?" narr":""}${mtype==="npc"?" npc":""}${isCur?" curhit":""}" id="smsg-${idx}" onclick="toggleTools(event,${jq(idx)})" oncontextmenu="event.preventDefault();msgMenu(${jq(idx)});return false;" ontouchstart="msgPressStart(event,${jq(idx)})" ontouchend="msgPressEnd()" ontouchmove="msgPressEnd()">`
 + `<div class="msgcol">${showWho?`<div class="who">${esc(who)}</div>`:""}<div class="bubble${needFold?" foldable collapsed":""}">${bubbleInner}${conflictBadge}</div>${extra}</div>`
 + `</div>`;
 }).join("") || `<div class="empty">还没有对话，打个招呼吧<br><span style="font-size:12px">试试：你是谁？</span></div>`;
@@ -2972,7 +3042,7 @@ TW.key = key;
 }
 /* S-4 召回指示器 (对标 Kindroid 紫色脑图标): 点 🧠 展开"这次想起了什么" */
 window.toggleMemHits = (idx)=>{
-const h = getHist(chatHistKey()); const m = h[idx]; if(!m) return;
+const h = getHistSafe(chatHistKey()); const m = h[idx]; if(!m) return;
 const box = document.getElementById("smsg-"+idx); if(!box) return;
 const old = box.querySelector(".mmhits");
 if(old){ old.remove(); return; }
@@ -3093,7 +3163,7 @@ window.simEditor = ()=>{
     `<option value="${w.id}" ${st.wx===w.id?"selected":""}>${w.name}</option>`).join("");
   const placeRows = st.places.map(pl=>
     `<div class="kvline">${pl.id===st.cur?"★ ":""}${esc(pl.name)}${pl.mood?" · "+esc(pl.mood):""}`+
-    (pl.id!==st.cur?` <button class="btn ghost sm" onclick="wsMoveTo('${esc(pl.name).replace(/'/g,"\\'")}')">前往（+${st.travelMin||30}分钟）</button>`:"")+
+    (pl.id!==st.cur?` <button class="btn ghost sm" onclick="wsMoveTo('${jq(pl.name)}')">前往（+${st.travelMin||30}分钟）</button>`:"")+
     `</div>`).join("") || `<div class="meta">暂无地点</div>`;
   /* 时序感知：故事进度 S（回目） */
   let storyCh = 25, storyManual = false;
@@ -3157,7 +3227,8 @@ window.wsAddPlace = ()=>{
 /* ============ 单条消息评分 (对标 Talkie RatingFeedback, 本地存档) ============ */
 window.rateMsg = (idx, v)=>{
 const k = chatHistKey();
-const h = getHist(k);
+let h = null;
+try{ h = getHist(k); }catch(e){ rpToast("聊天记录读取失败"); return; }
 const m = h[idx]; if(!m) return;
 m.rating = (m.rating===v) ? 0 : v;
 saveHist(k, h); renderChat();
@@ -3225,7 +3296,7 @@ const activePlotOutline = ()=>{
 let pickLock = false;
 window.pickOption = async (idx, oi)=>{
   if(pickLock) return;
-  const h = getHist(chatHistKey());
+  const h = getHistSafe(chatHistKey());
   const m = h[idx]; if(!m || m.role!=="assistant") return;
   const oc = parseOptCard(m.content); if(!oc || !oc.options[oi]) return;
   pickLock = true;
@@ -3235,7 +3306,7 @@ window.pickOption = async (idx, oi)=>{
 function repickInfo(){
   try{
     if(!CHAT || !CHAT.travId || typeof RP_PLOTRUN==="undefined") return null;
-    const h = getHist(chatHistKey());
+    const h = getHistSafe(chatHistKey());
     if(h.length < 3) return null;
     const aiReply = h[h.length-1], userPick = h[h.length-2], decMsg = h[h.length-3];
     if(!aiReply || aiReply.role!=="assistant") return null;
@@ -3251,7 +3322,9 @@ window.repickOption = ()=>{
   const info = repickInfo();
   if(!info){ rpToast("之后已有新的对话，无法回退到决策点"); return; }
   if(!confirm("回到决策点重新选择？你的选择和 AI 的回复会被删除，剧情回退一步。")) return;
-  const k = chatHistKey(), h = getHist(k);
+  const k = chatHistKey();
+  let h = null;
+  try{ h = getHist(k); }catch(e){ rpToast("聊天记录读取失败"); return; }
   h.splice(h.length-2, 2); /* 删掉"你的选择 + AI回复" */
   saveHist(k, h);
   try{
@@ -3266,20 +3339,26 @@ window.repickOption = ()=>{
 };
 window.swipeMsg = (idx, dir)=>{
 const k = chatKey(CHAT.runId, CHAT.name);
-const h = getHist(k);
+let h = null;
+try{ h = getHist(k); }catch(e){ rpToast("聊天记录读取失败"); return; }
 if(RP.swipe(h[idx], dir)){ saveHist(k, h); renderChat(); achvUnlock("swipe_1"); }
 };
 window.regenMsg = async ()=>{
 const cfg = getCfg();
 const rcfg = getRpCfg();
 const k = chatHistKey();
-const h = getHist(k);
+/* P0-3: 历史读失败则拒绝重生（不能拿空历史去覆盖） */
+let h = null;
+try{ h = getHist(k); }catch(e){ rpToast("聊天记录读取失败"); return; }
 let rname = CHAT.name;
 if(CHAT.mode==="group"){
 for(let i=h.length-1;i>=0;i--){ if(h[i].role==="assistant"&&h[i].speaker){ rname = h[i].speaker; break; } }
 STREAM_SPEAKER = rname;
 }
 setStreaming(true);
+/* P0-4: 本轮独立 signal + 登记在飞代数/会话键 */
+const __rsig = streamSignal();
+__liveGen = __rsig.__gen; __liveKey = k;
 try{
 const r = await RP.regenerate(CHAT.runId, rname, {
 cfg: cfg, history: h, temperature: rcfg.temperature,
@@ -3288,20 +3367,46 @@ plotOutline: activePlotOutline(), scenario: scenarioInstr(),
 pov: CHAT.pov || "player", person: CHAT.person || "second",
 budget: {maxContext: rcfg.maxContext, response: rcfg.respTokens, preset: rcfg.preset, stPreset: resolveStPreset()},
 onToken: streamToken,
-signal: streamSignal(),
+signal: __rsig,
 onSystem: (preview, stats)=>{ LAST_SYSTEM = preview + "\n\n【预算】" + JSON.stringify(stats); LAST_STATS = stats; recordLastPrompt(stats); },
 });
 saveHist(k, r.history);
 achvUnlock("swipe_1");
-}catch(e){}
+}catch(e){
+/* P0-3: 失败只提示，不拿空历史覆盖 */
+rpToast("重新生成失败：" + (e && e.message ? e.message : e));
+}finally{
+STREAM_SPEAKER = null;
 setStreaming(false);
 renderChat();
-};
-let aborter = null;
-function streamSignal(){ aborter = new AbortController(); return aborter.signal; }
+}
+};;
+/* P0-4: 每轮发送独立 AbortController + 代数。旧的单全局 aborter 会被新发送覆盖，
+ * 导致上一轮流永远无法取消；代数用于 streamToken 校验"这条 token 属于当前在飞的轮次"。 */
+let __genSeq = 0, __curGen = 0;
+const __genAborters = {};
+/* 当前是否在流式中（任一轮次在飞）。页面重建输入栏时用它决定是否锁定输入。 */
+let STREAMING = false;
+/* streamToken 校验用：在飞轮次的代数 + 会话键。切会话/新轮次后旧 token 直接丢弃，防串台。 */
+let __liveGen = 0, __liveKey = "";
+function streamSignal(){
+  const id = ++__genSeq; __curGen = id;
+  const c = new AbortController();
+  __genAborters[id] = c;
+  const sig = c.signal; sig.__gen = id;
+  return sig;
+}
+function __abortGen(id){
+  const c = __genAborters[id];
+  if(c){ try{ c.abort(); }catch(e){} delete __genAborters[id]; }
+}
+/* 停止当前在飞的轮次（停止按钮 / 切页 / 切会话时调用） */
+function abortStreaming(){ __abortGen(__curGen); }
 /* M6: 改写（猫箱 rewrite）：AI 润色本条回复、原意不变，原回复进候选可 swipe 切回 */
 window.rewriteMsg = async (idx)=>{
-const k = chatHistKey(); const h = getHist(k);
+const k = chatHistKey();
+let h = null;
+try{ h = getHist(k); }catch(e){ rpToast("聊天记录读取失败"); return; }
 const m = h[idx];
 if(!m || m.role!=="assistant" || m.content.indexOf("⚠️")===0) return;
 const cfg = getCfg();
@@ -3354,8 +3459,7 @@ if(m){ m.remove(); return; }
 if(CHAT.mode!=="group" || !(CHAT.members||[]).length) return;
 m = document.createElement("div"); m.id = "atmenu"; m.className = "atmenu";
 m.innerHTML = `<div class="athint">＠ 谁先回？</div>` + CHAT.members.map(n=>{
-const qn = n.replace(/'/g,"\\'");
-return `<button onclick="atMention('${qn}')"><div class="avatar sm">${esc(n[0])}</div><span>${esc(n)}</span></button>`;
+return `<button onclick="atMention('${jq(n)}')"><div class="avatar sm">${esc(n[0])}</div><span>${esc(n)}</span></button>`;
 }).join("");
 const bar = document.querySelector(".chatbar");
 (bar || document.body).appendChild(m);
@@ -3392,13 +3496,18 @@ if(inp && !inp.disabled) inp.placeholder = CHAT.narrMode ? "📜 旁白：写场
 };
 window.setAsSpeaker = (v)=>{ CHAT.asSpeaker = v || null; };
 function setStreaming(on){
+STREAMING = !!on;
 const bar = document.querySelector(".chatbar");
 if(!bar) return;
-bar.innerHTML = chatbarInner(on);
+bar.innerHTML = chatbarInner(STREAMING);
 }
-window.stopGen = ()=>{ if(aborter) aborter.abort(); };
+/* 当前是否在流式生成中（供页面重建/测试查询） */
+window.__isStreaming = ()=> STREAMING;
+window.stopGen = ()=>{ abortStreaming(); };
 const streamWho = ()=> STREAM_SPEAKER || CHAT.name || "TA";
 function streamToken(tok){
+/* P0-4: 只写"当前在飞轮次 + 当前会话"的 token。切会话/新轮次后旧流的 token 直接丢弃，防串台。 */
+if(__liveGen !== __curGen || chatHistKey() !== __liveKey) return;
 const log = $("#chatlog");
 let live = document.getElementById("live");
 if(!live){
@@ -3424,8 +3533,13 @@ const cfg = getCfg();
 if(!cfg.key ||!cfg.base ||!cfg.model){ alert("先去「设置」配好 API 地址/Key/模型"); return;}
 const rcfg = getRpCfg();
 const k = chatHistKey();
-const h = getHist(k);
+/* P0-3: 历史读失败则拒绝发送（不能拿空历史去覆盖） */
+let h = null;
+try{ h = getHist(k); }catch(e){ rpToast("聊天记录读取失败，发送已取消"); return; }
 setStreaming(true);
+/* P0-4: 本轮独立 signal + 登记在飞代数/会话键 */
+const __sig = streamSignal();
+__liveGen = __sig.__gen; __liveKey = k;
 const t = $("#typing"); if(t) t.remove();
 const isGroup = CHAT.mode==="group";
 const isTrav = CHAT.mode==="traverse";
@@ -3465,8 +3579,7 @@ userSpeaker: CHAT.asSpeaker || null,
 pov: CHAT.pov || "player", person: CHAT.person || "second",
 onUserMsg: ()=>{ renderChat(true); },
 budget: {maxContext: rcfg.maxContext, response: rcfg.respTokens, preset: rcfg.preset, stPreset: resolveStPreset()},
-signal: streamSignal(),
-onToken: streamToken,
+signal: __sig, onToken: streamToken,
 onSpeaker: (sp)=>{ STREAM_SPEAKER = sp; },
 onSpeakerDone: ()=>{ saveHist(k, h); renderChat(); },
 onPush: ()=>{ saveHist(k, h); },
@@ -3518,22 +3631,27 @@ try{
 achvUnlock("first_chat");
 try{ hbAfterSend(); }catch(e){} /* Tier3-25: 心跳轮次计数（仅前台，不阻塞） */
 if(r.aborted){
-const hh = getHist(k);
-hh.push({role:"assistant", content:"（已停止生成）", ts:Date.now()});
-saveHist(k, hh);
+/* P0-3: 读失败时只提示、不写回（不能拿空数组覆盖真实历史） */
+let hh = null;
+try{ hh = getHist(k); }catch(e2){ rpToast("聊天记录读取失败"); }
+if(hh){ hh.push({role:"assistant", content:"（已停止生成）", ts:Date.now()}); saveHist(k, hh); }
 }else if(getRpCfg().ttsAuto){
 /* P1-1: 自动朗读 AI 回复 */
 const li = r.history.length-1;
 if(r.history[li] && r.history[li].role==="assistant"){ try{ ttsMsg(li); }catch(e){} }
 }
 }catch(e){
-const hh = getHist(k);
-hh.push({role:"assistant", speaker: (speakers[0]||null), content:`⚠️ 出错了：${e.message}`, ts:Date.now()});
-saveHist(k, hh);
-}
+/* P0-3: 读失败时只提示、不写回 */
+let hh = null;
+try{ hh = getHist(k); }catch(e2){ rpToast("聊天记录读取失败"); }
+if(hh){ hh.push({role:"assistant", speaker: (speakers[0]||null), content:`⚠️ 出错了：${e.message}`, ts:Date.now()}); saveHist(k, hh); }
+else{ rpToast("发送失败："+e.message); }
+}finally{
+/* P0-3: 收尾必须执行——setStreaming(false) 进 finally，任何异常都不能让输入框永久锁死 */
 STREAM_SPEAKER = null;
 setStreaming(false);
 renderChat();
+}
 };
 /* 剧情线编辑器 v27: 原著剧情大纲, 读者可自行编辑 */
 /* ============ 章节进度：角色只知道所选章节之前的事 ============ */
@@ -3602,7 +3720,7 @@ window.chapterPicker = ()=>{
     <div style="display:grid;gap:8px;margin-top:8px">` +
     secs.map(function(s, i){
       var active = i === cur;
-      return `<div class="card${active?"":""}" onclick="setChapterIdx(${i});chapterPicker()"
+      return `<div class="card${active?"":""}" onclick="setChapterIdx(${jq(i)});chapterPicker()"
         style="cursor:pointer;${active?"border-color:var(--gold-deep);background:rgba(212,162,78,.08)":""}">
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:12px;color:var(--gold);white-space:nowrap">第${i+1}章</span>
@@ -3676,7 +3794,7 @@ if(!el) return;
 const ae = document.activeElement;
 if(ae && ae.id === "scenetext" && el.contains(ae)) return;
 el.innerHTML = `<div class="scenrow">` + SCENARIOS.map(s=>
-`<button class="scenchip ${CHAT.scenario===s.id?"on":""}" onclick="toggleScenario('${s.id}')">${s.icon}${s.name}</button>`).join("")
+`<button class="scenchip ${CHAT.scenario===s.id?"on":""}" onclick="toggleScenario('${jq(s.id)}')">${s.icon}${s.name}</button>`).join("")
 + (CHAT.scenario ? `<button class="scenchip off" onclick="toggleScenario('')">✕</button>` : "")
 + `</div>`
 + `<input id="scenetext" class="scenetext" maxlength="160" placeholder="当前场景：地点/着装/活动（160字内）" value="${esc(getSceneText())}" oninput="setSceneText(this.value)" title="场景描述（160字内），注入权重最高">`;
@@ -3729,9 +3847,9 @@ try{ localStorage.setItem(povStoreKey(), JSON.stringify({pov: CHAT.pov||"player"
 function povChipsHTML(){
 const pov = CHAT.pov || "player", person = CHAT.person || "second";
 return `<div class="povsec"><div class="povlabel">${icon("eye",15)} 视角 · 故事围绕谁展开</div><div class="povrow">`
-+ POVS.map(p=>`<button class="povchip ${pov===p.id?"on":""}" title="${p.desc}" onclick="setPov('${p.id}')">${p.id==="player"?icon("user"):p.icon}${p.name}</button>`).join("")
++ POVS.map(p=>`<button class="povchip ${pov===p.id?"on":""}" title="${p.desc}" onclick="setPov('${jq(p.id)}')">${p.id==="player"?icon("user"):p.icon}${p.name}</button>`).join("")
 + `</div><div class="povlabel">${icon("user",15)} 人称 · AI 怎么称呼你和 TA</div><div class="povrow">`
-+ PERSONS.map(p=>`<button class="povchip ${person===p.id?"on":""}" onclick="setPerson('${p.id}')">${p.icon}·${p.name}</button>`).join("")
++ PERSONS.map(p=>`<button class="povchip ${person===p.id?"on":""}" onclick="setPerson('${jq(p.id)}')">${p.icon}·${p.name}</button>`).join("")
 + `</div></div>`;
 }
 window.setPov = (id)=>{ CHAT.pov = id; savePov(); toggleDrawer(false); showChat(); };
@@ -3787,7 +3905,7 @@ if(st && RP_MEM.leanmemOn && RP_MEM.leanmemOn()) st = RP_MEM.migrate3(runId, nm,
 const short = (st && st.short) || [];
 const pinned = short.filter(m=>m.pin);
 const rest = short.filter(m=>!m.pin);
-const h = getHist(`nd_chat_${runId}_${nm}`);
+const h = getHistSafe(`nd_chat_${runId}_${nm}`);
 let up = 0, dn = 0;
 h.forEach(m=>{ if(m.role==="assistant"){ if(m.rating===1) up++; else if(m.rating===-1) dn++; } });
 titleEl.innerHTML = icon("books")+" 记忆事件簿"; subEl.textContent = nm + " · 记忆日记";
@@ -3808,10 +3926,10 @@ return `<div class="tl-item${m.pin?" gold":""}"><div class="card alb-event${m.pi
 + `<div class="alb-fact">${esc(m.fact||"")}</div>`
 + (m.view?`<div class="alb-view">此刻看法：${esc(m.view)}</div>`:"")
 + `<div class="btnrow" style="margin-top:8px">`
-+ `<button class="btn ghost" onclick="memPin(${id})">${m.pin?"取消置顶":icon("pin",14)+" 置顶"}</button>`
-+ `<button class="btn ghost" onclick="memEditForm(${id})">✏️ 编辑</button>`
-+ `<button class="btn ghost" onclick="memCopyCard(${id})">📋 复制卡片</button>`
-+ `<button class="btn danger" onclick="memDel(${id})">删除</button>`
++ `<button class="btn ghost" onclick="memPin(${jq(id)})">${m.pin?"取消置顶":icon("pin",14)+" 置顶"}</button>`
++ `<button class="btn ghost" onclick="memEditForm(${jq(id)})">✏️ 编辑</button>`
++ `<button class="btn ghost" onclick="memCopyCard(${jq(id)})">📋 复制卡片</button>`
++ `<button class="btn danger" onclick="memDel(${jq(id)})">删除</button>`
 + `</div></div></div>`;
 };
 const apexAlb = (typeof RP_APEX !== "undefined") && (getRpCfg().apex !== false) && !!(st && st.migrated3);
@@ -3838,7 +3956,7 @@ const factsHtml = (()=>{
 if(!(st && st.migrated3)) return "";
 const gf = RP_MEM.getFacts(st), fz = RP_MEM.factsChars(st), fmax = RP_MEM.FACTS_MAX_CHARS;
 const factRow = (f)=>`<div class="alb-fact">· <span class="badge">${esc(f.cat||"其他")}</span> ${esc(f.text||"")}`
-+ `<div class="btnrow" style="margin-top:6px"><button class="btn ghost" onclick="factForm(${f.id})">编辑</button><button class="btn danger" onclick="factDel(${f.id})">删除</button></div></div>`;
++ `<div class="btnrow" style="margin-top:6px"><button class="btn ghost" onclick="factForm(${jq(f.id)})">编辑</button><button class="btn danger" onclick="factDel(${jq(f.id)})">删除</button></div></div>`;
 const edu = `<div class="facts-edu">角色会留意聊天中的细节——外貌、怪癖、关系等，自动记成事实并随时间更新；你也可以随时编辑或补充。`
 + `<details><summary>原文说明 (C.AI)</summary>`
 + `<div class="facts-en">"Your Characters pay attention. As you chat, they pick up on details about everyone mentioned in the conversation - appearance, quirks, relationships, and more. These facts update automatically over time."</div>`
@@ -3863,7 +3981,7 @@ const apexHist = (arr, id, fmt)=>{
 };
 /* Tier2 #14: 事件分型筛选 (对标星野记忆 card kind); Tier2 #10: 永久记忆按钮 */
 const kindChips = `<div class="kindchips">` + ["", "事件", "心情", "关系", "初见"].map(k=>
-`<button class="kindchip${ALBUM_KIND===k?" on":""}" onclick="albumKindFilter('${k}')">${k||"全部"}</button>`).join("") + `</div>`;
+`<button class="kindchip${ALBUM_KIND===k?" on":""}" onclick="albumKindFilter('${jq(k)}')">${k||"全部"}</button>`).join("") + `</div>`;
 const E3shown = ALBUM_KIND ? E3alb.filter(e=>RP_MEM.kindLabel(e)===ALBUM_KIND) : E3alb;
 const ev3Card = (e)=>{
 const kind = RP_MEM.kindLabel(e);
@@ -3871,7 +3989,7 @@ return `<div class="alb-fact">· ${esc((e.t_anchor?e.t_anchor+" ":"")+(e.topic||
 + ` <span class="badge">${kind}</span>`
 + (e.perm?` <span class="badge warn">${icon("pin",11)} 永久</span>`:"")
 + `${(e.merged||0)>1?` <span class="badge">合并×${e.merged}</span>`:""}${(e.v||1)>1?` <span class="badge">v${e.v}</span>`:""}`
-+ `<div class="btnrow" style="margin-top:6px"><button class="btn ghost" onclick="toggleEventPerm(${e.id})">${e.perm?"取消永久":"设为永久"}</button></div></div>`
++ `<div class="btnrow" style="margin-top:6px"><button class="btn ghost" onclick="toggleEventPerm(${jq(e.id)})">${e.perm?"取消永久":"设为永久"}</button></div></div>`
 + apexHist(st.event3,e.id,x=>(x.t_anchor?x.t_anchor+" ":"")+(x.topic||"")+(x.state?" —— "+x.state:""));
 };
 view.innerHTML = `<button class="back" onclick="albumBack()">${icon("back")} 返回</button>
@@ -3932,7 +4050,7 @@ view.innerHTML = `<button class="back" onclick="renderAlbum()">${icon("back")} �
 <div class="field"><label>时间</label><input id="me_time" value="${esc(m.time||"")}" placeholder="如：三月初三"></div>
 <div class="field"><label>事实${RP_AIFILL.btn("me_fact","关于"+nm+"的记忆事实","一句话，如：她在雨夜把伞给了你","角色"+nm+"；记忆原文：\\n"+(m.fact||""))}</label><textarea id="me_fact" rows="3" placeholder="这条记忆记录的事实">${esc(m.fact||"")}</textarea></div>
 <div class="field"><label>此刻看法（可选）</label><input id="me_view" value="${esc(m.view||"")}" placeholder="她/你现在怎么看这件事"></div>
-<div class="btnrow"><button class="btn" onclick="memEditSave(${id})">保存</button></div></div>`;
+<div class="btnrow"><button class="btn" onclick="memEditSave(${jq(id)})">保存</button></div></div>`;
 window.scrollTo(0,0);
 };
 window.memEditSave = (id)=>{
@@ -3957,7 +4075,7 @@ window.retryMemAnalyze = async ()=>{
 const runId = ALBUM.runId, nm = ALBUM.name;
 try{
 const cfg = getCfg();
-const h = getHist(`nd_chat_${runId}_${nm}`);
+const h = getHistSafe(`nd_chat_${runId}_${nm}`);
 if(!h.length){ alert("还没有聊天记录"); return; }
 const card = RP.findCard(runId, nm) || {};
 const hint = (((card.fields||{}).core_traits||"") + " " + ((card.fields||{}).speech_style||"")).trim();
@@ -3991,7 +4109,7 @@ view.innerHTML = `<button class="back" onclick="renderAlbum()">${icon("back")} �
 <div class="field"><label>分类</label><select id="f_cat">${cats}</select></div>
 <div class="field"><label>事实内容${RP_AIFILL.btn("f_text","关于"+nm+"的事实","一句话事实，如：她左眉有一颗小痣；可从最近聊天里提炼","角色"+nm+"；最近对话：\n"+RP_AIFILL._recentChatCtx(8,"nd_chat_"+runId+"_"+nm))}</label><input id="f_text" value="${esc(f?(f.text||""):"")}" placeholder="如：她左眉有一颗小痣"></div>
 <div class="hint">事实总字数上限 ${RP_MEM.FACTS_MAX_CHARS} 字，当前 ${RP_MEM.factsChars(st)} 字。</div>
-<div class="btnrow"><button class="btn" onclick="factSave(${fid==null?"null":fid})">保存</button></div></div>`;
+<div class="btnrow"><button class="btn" onclick="factSave(${jq(fid==null?"null":fid)})">保存</button></div></div>`;
 window.scrollTo(0,0);
 };
 window.factSave = (fid)=>{
@@ -4035,7 +4153,7 @@ body = short.map((m,i)=>
 + `</div>`).join("");
 } else {
 // 无记忆时退化为聊天记录对话体
-const h = getHist(`nd_chat_${runId}_${nm}`).slice(-30);
+const h = getHistSafe(`nd_chat_${runId}_${nm}`).slice(-30);
 body = h.length ? h.map(m=>{
 const who = m.role==="user" ? "我" : nm;
 return `<div class="nov-p"><b>${esc(who)}</b>：${esc(m.content)}</div>`;
@@ -4101,7 +4219,7 @@ try{
 const st = RP_MEM.get(runId, name);
 facts = ((st && st.short) || []).slice(-20).map(m=>`· ${m.time || "往事"}: ${m.fact || ""}`).join("\n");
 }catch(e){}
-const h = getHist(novelChatId()).slice(-40);
+const h = getHistSafe(novelChatId()).slice(-40);
 const hist = h.map(m=>`${m.role === "user" ? "我" : name}: ${m.content}`).join("\n");
 let cal = "";
 try{
@@ -4134,7 +4252,7 @@ novel.chapters.map((ch, i)=>`<div class="card">
 <div class="row"><div><div class="name" style="font-size:14px">${/^第.{1,4}章/.test(ch.title||"") ? esc(ch.title) : `第${i + 1}章 · ${esc(ch.title)}`}</div>
 <div class="kv">${esc(ch.overview || "")}</div></div>${novelStatusBadge(ch)}</div>
 <div class="btnrow" style="margin-top:8px">
-<button class="btn ghost" onclick="novelRewriteUI(${i})">✏️ ${ch.status===RP_NOVEL.ST_DONE?"再次改写":"生成正文"}</button>
+<button class="btn ghost" onclick="novelRewriteUI(${jq(i)})">✏️ ${ch.status===RP_NOVEL.ST_DONE?"再次改写":"生成正文"}</button>
 ${ch.status === RP_NOVEL.ST_DONE ? `<button class="btn ghost" onclick="novelRead()">📖 阅读</button>` : ""}
 </div><div id="nrw_${i}"></div></div>`).join("") +
 `<div class="btnrow" style="margin-top:12px">
@@ -4169,7 +4287,7 @@ const box = document.getElementById("nrw_" + i);
 if(!box) return;
 box.innerHTML = `<div class="field" style="margin-top:8px"><label>改写要求 (可空, 直接点生成=按概要扩写正文)</label>
 <input id="nrw_in_${i}" placeholder="如: 写得更悬疑一点, 加一段雨夜对话"></div>
-<div class="btnrow"><button class="btn" id="nrw_go_${i}" onclick="novelRewriteDo(${i})">🚀 生成本章正文</button></div>`;
+<div class="btnrow"><button class="btn" id="nrw_go_${i}" onclick="novelRewriteDo(${jq(i)})">🚀 生成本章正文</button></div>`;
 const inp = document.getElementById("nrw_in_" + i);
 if(inp) inp.focus();
 };
@@ -4272,9 +4390,9 @@ rows += `<div class="snode" style="margin-left:${depth*20}px">`
 + `<div class="meta">${fmtT(s.ts)} · ${n} 条消息</div>`
 + `<div class="save-prev">${prev}</div>`
 + `<div class="btnrow" style="margin-top:8px">`
-+ `<button class="btn" onclick="loadSaveSlot(${s.id})">${icon("download")} 加载</button>`
-+ `<button class="btn ghost" onclick="renameSaveSlot(${s.id})">改名</button>`
-+ `<button class="btn danger" onclick="delSaveSlot(${s.id})">删除</button>`
++ `<button class="btn" onclick="loadSaveSlot(${jq(s.id)})">${icon("download")} 加载</button>`
++ `<button class="btn ghost" onclick="renameSaveSlot(${jq(s.id)})">改名</button>`
++ `<button class="btn danger" onclick="delSaveSlot(${jq(s.id)})">删除</button>`
 + `</div></div></div>`;
 (tree.children[s.id]||[]).forEach((c,i,arr)=>walk(c, depth+1, i===arr.length-1?"└─":"├─"));
 };
@@ -4383,9 +4501,11 @@ const ok = r[0], wipeMem = r[1];
 const k = chatHistKey();
 const def = new Date().toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
 const ss = getSaves();
+let _bkHist = null;
+try{ _bkHist = getHist(k); }catch(e){ rpToast("聊天记录读取失败，备份已中止"); return; }
 const slot = {id: Date.now(), name: "自动备份 " + def, ts: Date.now(),
 parentId: getBranchSrc()[k] || null,
-history: getHist(k),
+history: _bkHist,
 mem: RP_MEM.get(CHAT.runId, CHAT.name),
 plot: getPlot()};
 ss.push(slot);
@@ -4424,9 +4544,11 @@ if(CHAT.mode === "single" && carry === null) return;
 const k = chatHistKey();
 const ss = getSaves();
 const id = Date.now();
+let _svHist = null;
+try{ _svHist = getHist(k); }catch(e){ rpToast("聊天记录读取失败，存档已中止"); return; }
 const slot = {id: id, name: (name||"").trim() || ("存档"+(ss.length+1)), ts: Date.now(),
 parentId: getBranchSrc()[k] || null, /* P1-5: 记录分支来源 */
-history: getHist(k),
+history: _svHist,
 mem: (CHAT.mode==="single" && carry) ? RP_MEM.get(CHAT.runId, CHAT.name) : null,
 plot: getPlot()};
 ss.push(slot);
@@ -4471,7 +4593,8 @@ return (h[j] && h[j].role === "user") ? j : idx;
 }
 window.rewindMsg = (idx)=>{
 const k = chatHistKey();
-const h = getHist(k);
+let h = null;
+try{ h = getHist(k); }catch(e){ rpToast("聊天记录读取失败"); return; }
 const m = h[idx]; if(!m) return;
 if(CHAT.mode === "single") idx = snapRewindIdx(h, idx);
 const chk = rewindCheck(h, idx);
@@ -4539,10 +4662,10 @@ view.innerHTML = `<button class="back" onclick="__backAction()">${icon("back")} 
 <div class="field"><label>补充说明（可选）${RP_AIFILL.btn("p_extra","玩家补充偏好","希望 AI 记住的偏好、和角色的关系设定，2~3句话","RP 应用的玩家人设")}</label>
 <textarea id="p_extra" rows="3" placeholder="希望 AI 记住的偏好、你们的关系设定……" oninput="tokCount(['p_name','p_called','p_desc','p_extra'],'p_tok')">${esc(p.extra||"")}</textarea></div>
 <div class="tokline" id="p_tok"></div>
-<div class="btnrow"><button class="btn" onclick="savePersonaUI(${isOverride?`'${scope}'`:"null"},'${from}')">保存</button>
+<div class="btnrow"><button class="btn" onclick="savePersonaUI(${isOverride?`'${jq(scope)}`:"null"},'${jq(from)}')">保存</button>
 <button class="btn ghost" onclick="importStPersona()">导入 ST 人设</button>
 <button class="btn ghost" onclick="exportStPersonaUI()">导出 ST 人设</button>
-${isOverride && RP_PERSONA.getOverride(scope) ? `<button class="btn ghost" onclick="RP_PERSONA.saveOverride('${scope}',null);__backAction()">清除本次覆盖</button>` : ""}
+${isOverride && RP_PERSONA.getOverride(scope) ? `<button class="btn ghost" onclick="RP_PERSONA.saveOverride('${jq(scope)}',null);__backAction()">清除本次覆盖</button>` : ""}
 </div>
 <div class="hint">保存后，人设会以【玩家人设】段注入每轮 prompt，紧跟在角色身份说明之后。</div>
 <div style="height:40px"></div>`;
@@ -4731,15 +4854,14 @@ document.body.appendChild(sc);
 sh = document.createElement("div"); sh.id = "opensheet"; sh.className = "msgsheet";
 document.body.appendChild(sh);
 }
-const qn = name.replace(/'/g, "\\'");
 const nums = ["一","二","三","四","五","六","七","八"];
 sh.innerHTML = `<div class="mshandle"></div><div class="msprev">选个开场，和 ${esc(name)} 开聊</div>`
 + ops.map((g, i)=>{
 const prev = g.text.length > 64 ? g.text.slice(0, 64) + "…" : g.text;
 const lab = g.label || ("开场" + (nums[i] || (i+1)));
-return `<button class="msitem opitem" onclick="pickOpening('${runId}','${qn}',${i})"><span class="opn">${esc(lab)}</span><span class="opp">${esc(prev)}</span></button>`;
+return `<button class="msitem opitem" onclick="pickOpening('${jq(runId)}','${jq(name)}',${jq(i)})"><span class="opn">${esc(lab)}</span><span class="opp">${esc(prev)}</span></button>`;
 }).join("")
-+ `<button class="msitem" onclick="pickOpening('${runId}','${qn}',-1)">🎲 随机开场</button>`;
++ `<button class="msitem" onclick="pickOpening('${jq(runId)}','${jq(name)}',-1)">🎲 随机开场</button>`;
 sc.classList.add("on"); sh.classList.add("on");
 };
 window.pickOpening = (runId, name, idx)=>{
@@ -4751,7 +4873,6 @@ idx = n ? Math.floor(Math.random() * n) : 0;
 chatWithOpening(runId, name, idx);
 };
 function cardLandingHTML(runId, nm, card, run){
-  const q = nm.replace(/'/g, "\\'");
   const openings = cardOpenings(runId, nm);
   const settingChars = cardSettingChars(card);
   let st = null;
@@ -4787,7 +4908,7 @@ function cardLandingHTML(runId, nm, card, run){
       + `</div></div>`;
   }
   /* 3. CTA */
-  h += `<button class="btn landcta" onclick="chatWith('${runId}','${q}')">▶ 立即开始游玩</button>`;
+  h += `<button class="btn landcta" onclick="chatWith('${jq(runId)}','${jq(nm)}')">▶ 立即开始游玩</button>`;
   /* 4. 简介 */
   if(brief) h += `<h2 class="sec">简介</h2><div class="card"><div style="font-size:13.5px;line-height:1.7">${esc(brief)}</div></div>`;
   /* 5. 规格网格 */
@@ -4803,7 +4924,7 @@ function cardLandingHTML(runId, nm, card, run){
     h += `<h2 class="sec">开场 · ${openings.length} 个</h2>`;
     h += openings.map((g, i)=>{
       const prev = g.length > 72 ? g.slice(0, 72) + "…" : g;
-      return `<div class="card opencard" onclick="chatWithOpening('${runId}','${q}',${i})">`
+      return `<div class="card opencard" onclick="chatWithOpening('${jq(runId)}','${jq(nm)}',${jq(i)})">`
         + `<div class="kv">开场${["一","二","三","四","五","六","七","八"][i] || (i+1)}</div>`
         + `<div style="font-size:13px;margin-top:5px;line-height:1.6">${esc(prev)}</div>`
         + `<div style="margin-top:8px;font-size:12px;color:var(--gold)">用这个开场开聊 ›</div></div>`;
@@ -4820,7 +4941,7 @@ function cardLandingHTML(runId, nm, card, run){
   /* 8. 标签 */
   if(tags.length) h += `<h2 class="sec">标签</h2><div style="margin:2px 0 10px">` + tags.map(t=>`<span class="tagchip">${esc(t)}</span>`).join("") + `</div>`;
   /* P2 开源卡入口 */
-  h += `<button class="btn ghost" style="width:100%;margin:4px 0" onclick="viewCardSource('${runId}','${q}')">📖 查看设定源码（只读学习）</button>`;
+  h += `<button class="btn ghost" style="width:100%;margin:4px 0" onclick="viewCardSource('${jq(runId)}','${jq(nm)}')">📖 查看设定源码（只读学习）</button>`;
   /* 9. 档案（原有字段分组） */
   const groups = [["identity","身份"],["core","内核"],["speech","说话方式"],["background","背景"]];
   const arch = groups.map(g=>{
@@ -4830,7 +4951,7 @@ function cardLandingHTML(runId, nm, card, run){
   }).join("");
   if(arch) h += `<h2 class="sec">档案</h2>` + arch.replace(/<h2 class="sec">[^<]*<\/h2>/g, "");
   /* 10. 底部 CTA */
-  h += `<button class="btn landcta" style="margin:14px 0 8px" onclick="chatWith('${runId}','${q}')">▶ 立即开始游玩</button>`;
+  h += `<button class="btn landcta" style="margin:14px 0 8px" onclick="chatWith('${jq(runId)}','${jq(nm)}')">▶ 立即开始游玩</button>`;
   return h;
 }
 /* 取卡片全量对象（RP.findCard 对导入/自创卡会裁剪字段，只读视图/导出用全量） */
@@ -4852,15 +4973,14 @@ document.body.classList.remove("chatmode");
 const card = fullCardOf(runId, name);
 titleEl.innerHTML = icon("books") + " 设定源码"; subEl.textContent = name + " · 只读";
 if(!card){
-view.innerHTML = `<button class="back" onclick="charDetail('${runId}','${name.replace(/'/g,"\\'")}')">${icon("back")} 返回</button><div class="empty">找不到这张卡</div>`;
+view.innerHTML = `<button class="back" onclick="charDetail('${jq(runId)}','${jq(name)}')">${icon("back")} 返回</button><div class="empty">找不到这张卡</div>`;
 return;
 }
-const q = name.replace(/'/g, "\\'");
 const f = card.fields || {};
 const fkeys = Object.keys(f);
 const wb = card.worldbook || [];
 const line = (k, v)=>`<div class="kvline"><b>${esc(k)}</b>：${esc(String(v == null ? "" : v))}</div>`;
-let h = `<button class="back" onclick="charDetail('${runId}','${q}')">${icon("back")} 返回</button>`
+let h = `<button class="back" onclick="charDetail('${jq(runId)}','${jq(name)}')">${icon("back")} 返回</button>`
 + `<div class="hint" style="margin:2px 0 10px">开源卡：设定对所有人只读开放，可对照学习写卡思路，不可在此编辑。</div>`
 + `<div class="card"><div class="name" style="font-size:14px">基本信息</div>`
 + line("名字", card.name) + line("出处", card.novel || runId)
@@ -4881,7 +5001,7 @@ h += `<h2 class="sec">世界书 · ${wb.length}</h2><div class="card">`
 + wb.slice(0, 20).map(w=>`<div class="kvline"><b>${esc(w.name || w.key || "条目")}</b> <span class="kv">${esc(String(w.keys || w.keywords || "").toString().slice(0, 60))}</span></div>`).join("")
 + (wb.length > 20 ? `<div class="kv">…还有 ${wb.length - 20} 条</div>` : "") + `</div>`;
 }
-h += `<div class="btnrow" style="margin-top:12px"><button class="btn" onclick="copyCardJson('${runId}','${q}')">复制设定 JSON</button></div><div style="height:40px"></div>`;
+h += `<div class="btnrow" style="margin-top:12px"><button class="btn" onclick="copyCardJson('${jq(runId)}','${jq(name)}')">复制设定 JSON</button></div><div style="height:40px"></div>`;
 view.innerHTML = h;
 window.scrollTo(0, 0);
 };
@@ -4903,7 +5023,6 @@ window.charTab = (t)=>{ DETAIL.tab = t; renderDetail(); };
 window.detailOpenAlbum = ()=>{ openAlbum(DETAIL.runId, DETAIL.name, ()=>renderDetail()); };
 function renderDetail(){
 const runId = DETAIL.runId, nm = DETAIL.name;
-const q = nm.replace(/'/g,"\\'");
 __backAction = ()=>detailBack();
 document.body.classList.remove("chatmode");
 const card = RP.findCard(runId, nm) || {name:nm, fields:{}};
@@ -4939,30 +5058,30 @@ body = `<div class="card"><div class="name" style="font-size:14px">铁律记忆 
 + `<div class="meta">${n} 条近期记忆${st&&st.long?" · 有长远印象":""}</div>`
 + `<div class="btnrow" style="margin-top:8px"><button class="btn" onclick="detailOpenAlbum()">${icon("books")} 打开记忆事件簿</button></div></div>`;
 } else if(DETAIL.tab === "arc"){
-body = renderArcBody(runId, nm, card, q);
+body = renderArcBody(runId, nm, card);
 } else if(DETAIL.tab === "soul"){
 body = (typeof RP_SOUL_CFG !== "undefined") ? RP_SOUL_CFG.soulViewHTML(card, runId, nm) : "<div class=\"empty\">Soul 模块未加载</div>";
 } else {
-const h = getHist(`nd_chat_${runId}_${nm}`).slice(-10);
+const h = getHistSafe(`nd_chat_${runId}_${nm}`).slice(-10);
 body = (h.map(m=>{
 const who = m.role==="user" ? "我" : nm;
 return `<div class="card"><div class="kv">${esc(who)}</div><div style="font-size:13px">${esc(m.content.slice(0,120))}${m.content.length>120?"…":""}</div></div>`;
 }).join("") || `<div class="empty">还没有聊天记录</div>`)
-+ `<div class="btnrow" style="margin-top:12px"><button class="btn" onclick="chatWith('${runId}','${q}')">${icon("chat")} 和${esc(nm)}开聊</button><button class="btn ghost" onclick="soulAnchors('${runId}','${q}')">${icon("user")} 魂穿成${esc(nm)}</button></div>`;
++ `<div class="btnrow" style="margin-top:12px"><button class="btn" onclick="chatWith('${jq(runId)}','${jq(nm)}')">${icon("chat")} 和${esc(nm)}开聊</button><button class="btn ghost" onclick="soulAnchors('${jq(runId)}','${jq(nm)}')">${icon("user")} 魂穿成${esc(nm)}</button></div>`;
 }
 view.innerHTML = `<button class="back" onclick="detailBack()">${icon("back")} 返回</button>
-<div class="dtabs">` + tabs.map(t=>`<button class="dtab${DETAIL.tab===t[0]?" on":""}" onclick="charTab('${t[0]}')">${t[1]}</button>`).join("") + `</div>
+<div class="dtabs">` + tabs.map(t=>`<button class="dtab${DETAIL.tab===t[0]?" on":""}" onclick="charTab('${jq(t[0])}')">${t[1]}</button>`).join("") + `</div>
 ${body}<div style="height:40px"></div>`;
 window.scrollTo(0,0);
 }
 /* ============ P0-3 人物弧光展示区 ============ */
-function renderArcBody(runId, nm, card, q){
+function renderArcBody(runId, nm, card){
 if(typeof RP_ARC === "undefined") return `<div class="empty">弧光模块未加载</div>`;
 const s = RP_ARC.arcSummary(card, runId);
 if(!s.type && !s.start && !s.mids.length && !s.end) return `<div class="empty">该角色暂无人物弧光资料</div>`;
 const opts = [s.defaultStage].concat(RP_ARC.STAGES.filter(x=>x && x !== s.defaultStage));
 const stageSel = `<div class="field" style="margin:0"><label>当前阶段（切换后按本卡记住）</label>`
-+ `<select id="arcstage_sel" onchange="arcStageChange('${runId}','${q}')">`
++ `<select id="arcstage_sel" onchange="arcStageChange('${jq(runId)}','${jq(nm)}')">`
 + opts.map(o=>`<option value="${esc(o)}"${o===s.stage?" selected":""}>${esc(o)}</option>`).join("")
 + `</select></div>`;
 const mids = s.mids.map((m,i)=>`<div class="kvline"><span class="kv">${i+1}.</span> ${esc(m)}</div>`).join("");
@@ -5002,7 +5121,7 @@ window.showRelManager = ()=>{
         <div><b>${esc(other)}</b>${dyn}<br>
         <span style="font-size:13px;color:var(--ink-faint)">${esc(r.relationship_summary || r.type || "")}</span></div>
         <button class="btn${locked ? " primary" : ""}" style="font-size:12px;padding:4px 10px"
-          onclick="AGENT_RELATIONS.setLock('${runId}','${esc(name)}','${esc(other)}',${!locked});showRelManager();">
+          onclick="AGENT_RELATIONS.setLock('${jq(runId)}','${jq(name)}','${jq(other)}',${!locked});showRelManager();">
           ${locked ? "🔒 已锁定" : "🔓 锁定"}</button>
       </div></div>`;
   });
@@ -5025,8 +5144,8 @@ window.showCardEvo = ()=>{
       <div style="font-size:13px;margin:6px 0"><b>建议：</b>${esc(s.newVal)}</div>
       <div style="font-size:12px;color:var(--ink-faint)">理由：${esc(s.reason || "")}</div>
       <div class="btnrow" style="margin-top:8px">
-        <button class="btn primary" style="font-size:12px" onclick="acceptCardEvo(${idx})">接受</button>
-        <button class="btn" style="font-size:12px" onclick="AGENT_CARDEVO.reject('${runId}','${esc(name)}',${idx});showCardEvo();">拒绝</button>
+        <button class="btn primary" style="font-size:12px" onclick="acceptCardEvo(${jq(idx)})">接受</button>
+        <button class="btn" style="font-size:12px" onclick="AGENT_CARDEVO.reject('${jq(runId)}','${jq(name)}',${idx});showCardEvo();">拒绝</button>
       </div></div>`;
   });
   html += `<button class="btn" onclick="showChat()">返回聊天</button>`;
@@ -5069,7 +5188,7 @@ window.closeAssistant = ()=>{
 function renderAsstChips(){
   var c = document.getElementById("asst_chips"); if(!c) return;
   c.innerHTML = ASSISTANT.chips().map(function(ch){
-    return `<button class="asst_chip" onclick="asstChip('${ch.text.replace(/'/g, "\\'")}')">${esc(ch.label)}</button>`;
+    return `<button class="asst_chip" onclick="asstChip('${jq(ch.text)}')">${esc(ch.label)}</button>`;
   }).join("");
 }
 window.asstChip = (text)=>{
@@ -5279,7 +5398,7 @@ else if(CHAT.mode === "traverse") key = "nd_travchat_" + CHAT.travId;
 else key = chatKey(CHAT.runId, CHAT.name);
 const raw = (typeof RP_PPA !== "undefined") ? RP_PPA.lastAlign(key) : null;
 if(!raw) return "未运行";
-const cur = getHist(chatHistKey()).length;
+const cur = getHistSafe(chatHistKey()).length;
 const n = Math.max(0, cur - (raw.len||0));
 return (n === 0 ? "本轮" : n + " 轮前") + (raw.changed ? " · 已修正" : " · 无修改");
 }catch(e){ return "未运行"; }
@@ -5406,7 +5525,7 @@ return ((hb.model||"").trim()) || rc.summaryModel || "";
 function hbTargetChat(){
 try{
 if(typeof CHAT!=="undefined" && CHAT && (CHAT.name || CHAT.mode==="group") && typeof chatHistKey==="function"){
-const k = chatHistKey(); const h = (typeof getHist==="function") ? getHist(k) : [];
+const k = chatHistKey(); const h = (typeof getHist==="function") ? getHistSafe(k) : [];
 if(h && h.length) return {key:k, name: CHAT.mode==="group" ? (CHAT.members||[]).join("、") : CHAT.name};
 }
 }catch(e){}
@@ -5455,7 +5574,7 @@ if(!target || !target.key){ alert("还没有任何聊天记录，先去聊几句
 const model = hbCheapModel() || cfg.model;
 if(!confirm("用模型「" + model + "」做一次心跳检查？（约 1 次小模型调用）")) return;
 try{
-const r = await RP_HB.runCheck({charName: target.name, hist: getHist(target.key), model: model,
+const r = await RP_HB.runCheck({charName: target.name, hist: getHistSafe(target.key), model: model,
 complete: (c2, ms, t)=> RP_NET.complete(Object.assign({}, cfg, {model:(c2&&c2.model)||model}), ms, t)});
 try{ renderHbLog(); }catch(e){}
 alert(r.ok ? (r.need ? "检查完成：角色想主动说——\n" + r.message + "\n（已记入日志，未自动发送）" : "检查完成：这次无需打扰。")
@@ -5476,7 +5595,7 @@ if(!cfg.key || !cfg.base || !cfg.model || typeof RP_NET==="undefined") return;
 const target = hbTargetChat();
 if(!target || !target.key) return;
 const model = hbCheapModel() || cfg.model;
-RP_HB.runCheck({charName: target.name, hist: getHist(target.key), model: model,
+RP_HB.runCheck({charName: target.name, hist: getHistSafe(target.key), model: model,
 complete: (c2, ms, t)=> RP_NET.complete(Object.assign({}, cfg, {model:(c2&&c2.model)||model}), ms, t)})
 .then(r=>{ if(r && r.ok && r.need) hbToast("💓 心跳检查：" + esc(target.name) + "好像想主动和你说句话，去设置页看看"); })
 .catch(()=>{});
@@ -5503,6 +5622,9 @@ return (b/1024/1024/1024).toFixed(2) + " GB";
 /* 本地存储总配额 2GB：localStorage（5MB 硬上限，浏览器规定改不了）+ IndexedDB（系统按磁盘余量算）
  * + 原生文件层（App 私有目录 files/ndblob/，2GB 自设上限，真机大文件走这里）。 */
 window.ND_QUOTA_BYTES = 2*1024*1024*1024;
+/* P1-7: localStorage 有 5MB 硬上限（浏览器规定），必须单独计算告警；
+ * 原来用 2GB 做分母，LS 部分永远只占 0.25%，告警形同虚设。 */
+window.ND_LS_QUOTA_BYTES = 5*1024*1024;
 window.storageUsage = ()=>{
 const groups = STORAGE_GROUPS.map(g=>({label: g.label, bytes: 0, keys: 0}));
 const other = {label: "配置与其他", bytes: 0, keys: 0};
@@ -5528,17 +5650,21 @@ if(RP_STORE.fileBytes){ const fb = RP_STORE.fileBytes(); if(typeof fb==="number"
 if(RP_STORE.fileCount){ fileCount = RP_STORE.fileCount()||0; }
 }
 }catch(e){}
+const lsTotal = total; /* P1-7: localStorage 部分单独记，用于 5MB 告警 */
 total += fileBytes;
 groups.push(other);
-return {total: total, quota: window.ND_QUOTA_BYTES, fileBytes: fileBytes, fileCount: fileCount, groups: groups.filter(g=>g.keys > 0)};
+return {total: total, lsTotal: lsTotal, quota: window.ND_QUOTA_BYTES, lsQuota: window.ND_LS_QUOTA_BYTES, fileBytes: fileBytes, fileCount: fileCount, groups: groups.filter(g=>g.keys > 0)};
 };
 window.renderStorageCard = ()=>{
 const su = storageUsage();
 const pct = Math.min(100, su.total / su.quota * 100);
-const warn = su.total / su.quota >= 0.8;
+/* P1-7: 告警看 localStorage 占用 / 5MB（这才是会爆的瓶颈），不再看 2GB 总量 */
+const lsPct = Math.min(100, (su.lsTotal||0) / (su.lsQuota||1) * 100);
+const warn = lsPct >= 80;
 return `<div class="setcard"><h3>本地存储用量</h3>
 <div class="storbar"><div class="storbar-fg${warn?" warn":""}" style="width:${pct.toFixed(1)}%"></div></div>
 <div class="stornum${warn?" warn":""}">${fmtBytes(su.total)} / 2 GB（${pct.toFixed(0)}%）${warn?" · 空间告急，建议清理":""}</div>
+<div class="storow"><span>浏览器本地存储<br><small style="color:var(--ink-faint);font-size:11px">上限 5MB，超限聊天无法保存</small></span><span class="${warn?"warn":""}">${fmtBytes(su.lsTotal||0)} / 5 MB（${lsPct.toFixed(0)}%）</span></div>
 ${su.groups.map(g=>`<div class="storow"><span>${g.label}</span><span>${g.keys} 项 · ${fmtBytes(g.bytes)}</span></div>`).join("")}
 <div class="storow" id="fileline"><span>大文件存储<br><small style="color:var(--ink-faint);font-size:11px">App 私有目录，上限 2GB</small></span><span>${su.fileCount} 个文件 · ${fmtBytes(su.fileBytes)}</span></div>
 <div class="storow" id="idbline"><span>浏览器大文件存储（估算）</span><span>统计中…</span></div>
@@ -6075,7 +6201,7 @@ const total = p.prompts.length, on = p.prompts.filter(e=>e.enabled!==false).leng
 let html = `<button class="back" onclick="setNav('settings')">${icon("back")} 返回设置</button>
 <h2 style="margin:6px 0">${esc(p.name)}</h2>
 <div class="hint">${total} 条目，${on} 启用 · 点行编辑，右侧开关逐条启用/停用（停用条目不参与 prompt 组装）；↑↓ 调整组装顺序</div>
-<div class="btnrow"><button class="btn" onclick="stPresetAddEntry('${pid}')">${icon("plus")} 新增自定义条目</button></div>`;
+<div class="btnrow"><button class="btn" onclick="stPresetAddEntry('${jq(pid)}')">${icon("plus")} 新增自定义条目</button></div>`;
 let lastGroup = "\0";
 p.prompts.forEach((e, i)=>{
 const g = e.group || "";
@@ -6083,13 +6209,13 @@ if(g && g !== lastGroup){ html += `<div class="spgrp">${esc(g)}</div>`; }
 lastGroup = g;
 const en = e.enabled !== false;
 const preview = String(e.content || "").replace(/\s+/g, " ").slice(0, 60);
-html += `<div class="card" style="padding:12px 14px" onclick="stPresetEntryDetail('${pid}',${i})"><div class="row"><div style="flex:1;min-width:0">`
+html += `<div class="card" style="padding:12px 14px" onclick="stPresetEntryDetail('${jq(pid)}',${jq(i)})"><div class="row"><div style="flex:1;min-width:0">`
 + `<div class="spname">${esc(e.name)}${stPresetEntryBadges(e)}</div>`
 + (preview ? `<div class="meta">${esc(preview)}…</div>` : `<div class="meta">（空内容）</div>`)
 + `</div><div class="sbtncol">`
-+ `<button class="sbtn" aria-label="上移" onclick="event.stopPropagation();stPresetMoveEntry('${pid}',${i},-1)">↑</button>`
-+ `<button class="sbtn" aria-label="下移" onclick="event.stopPropagation();stPresetMoveEntry('${pid}',${i},1)">↓</button>`
-+ `<button class="pswitch${en ? " on" : ""}" aria-label="启用开关" onclick="event.stopPropagation();stPresetToggleEntry('${pid}',${i})"></button>`
++ `<button class="sbtn" aria-label="上移" onclick="event.stopPropagation();stPresetMoveEntry('${jq(pid)}',${jq(i)},-1)">↑</button>`
++ `<button class="sbtn" aria-label="下移" onclick="event.stopPropagation();stPresetMoveEntry('${jq(pid)}',${jq(i)},1)">↓</button>`
++ `<button class="pswitch${en ? " on" : ""}" aria-label="启用开关" onclick="event.stopPropagation();stPresetToggleEntry('${jq(pid)}',${jq(i)})"></button>`
 + `</div></div></div>`;
 });
 view.innerHTML = html;
@@ -6122,21 +6248,21 @@ if(!e) return;
 __backAction = ()=>renderStPresetEntries(pid);
 const en = e.enabled !== false;
 if(e.marker){
-view.innerHTML = `<button class="back" onclick="renderStPresetEntries('${pid}')">${icon("back")} 返回条目</button>
+view.innerHTML = `<button class="back" onclick="renderStPresetEntries('${jq(pid)}')">${icon("back")} 返回条目</button>
 <div class="card"><div class="row"><div style="flex:1;min-width:0">
 <div class="spname">${esc(e.name)}</div>
 <div class="meta">定位标记 · ${e.identifier ? esc(e.identifier) + " · " : ""}${e.group ? "分组:" + esc(e.group) + " · " : ""}顺序 #${(e.pos == null ? i : e.pos) + 1}</div>
 <div class="hint">定位标记是预设的占位符，组装时替换为 App 侧对应内容（人设/角色/场景/示例/世界书/历史），不可编辑内容，只能开关。</div>
-</div><button class="pswitch${en ? " on" : ""}" aria-label="启用开关" onclick="stPresetToggleEntryDetail('${pid}',${i})"></button></div></div>`;
+</div><button class="pswitch${en ? " on" : ""}" aria-label="启用开关" onclick="stPresetToggleEntryDetail('${jq(pid)}',${jq(i)})"></button></div></div>`;
 window.scrollTo(0, 0);
 return;
 }
 const isChat = e.injection_position === "chat";
-view.innerHTML = `<button class="back" onclick="renderStPresetEntries('${pid}')">${icon("back")} 返回条目</button>
+view.innerHTML = `<button class="back" onclick="renderStPresetEntries('${jq(pid)}')">${icon("back")} 返回条目</button>
 <div class="card">
 <div class="row"><div style="flex:1;min-width:0"><div class="spname">编辑条目</div>
 <div class="meta">顺序 #${(e.pos == null ? i : e.pos) + 1}${e.group ? " · 分组:" + esc(e.group) : ""}</div></div>
-<button class="pswitch${en ? " on" : ""}" aria-label="启用开关" onclick="stPresetToggleEntryDetail('${pid}',${i})"></button></div>
+<button class="pswitch${en ? " on" : ""}" aria-label="启用开关" onclick="stPresetToggleEntryDetail('${jq(pid)}',${jq(i)})"></button></div>
 <div class="field"><label>名称</label><input id="pe_name" value="${esc(e.name)}" maxlength="60"></div>
 <div class="field"><label>角色</label><select id="pe_role">
 <option value="system"${e.role==="system"?" selected":""}>system（系统指令）</option>
@@ -6151,8 +6277,8 @@ view.innerHTML = `<button class="back" onclick="renderStPresetEntries('${pid}')"
 <input id="pe_depth" type="number" min="0" max="99" value="${e.injection_depth || 0}"></div>
 <div class="field"><label>内容（支持 {{char}}/{{user}}/{{time}} 等变量宏）</label>
 <textarea id="pe_content" rows="8">${esc(e.content)}</textarea></div>
-<div class="btnrow"><button class="btn" onclick="stPresetSaveEntry('${pid}',${i})">保存</button>
-<button class="btn danger" onclick="stPresetDelEntry('${pid}',${i})">删除条目</button></div>
+<div class="btnrow"><button class="btn" onclick="stPresetSaveEntry('${jq(pid)}',${jq(i)})">保存</button>
+<button class="btn danger" onclick="stPresetDelEntry('${jq(pid)}',${jq(i)})">删除条目</button></div>
 </div>`;
 window.scrollTo(0, 0);
 };
@@ -6241,7 +6367,6 @@ const idx = parseInt(pick)-1;
 if(ms[idx]) showATasks(ms[idx]);
 return;
 }
-const q = s=>String(s).replace(/'/g,"\\'");
 const defs = RP_TASKS.getDefs(CHAT.runId, nm);
 titleEl.textContent = "分析任务 · " + nm;
 subEl.textContent = "";
@@ -6252,16 +6377,15 @@ ${defs.map(d=>{const t=RP_TASKS.normDef(d); const st=RP_TASKS.getState(CHAT.runI
 return `<div class="card"><div class="row"><div><div class="name">${esc(t.name)}</div>
 <div class="kv">${esc(RP_TASKS.describe(t))}</div>
 <div class="kv">${st?("上次运行: "+new Date(st.updatedAt).toLocaleString()+(st.reason?" · "+st.reason:"")):"尚未运行"}</div></div></div>
-<div class="btnrow"><button class="btn ghost" onclick="viewAOut('${q(nm)}','${t.id}')">查看输出</button>
-<button class="btn ghost" onclick="runATaskNow('${q(nm)}','${t.id}')">立即运行</button>
-<button class="btn ghost" onclick="editATask('${q(nm)}','${t.id}')">编辑</button>
-<button class="btn danger ghost" onclick="delATask('${q(nm)}','${t.id}')">删除</button></div></div>`;}).join("") || `<div class="empty">还没有分析任务, 点下面新建一个。</div>`}
-<div class="btnrow"><button class="btn" onclick="editATask('${q(nm)}','')">${icon("plus")} 新建任务</button>
+<div class="btnrow"><button class="btn ghost" onclick="viewAOut('${jq(nm)}','${jq(t.id)}')">查看输出</button>
+<button class="btn ghost" onclick="runATaskNow('${jq(nm)}','${jq(t.id)}')">立即运行</button>
+<button class="btn ghost" onclick="editATask('${jq(nm)}','${jq(t.id)}')">编辑</button>
+<button class="btn danger ghost" onclick="delATask('${jq(nm)}','${jq(t.id)}')">删除</button></div></div>`;}).join("") || `<div class="empty">还没有分析任务, 点下面新建一个。</div>`}
+<div class="btnrow"><button class="btn" onclick="editATask('${jq(nm)}','')">${icon("plus")} 新建任务</button>
 <button class="btn ghost" onclick="showChat()">返回聊天</button></div>`;
 };
 window.editATask = (name, id)=>{
 __backAction = ()=>showATasks(name);
-const q = s=>String(s).replace(/'/g,"\\'");
 const defs = RP_TASKS.getDefs(CHAT.runId, name);
 const t = RP_TASKS.normDef(id ? (defs.find(d=>d.id===id)||{}) : {id: RP_TASKS.nextId(defs)});
 titleEl.textContent = (id?"编辑任务 · ":"新建任务 · ") + name;
@@ -6281,8 +6405,8 @@ view.innerHTML = `
 <option value="selective" ${t.mode==="selective"?"selected":""}>按需注入 (聊到关键词才想起)</option>
 <option value="off" ${t.mode==="off"?"selected":""}>仅存档 (不注入对话)</option></select></div>
 <div class="field"><label><input id="at_enabled" type="checkbox" style="width:auto" ${t.enabled?"checked":""}> 启用</label></div>
-<div class="btnrow"><button class="btn" onclick="saveATask('${q(name)}','${t.id}')">保存</button>
-<button class="btn ghost" onclick="showATasks('${q(name)}')">返回</button></div>
+<div class="btnrow"><button class="btn" onclick="saveATask('${jq(name)}','${jq(t.id)}')">保存</button>
+<button class="btn ghost" onclick="showATasks('${jq(name)}')">返回</button></div>
 <div class="hint">{{NEW_DIALOG}} 是上次运行以来的新对话; {{PREV_OUTPUT}} 是任务上次的输出, 适合做增量更新。</div>
 </div>`;
 };
@@ -6305,7 +6429,6 @@ showATasks(name);
 };
 window.viewAOut = (name, id)=>{
 __backAction = ()=>showATasks(name);
-const q = s=>String(s).replace(/'/g,"\\'");
 const defs = RP_TASKS.getDefs(CHAT.runId, name);
 const t = defs.find(d=>d.id===id)||{};
 const st = RP_TASKS.getState(CHAT.runId, name, id);
@@ -6315,13 +6438,13 @@ document.body.classList.remove("chatmode");
 view.innerHTML = `<div class="setcard">
 <div class="kv">${st?("更新于 "+new Date(st.updatedAt).toLocaleString()+(st.reason?" · 触发: "+st.reason:"")):"尚未运行"}</div>
 <pre style="white-space:pre-wrap;font-size:13px">${esc((st&&st.output)||"(空)")}</pre>
-<div class="btnrow"><button class="btn ghost" onclick="showATasks('${q(name)}')">返回</button></div></div>`;
+<div class="btnrow"><button class="btn ghost" onclick="showATasks('${jq(name)}')">返回</button></div></div>`;
 };
 window.runATaskNow = async (name, id)=>{
 const cfg = getCfg();
 if(!cfg.key){ alert("先去设置里配 API"); return; }
 if(!confirm("用最近的聊天记录跑一次这个任务? (约 1 次模型调用)")) return;
-const h = getHist(chatHistKey());
+const h = getHistSafe(chatHistKey());
 const card = (RP.findCard(CHAT.runId, name)||{});
 const hint = ((card.fields||{}).core_traits||"");
 const ran = await RP_TASKS.maybeRun(CHAT.runId, name, h, cfg,
@@ -6339,7 +6462,6 @@ subEl.textContent = "分步采访, 写出能直接开聊的角色卡";
 document.body.classList.remove("chatmode");
 const ss = RP_WRITER.listSessions();
 const cs = RP_WRITER.getCustomChars();
-const q = x=>String(x).replace(/'/g,"\\'");
 view.innerHTML = `
 <div class="card"><div class="secttl">✨ AI 生成角色</div>
 <div class="kv">一句话描述你想要的角色, AI 一次生成整张卡: 名字、性格、开场白、示例对话、背景。不满意可换一批, 也可转手动微调。</div>
@@ -6358,16 +6480,16 @@ view.innerHTML = `
 ${ss.length?`<h2 class="sec">未完成的写卡 (${ss.length})</h2>`+ss.map(x=>`
 <div class="card"><div class="row"><div><div class="name">${esc(RP_WRITER.STEPS[x.step].name)} · 进行中</div>
 <div class="kv">${new Date(x.updatedAt).toLocaleString()} · ${x.history.length} 轮对话</div></div></div>
-<div class="btnrow"><button class="btn" onclick="writerChat('${x.id}')">继续</button>
-<button class="btn danger ghost" onclick="if(confirm('放弃这次写卡?')){RP_WRITER.delSession('${x.id}');showWriter();}">放弃</button></div></div>`).join(""):""}
+<div class="btnrow"><button class="btn" onclick="writerChat('${jq(x.id)}')">继续</button>
+<button class="btn danger ghost" onclick="if(confirm('放弃这次写卡?')){RP_WRITER.delSession('${jq(x.id)}');showWriter();}">放弃</button></div></div>`).join(""):""}
 <h2 class="sec">我的角色卡 (${cs.length})</h2>
 ${cs.length?`<div class="chargrid">`+cs.map(c=>charCardHTML({
 name:c.name, tag:c.novel, sum:String((c.fields&&c.fields.core_identity)||"").slice(0,46)||"自创角色 · 点我直接开聊",
-oncard:`chatWith('custom','${q(c.name)}')`,
-ops:`<button class="go" onclick="event.stopPropagation();chatWith('custom','${q(c.name)}')">开聊</button>`
-+`<button onclick="event.stopPropagation();editCard('custom','${c.id}')">编辑</button>`
-+`<button onclick="event.stopPropagation();exportCard('${c.id}')">导出</button>`
-+`<button class="danger" onclick="event.stopPropagation();if(confirm('删除这张角色卡?')){RP_WRITER.delCustom('${c.id}');showWriter();}">删</button>`
+oncard:`chatWith('custom','${jq(c.name)}')`,
+ops:`<button class="go" onclick="event.stopPropagation();chatWith('custom','${jq(c.name)}')">开聊</button>`
++`<button onclick="event.stopPropagation();editCard('custom','${jq(c.id)}')">编辑</button>`
++`<button onclick="event.stopPropagation();exportCard('${jq(c.id)}')">导出</button>`
++`<button class="danger" onclick="event.stopPropagation();if(confirm('删除这张角色卡?')){RP_WRITER.delCustom('${jq(c.id)}');showWriter();}">删</button>`
 })).join("")+`</div>`:`<div class="empty"><span class="big">🎭</span>还没有自创角色<br><span style="font-size:12px">点下面「新建写卡」，和 Ruby 一起创作</span></div>`}
 <div class="btnrow"><button class="btn" onclick="newWriter()">${icon("plus")} 新建写卡</button></div>
 <div class="hint">写卡全程走你在设置里配的大模型接口, 每步约 1-3 次调用。写完的角色可直接开聊, 也能配分析任务。</div>`;
@@ -6507,7 +6629,7 @@ const tagsIn = (card.tags||[]).join(",");
 view.innerHTML = `
 <div class="hint">修改后点「保存」写回, prompt 注入、开场白、导出都用新内容。<span id="ce_tok" class="dim"></span></div>
 <div class="setcard"><div class="secttl">角色模板 · 一键填充</div>
-<div class="btnrow">${RP_WRITER.CARD_TEMPLATES.map(t=>`<button class="btn ghost" onclick="fillCardTemplate('${t.id}')">${esc(t.name)}<span class="dim"> · ${esc(t.desc)}</span></button>`).join("")}</div>
+<div class="btnrow">${RP_WRITER.CARD_TEMPLATES.map(t=>`<button class="btn ghost" onclick="fillCardTemplate('${jq(t.id)}')">${esc(t.name)}<span class="dim"> · ${esc(t.desc)}</span></button>`).join("")}</div>
 <div class="hint">填充会覆盖当前表单内容（清空重写），请先确认。</div></div>
 <div class="setcard">
 <div class="field"><label>名字</label><input id="ce_name" value="${esc(card.name)}"></div>
@@ -6532,7 +6654,7 @@ ${typeof RP_SOUL_CFG!=="undefined" ? RP_SOUL_CFG.bindSelectHTML(card) : ""}
 <input id="ce_tags" value="${esc(tagsIn)}"></div>
 </div>
 <div class="setcard"><div class="secttl">角色字段</div>${rows}</div>
-<div class="btnrow"><button class="btn" onclick="saveCardEdit('${src}','${id}')">${icon("save")} 保存</button>
+<div class="btnrow"><button class="btn" onclick="saveCardEdit('${jq(src)}','${jq(id)}')">${icon("save")} 保存</button>
 <button onclick="__backAction()">取消</button></div>`;
 };
 /* Tier2 #17: 角色卡模板一键填充 (对标 C.AI CreateCharacter definition-template)。
@@ -6631,12 +6753,12 @@ view.innerHTML = `
 <div class="hint">第 ${s.step+1}/5 步 · ${esc(st.name)}: ${esc(st.desc)}</div>
 <div id="wlog">${log || `<div class="empty">Ruby 正在组织语言…</div>`}</div>
 <div class="chatbar"><input id="w_in" placeholder="和 Ruby 聊聊…" onkeydown="if(event.key==='Enter')sendWriterMsg('${id}')" oninput="tokCount('w_in','w_tok')">
-<button onclick="sendWriterMsg('${id}')">发送</button></div>
+<button onclick="sendWriterMsg('${jq(id)}')">发送</button></div>
 <div class="tokline" id="w_tok" style="padding:0 14px"></div>
 <div class="btnrow" style="margin-top:8px">
-${s.step<3?`<button class="btn" onclick="finalizeStep('${id}')">✅ 定稿, 进入下一步</button>`:""}
-${s.step===3?`<button class="btn" onclick="genCardUI('${id}')">🎴 生成人设卡</button>`:""}
-${s.step===4?`<button class="btn" onclick="finishWriterUI('${id}')">${icon("save")} 保存角色卡</button>`:""}
+${s.step<3?`<button class="btn" onclick="finalizeStep('${jq(id)}')">✅ 定稿, 进入下一步</button>`:""}
+${s.step===3?`<button class="btn" onclick="genCardUI('${jq(id)}')">🎴 生成人设卡</button>`:""}
+${s.step===4?`<button class="btn" onclick="finishWriterUI('${jq(id)}')">${icon("save")} 保存角色卡</button>`:""}
 <button class="btn ghost" onclick="showWriter()">稍后继续</button></div>
 <div id="wsum"></div>`;
 if(!s.history.length){
@@ -6809,7 +6931,7 @@ function showTraverse(){
   </div>
   ${hintTimeline}
   <div class="travmodes">${modes.map(m=>`
-    <div class="travmode${m.ok?"":" locked"}" ${m.ok?`onclick="travMode('${m.id}')"`:""}>
+    <div class="travmode${m.ok?"":" locked"}" ${m.ok?`onclick="travMode('${jq(m.id)}')"`:""}>
       ${m.seal?`<div class="tm-seal" aria-hidden="true">${m.seal}</div>`:""}
       <div class="tm-icon">${icon(m.ic,26)}</div>
       <div class="tm-body"><div class="tm-name">${m.name}${m.badge?` <span class="badge warn">${m.badge}</span>`:""}</div>
@@ -6834,13 +6956,13 @@ function importedListHTML(){
   if(!list.length) return `<div class="meta">还没有导入过角色卡</div>`;
   return list.map(c=>`<div class="kvline" style="display:flex;align-items:center;gap:8px"><span>${esc(c.name)}</span>
   <span class="meta"> ${esc(c.novel)}</span><span style="flex:1"></span>
-  <button class="btn ghost sm" onclick="event.stopPropagation();editCard('imported','${c.id}')">编辑</button>
-  <button class="btn ghost sm" onclick="event.stopPropagation();travDelImport('${c.id}')">删除</button></div>`).join("");
+  <button class="btn ghost sm" onclick="event.stopPropagation();editCard('imported','${jq(c.id)}')">编辑</button>
+  <button class="btn ghost sm" onclick="event.stopPropagation();travDelImport('${jq(c.id)}')">删除</button></div>`).join("");
 }
 function travRecentHTML(t){
   const who = t.mode==="plotline" ? "旅人" : t.mode==="soul" ? t.charName : ((RP_TRAVERSE.getIdentity(t.identityId)||{}).name || "无名氏");
   const d = new Date(t.updatedAt).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
-  return `<div class="card" onclick="travResume('${t.id}')">
+  return `<div class="card" onclick="travResume('${jq(t.id)}')">
   <div class="row"><div class="avatar">${esc(who[0]||"穿")}</div>
   <div><div class="name">${esc(who)} <span class="badge">${RP_TRAVERSE.MODES[t.mode]||""}</span></div>
   <div class="meta">${esc(t.worldName)} · ${esc(t.anchorTitle||"")} · ${d}</div></div></div></div>`;
@@ -6858,7 +6980,7 @@ function plotlinePickBook(){
   const runs = idx.filter(r => r.has_worldcard);
   titleEl.innerHTML = icon("clapperboard")+" 走原著线"; subEl.textContent = "选一本书，沿原著因果线推进";
   view.innerHTML = `<button class="back" onclick="showTraverse()">‹ 返回穿越</button>`
-    + (runs.length ? runs.map(r=>`<div class="card" onclick="plotlinePickStage('${r.run_id}')">
+    + (runs.length ? runs.map(r=>`<div class="card" onclick="plotlinePickStage('${jq(r.run_id)}')">
       <div class="name">${esc(r.novel)}</div><div class="meta">${esc(r.run_id)} · <span class="badge">有世界卡</span></div></div>`).join("")
       : `<div class="empty">暂无带世界卡的书<br><span style="font-size:12px">管线执行 worldcard 阶段后自动出现</span></div>`);
   window.scrollTo(0,0);
@@ -6870,7 +6992,7 @@ function plotlinePickStage(runId){
     const stages = (typeof RP_PLOTRUN!=="undefined") ? RP_PLOTRUN.listStages(runId) : [];
     view.innerHTML = `<button class="back" onclick="plotlinePickBook()">‹ 返回选书</button>`
       + `<h2 class="sec">选一幕 · ${stages.length} 幕</h2>`
-      + (stages.length ? stages.map(s=>`<div class="card" onclick="plotlineStart('${runId}','${s.id}','${s.plotrunId||""}')">
+      + (stages.length ? stages.map(s=>`<div class="card" onclick="plotlineStart('${jq(runId)}','${jq(s.id)}','${jq(s.plotrunId||"")}')">
         <div class="row"><div><div class="name">${esc(s.title)}</div>
         <div class="meta">${s.done}/${s.total} 节点（${s.pct}%）${s.finished?' · <span class="badge">已走完</span>':(s.resumable?' · <span class="badge">继续</span>':"")}</div>
         ${s.description?`<div class="st">${esc(s.description)}</div>`:""}</div><div class="tm-go">›</div></div></div>`).join("")
@@ -6900,7 +7022,7 @@ function goldenPickBook(){
   <div class="hint" style="margin:8px 2px">选一本书 → 选魂穿人物与导演风格 → 选开场，直入原著剧情线</div>`
     + (runs.length ? runs.map((r,i)=>{
       const cover = (window.BOOKCOVER||{})[r.novel];
-      return `<div class="card" onclick="goldenPickChar(${i})">
+      return `<div class="card" onclick="goldenPickChar(${jq(i)})">
       <div class="row">${cover?`<img class="bookcover gbk" src="${esc(cover)}" alt="${esc(r.novel)}封面" loading="lazy" onerror="this.remove()">`:""}<div><div class="name">《${esc(r.novel)}》</div>
       <div class="meta">${esc(r.run_id)}${resumable[r.run_id]?' · <span class="badge">可继续</span>':""}</div>
       </div><div class="tm-go" style="margin-left:auto">›</div></div></div>`;}).join("")
@@ -6924,7 +7046,7 @@ window.goldenPickChar = (i)=>{
   </div>
   <h2 class="sec">导演风格</h2>
   <div class="gstyles">${Object.keys(styles).map((k,si)=>`
-    <div class="gstyle${k==="slowburn"?" sel":""}" data-si="${si}" onclick="goldenSetStyle(${si})">
+    <div class="gstyle${k==="slowburn"?" sel":""}" data-si="${si}" onclick="goldenSetStyle(${jq(si)})">
       <div class="name">${esc(styles[k].name)}</div><div class="st">${esc(styles[k].desc||"")}</div>
     </div>`).join("")}</div>
   <div class="btnrow" style="margin-top:14px"><button class="btn primary" onclick="goldenOpening()">下一步 · 选开场 ›</button></div>`;
@@ -6960,12 +7082,12 @@ window.goldenOpening = ()=>{
     }catch(e){}
     const styleName = ((typeof RP_DIRECTOR!=="undefined" && RP_DIRECTOR.STYLES && RP_DIRECTOR.STYLES[g.style]) || {}).name || g.style;
     view.innerHTML = `<div class="gopening">
-      <button class="back" onclick="goldenPickChar(${g.bookIdx})">‹ 返回</button>
+      <button class="back" onclick="goldenPickChar(${jq(g.bookIdx)})">‹ 返回</button>
       <div class="go-kicker">《${esc(g.novel)}》 · ${charName ? "魂穿"+esc(charName) : "路人开局"} · ${esc(styleName)}</div>
       ${anchors.length ? `<div class="go-anchors">${anchors.map(a=>`<span class="badge">${esc(String(a).slice(0,18))}</span>`).join("")}</div>` : ""}
       <h2 class="sec" style="color:var(--ink);border:none">选一个开场</h2>
       <div class="go-ops">${g.ops.length ? g.ops.map((o,oi)=>`
-        <div class="go-op${oi===0?" sel":""}" data-oi="${oi}" onclick="goldenSetOpening(${oi})">
+        <div class="go-op${oi===0?" sel":""}" data-oi="${oi}" onclick="goldenSetOpening(${jq(oi)})">
           ${o.label?`<span class="badge">${esc(o.label)}</span>`:""}
           <div class="go-text">${esc(String(o.text||"").slice(0,160))}${String(o.text||"").length>160?"…":""}</div>
         </div>`).join("") : `<div class="empty">暂无管线开场白，将由 AI 现场生成</div>`}</div>
@@ -7037,8 +7159,8 @@ window.cardGapfillPrompt = (cardId, keys, queue)=>{
   view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
   <div class="card"><div class="kv">已导入「${esc(card.name)}」</div>
   <div class="hint">检测到 ${keys.length} 个关键层缺失：${esc(names)}。可让 AI 基于卡片原文推断补全，只填缺失项，原卡一字不动，补完内容会标注「AI 补完」。</div></div>
-  <div class="btnrow"><button class="btn" onclick="cardGapfillGen('${cardId}')">✨ AI 补完缺失层</button>
-  <button class="btn ghost" onclick='cardGapfillNext(${JSON.stringify(queue||[])})'>跳过</button></div>
+  <div class="btnrow"><button class="btn" onclick="cardGapfillGen('${jq(cardId)}')">✨ AI 补完缺失层</button>
+  <button class="btn ghost" onclick="cardGapfillNext([${(queue||[]).map(x=>"'"+jq(x)+"'").join(",")}])">跳过</button></div>
   <div style="height:40px"></div>`;
   window.scrollTo(0,0);
 };
@@ -7077,7 +7199,7 @@ function cardGapfillView(){
   const rows = Object.keys(d.fields).map(k=>
     `<div class="field"><label>${esc(GAPFILL_LABEL[k]||k)} <span class="badge">AI 补完</span></label>`+
     `<textarea id="gf_${k}" rows="3">${esc(d.fields[k])}</textarea></div>`).join("");
-  view.innerHTML = `<button class="back" onclick="cardGapfillPrompt('${d.cardId}',Object.keys(window._gapfillDraft.fields),[])">${icon("back")} 返回</button>
+  view.innerHTML = `<button class="back" onclick="cardGapfillPrompt('${jq(d.cardId)}',Object.keys(window._gapfillDraft.fields),[])">${icon("back")} 返回</button>
   <div class="card"><div class="kv">补完结果（可编辑，确认后写入卡片）</div>${rows}
   <div class="btnrow" style="margin-top:8px"><button class="btn" style="flex:1" onclick="cardGapfillSave()">确认写入</button></div></div>
   <div class="hint">来源标注：卡片原文保持原样；上方字段为 AI 推断补完，编辑页会打「AI 补完」标记，可随时修改。</div>
@@ -7218,7 +7340,7 @@ function soulPickTarget(){
   const cs = allChars();
   view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
   <div class="chargrid">${cs.map(c=>`
-    <div class="charcard" onclick='soulAnchors(${JSON.stringify(c.runId)},${JSON.stringify(c.name)})'>
+    <div class="charcard" onclick="soulAnchors('${jq(c.runId)}','${jq(c.name)}')">
       <div class="avatar ${charCoverCls(c.name)}">${esc(c.name[0])}</div>
       <div class="ccname">${esc(c.name)}</div><div class="ccnovel">${esc(c.novel)}</div>
     </div>`).join("")}</div><div style="height:40px"></div>`;
@@ -7277,12 +7399,12 @@ window.soulAnchors = (runId, name)=>{
   </select></div></div>`:""}
   <h2 class="sec">⚡ 事件（可选）</h2>
   <div class="card"><div class="field" style="margin:0"><label>从哪个关键事件切入？（输入关键词搜索）</label>
-  <input id="travEventKey" style="width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:8px" placeholder="比如：葬花、拳打镇关西" oninput="travEventSearch('${runId}')">
+  <input id="travEventKey" style="width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:8px" placeholder="比如：葬花、拳打镇关西" oninput="travEventSearch('${jq(runId)}')">
   <div id="travEventList" style="margin-top:8px;max-height:200px;overflow-y:auto"></div>
   <input type="hidden" id="travEventSel" value="">
   </div></div>
   <div class="card"><label class="kvline" style="display:block"><input type="checkbox" id="oocRemind" checked> OOC 提醒：我说的话不符合身份/时代时，世界轻轻点我一下</label></div>
-  <div class="btnrow"><button class="btn" style="flex:1" onclick='soulStart(${JSON.stringify(runId)},${JSON.stringify(name)})'>开始穿越</button></div>
+  <div class="btnrow"><button class="btn" style="flex:1" onclick="soulStart('${jq(runId)}','${jq(name)}')">开始穿越</button></div>
   <div style="height:40px"></div>`;
   /* 预加载事件日历，供事件搜索用 */
   try{ loadEventCal(runId); }catch(e){}
@@ -7312,7 +7434,7 @@ window.travEventSearch = (runId)=>{
     if(!events.length){ listEl.innerHTML = `<div class="hint">没找到相关事件，换个关键词试试</div>`; return; }
     listEl.innerHTML = events.map((e,i)=>`
       <div class="kvline" style="display:block;cursor:pointer;padding:8px;border:1px solid var(--line-soft);border-radius:8px;margin-bottom:6px"
-        onclick="travEventPick(${i})" data-idx="${i}">
+        onclick="travEventPick(${jq(i)})" data-idx="${i}">
         <div style="font-size:13px">${esc(e.text.slice(0,80))}${e.text.length>80?"…":""}</div>
         <div style="font-size:11px;color:var(--ink-faint)">${e.chapter?("第"+e.chapter+"回 · "):""}${esc(e.location||"")}</div>
       </div>`).join("");
@@ -7381,9 +7503,9 @@ function bodyPickWorld(){
   const ws = travWorlds();
   view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
   ${ws.length ? ws.map(w=>`
-    <div class="card" onclick='bodyIdentity(${JSON.stringify(w.kind)},${JSON.stringify(w.id)})'>
+    <div class="card" onclick="bodyIdentity('${jq(w.kind)}','${jq(w.id)}')">
       <div class="name">${esc(w.name)}</div><div class="meta">${esc(w.sub)}</div>
-      ${w.kind==="card"?`<button class="linkbtn" style="margin-top:4px" onclick='event.stopPropagation();travWorldComplete(${JSON.stringify(w.kind)},${JSON.stringify(w.id)})'>${icon("scroll",12)} AI 补完这个世界</button>`:""}
+      ${w.kind==="card"?`<button class="linkbtn" style="margin-top:4px" onclick="event.stopPropagation();travWorldComplete('${jq(w.kind)}','${jq(w.id)}')">${icon("scroll",12)} AI 补完这个世界</button>`:""}
     </div>`).join("") : `<div class="empty">还没有可用世界：先导入角色卡，或等蒸馏任务产出</div>`}
   <div style="height:40px"></div>`;
   window.scrollTo(0,0);
@@ -7398,7 +7520,7 @@ function idtInp(fid, tag){ tag = tag||"input";
     : `<input id="${fid}" style="${style}">`;
 }
 function idtRow(kind, id, key, label, inputHtml){
-  return `<div class="field"><label>${label} <button class="linkbtn" onclick='bodyReroll(${JSON.stringify(kind)},${JSON.stringify(id)},${JSON.stringify(key)})'>重随</button></label>${inputHtml}</div>`;
+  return `<div class="field"><label>${label} <button class="linkbtn" onclick="bodyReroll('${jq(kind)}','${jq(id)}','${jq(key)}')">重随</button></label>${inputHtml}</div>`;
 }
 window.bodyIdentity = (kind, id)=>{
   __backAction = ()=>bodyPickWorld();
@@ -7411,7 +7533,7 @@ window.bodyIdentity = (kind, id)=>{
   view.innerHTML = `<button class="back" onclick="bodyPickWorld()">${icon("back")} 返回</button>
   <div class="card"><div class="kv">一句话愿望，AI 帮你捏身份（十项完整字段）</div>
   <div class="row" style="margin-top:8px"><input id="idWish" style="flex:1;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px" placeholder="比如：我想当个落魄书生混进贾府">
-  <button class="btn" style="white-space:nowrap" onclick='bodyAiGen(${JSON.stringify(kind)},${JSON.stringify(id)})'>AI 生成</button></div></div>
+  <button class="btn" style="white-space:nowrap" onclick="bodyAiGen('${jq(kind)}','${jq(id)}')">AI 生成</button></div></div>
   <div class="card"><label class="kvline" style="display:block"><input type="checkbox" id="idModern"> 现代人直穿：不捏古代身份，以现在的自己进去（携带手机/打火机/纸巾）</label></div>
   <h2 class="sec">身份卡 <span class="badge">P1</span></h2>
   <div class="card">
@@ -7426,7 +7548,7 @@ window.bodyIdentity = (kind, id)=>{
   ${idtRow(kind,id,"situation",lbl("situation"),idtInp("idSituation","textarea"))}
   ${idtRow(kind,id,"hooks",lbl("hooks"),idtInp("idHooks","textarea"))}
   </div>
-  <div class="btnrow"><button class="btn" style="flex:1" onclick='bodyStart(${JSON.stringify(kind)},${JSON.stringify(id)})'>开始穿越</button></div>
+  <div class="btnrow"><button class="btn" style="flex:1" onclick="bodyStart('${jq(kind)}','${jq(id)}')">开始穿越</button></div>
   <div style="height:40px"></div>`;
   window.scrollTo(0,0);
 };
@@ -7555,7 +7677,7 @@ async function showTraverseChat(cfg){
   <div id="chatsearch"></div>
   <div id="wsbar" class="wsbar" onclick="travWsEditor()"></div>
   <div id="chatlog"></div>
-  <div class="chatbar">${chatbarInner(false)}</div>
+  <div class="chatbar">${chatbarInner(STREAMING)}</div>
   </div>
   <div class="scrim" id="scrim" onclick="toggleDrawer(false)"></div>
   <div class="drawer" id="drawer">
@@ -7571,14 +7693,27 @@ async function showTraverseChat(cfg){
   </div>`;
   renderChat(); renderWsBar(); paintChatBg(); attachHeadHide();
   const k = chatHistKey();
-  if(!getHist(k).length){
+  /* P0-2/P1-4: 读失败≠空历史；await 开场白生成后必须再确认（用户可能已发消息） */
+  let __th0 = null;
+  try{ __th0 = getHist(k); }catch(e){
+    const _tlog = document.getElementById("chatlog");
+    if(_tlog) _tlog.innerHTML = `<div class="msg"><div class="msgcol"><div class="bubble">⚠️ 聊天记录读取失败（存储异常），未做任何写入。请稍后重进，历史数据仍在。</div></div></div>`;
+    return;
+  }
+  if(!__th0.length){
     try{
       const opening = await RP_TRAVERSE.genOpening(trav, cfg, (c,m,t)=>RP_NET.complete(c,m,t));
       const parsed = RP_TRAVERSE.parseWsBlock(opening);
       if(parsed.patch) RP_TRAVERSE.saveState(trav.id,
         RP_TRAVERSE.mergeState(RP_TRAVERSE.getState(trav.id), parsed.patch));
+      let __th2 = null;
+      try{ __th2 = getHist(k); }catch(e){ return; } /* 读失败：放弃写入 */
+      if(__th2.length) return; /* 用户已发消息：不开场白覆盖 */
       saveHist(k, [{role:"assistant", content: parsed.clean || opening, ts:Date.now()}]);
     }catch(e){
+      let __th3 = null;
+      try{ __th3 = getHist(k); }catch(e2){ return; }
+      if(__th3.length) return;
       saveHist(k, [{role:"assistant", content: RP_TRAVERSE.offlineOpening(trav), ts:Date.now()}]);
     }
     renderChat(); renderWsBar();
@@ -7674,7 +7809,7 @@ window.travIdentityView = ()=>{
           const det = typeof it==="string"?"":[(it.durability?"耐久"+it.durability:""),
             (it.uses!=null?("可用"+it.uses+"次"):"")].filter(Boolean).join(" ");
           return `<div class="kvline"><span class="kv">${esc(nm)}</span> <span class="dim">${esc(det)}</span>
-            ${typeof it==="string"?"":`<button class="linkbtn" onclick="travUseItem(${ix})">使用</button>`}</div>`;
+            ${typeof it==="string"?"":`<button class="linkbtn" onclick="travUseItem(${jq(ix)})">使用</button>`}</div>`;
         }).join("") || `<div class="meta">空</div>`;
         const hooks = (idt.hooks||[]).map(h=>`<div class="kvline">🔗 ${esc(h)}</div>`).join("");
         return `<div class="card">${rows.filter(r=>r[1]).map(r=>
@@ -7775,7 +7910,7 @@ window.travWorldComplete = (kind, id)=>{
   <div class="meta" style="white-space:pre-wrap;max-height:120px;overflow:hidden">${esc(seed.slice(0,300))}${seed.length>300?"…":""}</div></div>
   ${done?`<div class="card"><div class="kv">已补完 <span class="badge">AI 补完</span></div>
   <div class="hint">${esc((done.bg||"").slice(0,140))}…</div></div>`:""}
-  <div class="btnrow"><button class="btn" style="flex:1" onclick='travWorldCompleteGen(${JSON.stringify(kind)},${JSON.stringify(id)})'>${done?"重新补完":"AI 补完世界"}</button></div>
+  <div class="btnrow"><button class="btn" style="flex:1" onclick="travWorldCompleteGen('${jq(kind)}','${jq(id)}')">${done?"重新补完":"AI 补完世界"}</button></div>
   <div class="hint">AI 只补：时代背景、势力/门派、关键地点、当前局势、3–5 个剧情锚点。补完内容会标注「AI 补完」来源，你确认后才生效。</div>
   <div style="height:40px"></div>`;
   window.scrollTo(0,0);
@@ -7794,7 +7929,7 @@ function travWorldCompleteView(){
   const d = window._wbDraft; if(!d) return;
   __backAction = ()=>travWorldComplete(d.kind, d.id);
   titleEl.innerHTML = icon("scroll")+" 世界补完"; subEl.textContent = RP_TRAVERSE.worldDisplayName(d.kind, d.id);
-  view.innerHTML = `<button class="back" onclick='travWorldComplete(${JSON.stringify(d.kind)},${JSON.stringify(d.id)})'>${icon("back")} 返回</button>
+  view.innerHTML = `<button class="back" onclick="travWorldComplete('${jq(d.kind)}','${jq(d.id)}')">${icon("back")} 返回</button>
   <div class="card"><div class="kv">补完结果（可编辑，确认后生效）</div>
   <div class="field"><label>世界设定 <span class="badge">AI 补完</span></label>
   <textarea id="wbBg" style="width:100%;min-height:180px;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px">${esc(d.bg)}</textarea></div>
@@ -7823,7 +7958,7 @@ window.isekaiPickSrc = ()=>{
   view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
   <div class="hint">把这个角色送进另一部作品的世界。</div>
   <div class="chargrid">${cs.map(c=>`
-    <div class="charcard" onclick='isekaiPickDst(${JSON.stringify(c.runId)},${JSON.stringify(c.name)})'>
+    <div class="charcard" onclick="isekaiPickDst('${jq(c.runId)}','${jq(c.name)}')">
       <div class="avatar ${charCoverCls(c.name)}">${esc(c.name[0])}</div>
       <div class="ccname">${esc(c.name)}</div><div class="ccnovel">${esc(c.novel)}</div>
     </div>`).join("")}</div><div style="height:40px"></div>`;
@@ -7837,7 +7972,7 @@ window.isekaiPickDst = (srcRunId, srcName)=>{
   view.innerHTML = `<button class="back" onclick="isekaiPickSrc()">${icon("back")} 返回</button>
   <div class="hint">穿越者：${esc(srcName)}</div>
   ${worlds.map(w=>`
-  <div class="card" onclick='isekaiFusion(${JSON.stringify(srcRunId)},${JSON.stringify(srcName)},${JSON.stringify(w.key)})'>
+  <div class="card" onclick="isekaiFusion('${jq(srcRunId)}','${jq(srcName)}','${jq(w.key)}')">
     <div class="name">《${esc(w.title)}》 ${w.status==="pending"?'<span class="badge">数据待接入</span>':'<span class="badge">已接入</span>'}</div>
     <div class="meta">${esc(w.note||"")}</div>
   </div>`).join("")}
@@ -7850,12 +7985,12 @@ window.isekaiFusion = (srcRunId, srcName, dstKey)=>{
   __backAction = ()=>isekaiPickDst(srcRunId, srcName);
   document.body.classList.remove("chatmode");
   titleEl.innerHTML = icon("repeat")+" 异世界穿越"; subEl.textContent = "第三步：选择融合方式";
-  view.innerHTML = `<button class="back" onclick='isekaiPickDst(${JSON.stringify(srcRunId)},${JSON.stringify(srcName)})'>${icon("back")} 返回</button>
+  view.innerHTML = `<button class="back" onclick="isekaiPickDst('${jq(srcRunId)}','${jq(srcName)}')">${icon("back")} 返回</button>
   <div class="card"><div class="name">${esc(srcName)} → 《${esc(w.title)}》</div>
   <div class="row" style="margin-top:8px">
   <label class="kvline" style="display:block"><input type="radio" name="fusion" value="outsider" checked> 异乡人：完整保留原身份与记忆，目标世界视你为异人</label>
   <label class="kvline" style="display:block;margin-top:6px"><input type="radio" name="fusion" value="reborn"> 转生：AI 安排目标世界新身份，保留性格与记忆</label></div></div>
-  <div class="btnrow"><button class="btn" style="flex:1" onclick='isekaiStart(${JSON.stringify(srcRunId)},${JSON.stringify(srcName)},${JSON.stringify(dstKey)})'>开始穿越</button></div>
+  <div class="btnrow"><button class="btn" style="flex:1" onclick="isekaiStart('${jq(srcRunId)}','${jq(srcName)}','${jq(dstKey)}')">开始穿越</button></div>
   <div style="height:40px"></div>`;
   window.scrollTo(0,0);
 };
@@ -7889,7 +8024,7 @@ window.partySetup = ()=>{
   view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
   <div class="hint">2–4 人小队：你 + 最多 3 名队友。AI 按 talkativeness 调度发言，被你点名的队友一定发言。</div>
   ${ws.map(w=>`
-    <div class="card" onclick='partyPickMain(${JSON.stringify(w.kind)},${JSON.stringify(w.id)})'>
+    <div class="card" onclick="partyPickMain('${jq(w.kind)}','${jq(w.id)}')">
       <div class="name">${esc(w.name)}</div><div class="meta">${esc(w.sub)}</div>
     </div>`).join("")}<div style="height:40px"></div>`;
   window.scrollTo(0,0);
@@ -7902,8 +8037,8 @@ window.partyPickMain = (kind, id)=>{
   view.innerHTML = `<button class="back" onclick="partySetup()">${icon("back")} 返回</button>
   <div class="card"><div class="kv">${esc(wname)}</div>
   <div class="btnrow" style="margin-top:8px">
-  <button class="btn" style="flex:1" onclick='partyPickMainSoul(${JSON.stringify(kind)},${JSON.stringify(id)})'>魂穿：选一个角色</button>
-  <button class="btn ghost" style="flex:1" onclick='partyPickMainBody(${JSON.stringify(kind)},${JSON.stringify(id)})'>肉身：快速捏身份</button></div></div>
+  <button class="btn" style="flex:1" onclick="partyPickMainSoul('${jq(kind)}','${jq(id)}')">魂穿：选一个角色</button>
+  <button class="btn ghost" style="flex:1" onclick="partyPickMainBody('${jq(kind)}','${jq(id)}')">肉身：快速捏身份</button></div></div>
   <div style="height:40px"></div>`;
   window.scrollTo(0,0);
 };
@@ -7913,9 +8048,9 @@ window.partyPickMainSoul = (kind, id)=>{
   titleEl.innerHTML = icon("chat")+" 组团穿越"; subEl.textContent = "选择你要扮演的角色";
   const cs = allChars();
   window._partyCands = cs;
-  view.innerHTML = `<button class="back" onclick='partyPickMain(${JSON.stringify(kind)},${JSON.stringify(id)})'>${icon("back")} 返回</button>
+  view.innerHTML = `<button class="back" onclick="partyPickMain('${jq(kind)}','${jq(id)}')">${icon("back")} 返回</button>
   <div class="chargrid">${cs.map((c,ix)=>`
-    <div class="charcard" onclick='partyPickMainSoulGo(${JSON.stringify(kind)},${JSON.stringify(id)},${ix})'>
+    <div class="charcard" onclick="partyPickMainSoulGo('${jq(kind)}','${jq(id)}',${jq(ix)})">
       <div class="avatar ${charCoverCls(c.name)}">${esc(c.name[0])}</div>
       <div class="ccname">${esc(c.name)}</div><div class="ccnovel">${esc(c.novel)}</div>
     </div>`).join("")}</div><div style="height:40px"></div>`;
@@ -7929,11 +8064,11 @@ window.partyPickMainBody = (kind, id)=>{
   __backAction = ()=>partyPickMain(kind, id);
   document.body.classList.remove("chatmode");
   titleEl.innerHTML = icon("chat")+" 组团穿越"; subEl.textContent = "肉身：快速捏身份";
-  view.innerHTML = `<button class="back" onclick='partyPickMain(${JSON.stringify(kind)},${JSON.stringify(id)})'>${icon("back")} 返回</button>
+  view.innerHTML = `<button class="back" onclick="partyPickMain('${jq(kind)}','${jq(id)}')">${icon("back")} 返回</button>
   <div class="card"><div class="field"><label>一句话设定你的身份/开场</label>
   <input id="pbWish" style="width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px" placeholder="比如：现代大学生，带着手机穿进大观园"></div>
   <label class="kvline"><input type="checkbox" id="pbModern" checked> 现代人直穿（携带手机/打火机/纸巾）</label>
-  <div class="btnrow" style="margin-top:8px"><button class="btn" style="flex:1" onclick='partyBodyNext(${JSON.stringify(kind)},${JSON.stringify(id)})'>下一步：选队友</button></div></div>
+  <div class="btnrow" style="margin-top:8px"><button class="btn" style="flex:1" onclick="partyBodyNext('${jq(kind)}','${jq(id)}')">下一步：选队友</button></div></div>
   <div style="height:40px"></div>`;
   window.scrollTo(0,0);
 };
@@ -7947,14 +8082,14 @@ window.partyPickComps = (kind, id, main)=>{
   titleEl.innerHTML = icon("chat")+" 组团穿越"; subEl.textContent = "第三步：选择队友（最多3人）";
   const cs = allChars().filter(c=>!(main.mode==="soul" && c.name===main.name));
   window._partyCands = cs; window._partySel = []; window._partyMain = main;
-  view.innerHTML = `<button class="back" onclick='partyPickMain(${JSON.stringify(kind)},${JSON.stringify(id)})'>${icon("back")} 返回</button>
+  view.innerHTML = `<button class="back" onclick="partyPickMain('${jq(kind)}','${jq(id)}')">${icon("back")} 返回</button>
   <div class="hint">主身份：${esc(main.mode==="soul"?main.name:((main.wish||"")+"（肉身）")||"肉身")}</div>
   <div class="chargrid">${cs.map((c,ix)=>`
-    <div class="charcard" id="pc_${ix}" onclick="partyToggleComp(${ix})">
+    <div class="charcard" id="pc_${ix}" onclick="partyToggleComp(${jq(ix)})">
       <div class="avatar ${charCoverCls(c.name)}">${esc(c.name[0])}</div>
       <div class="ccname">${esc(c.name)}</div><div class="ccnovel">${esc(c.novel)}</div>
     </div>`).join("")}</div>
-  <div class="btnrow" style="position:sticky;bottom:70px"><button class="btn" style="flex:1" onclick='partyStart(${JSON.stringify(kind)},${JSON.stringify(id)})'>出发！</button></div>
+  <div class="btnrow" style="position:sticky;bottom:70px"><button class="btn" style="flex:1" onclick="partyStart('${jq(kind)}','${jq(id)}')">出发！</button></div>
   <div style="height:40px"></div>`;
   window.scrollTo(0,0);
 };
@@ -8001,9 +8136,9 @@ window.travPartyView = ()=>{
   ${comps.map((c,ix)=>`
   <div class="card"><div class="row"><div style="flex:1"><div class="name">${esc(c.name)}</div>
   <div class="meta">talkativeness ${c.talk==null?50:c.talk}</div></div>
-  <button class="linkbtn" onclick="travPartyTalk(${ix},-10)">−</button>
-  <button class="linkbtn" onclick="travPartyTalk(${ix},10)">＋</button>
-  <button class="linkbtn danger" onclick="travPartyRemove(${ix})">移除</button></div></div>`).join("")
+  <button class="linkbtn" onclick="travPartyTalk(${jq(ix)},-10)">−</button>
+  <button class="linkbtn" onclick="travPartyTalk(${jq(ix)},10)">＋</button>
+  <button class="linkbtn danger" onclick="travPartyRemove(${jq(ix)})">移除</button></div></div>`).join("")
   || `<div class="empty">暂无队友</div>`}
   <div style="height:40px"></div>`;
   window.scrollTo(0,0);

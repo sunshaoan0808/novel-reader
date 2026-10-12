@@ -58,7 +58,7 @@ nodes: [
 {id: "n2", stageId: "s1", title: "初见", intent: "宝黛初见", execution: "foreground", conditions: [], dependsOn: ["n1"], constraints: [], actorIds: [], sourceRefs: []}],
 characters: [], coverage: {}}]};
 vm.createContext(ctx);
-for(const f of ["data.js", "icons.js", "data/covers.js", "data/char_plots.js", "rp/prompt.js", "rp/persona.js",
+for(const f of ["data.js", "icons.js", "data/covers.js", "data/char_plots.js", "rp/escutil.js", "rp/prompt.js", "rp/persona.js",
 "rp/memory.js", "rp/tasks.js", "rp/cardwriter.js", "rp/ooc.js", "rp/chat.js", "rp/aifill.js",
 "rp/group.js", "rp/cardexport.js", "rp/cardimport.js", "rp/traverse.js", "rp/traverse2.js",
 "rp/plotrun.js", "app.js"]){
@@ -75,7 +75,7 @@ const t = (n, c) => { c? pass++: (fail++, console.log("FAIL:", n));};
 /* ---- 第 1 屏：选书 ---- */
 vm.runInContext("goldenPickBook()", ctx);
 let h = viewHTML();
-t("选书屏标题", h.indexOf("一键魂穿") < 0 || true); /* 标题在 titleEl */
+t("选书屏标题", vm.runInContext("titleEl.innerHTML", ctx).indexOf("一键魂穿") >= 0); /* P1-13: 原断言恒真，现查真实标题 */
 t("选书屏列出有世界卡的书", h.indexOf("红楼梦") >= 0);
 t("选书屏过滤无世界卡的书", h.indexOf("三国演义") < 0);
 t("选书屏onclick闭合", (function(){
@@ -127,11 +127,11 @@ t("缺口文案人话", vm.runInContext("humanizeGap('主题层未命中经济/�
 t("chunk转段文本", vm.runInContext("humanizeGap('10 个 chunk 无主角出场未参与蒸馏')", ctx)
   === "10 段文本 无主角出场未参与蒸馏");
 t("空缺口不崩", vm.runInContext("humanizeGap(null)", ctx) === "");
-/* 产物页：状态徽章降调 */
+/* 产物页：书墙 v2（bw-card/bw-cover/bw-meta），旧 badge 断言已过时 */
 vm.runInContext("showRuns()", ctx);
 h = viewHTML();
-t("状态徽章用stat", h.indexOf("badge stat") >= 0);
-t("人物名保持主徽章", (h.match(/<span class="badge">林黛玉<\/span>/) || []).length === 1);
+t("书墙卡片有元信息", h.indexOf("bw-meta") >= 0 && h.indexOf("角色") >= 0);
+t("书名渲染", h.indexOf("bw-name") >= 0 && h.indexOf("红楼梦") >= 0);
 /* 主题感知：无硬编码紫色 */
 const css = fs.readFileSync(WWW + "/style.css", "utf8");
 t("样式无紫色硬编码", !/(6c4dff|7c5cff|b14dff|a78bfa)/i.test(css));
@@ -153,8 +153,8 @@ t("封面映射水浒", vm.runInContext("window.BOOKCOVER['水浒传']", ctx) ==
 t("封面文件存在", fs.existsSync(WWW + "/data/covers/honglou.jpg") && fs.existsSync(WWW + "/data/covers/shuihu.jpg"));
 vm.runInContext("showRuns()", ctx);
 h = viewHTML();
-t("有封面的书渲染img", h.indexOf('class="bookcover"') >= 0 && h.indexOf("data/covers/honglou.jpg") >= 0);
-t("无封面的书回退avatar", (h.match(/class="avatar"/g) || []).length === 1); /* r2 三国演义无封面 */
+t("有封面的书渲染bw-cover", h.indexOf('class="bw-cover"') >= 0 && h.indexOf("data/covers/honglou.jpg") >= 0);
+t("无封面的书回退默认封面", h.indexOf("bw-cover-default") >= 0); /* r2 三国演义无封面 */
 
 /* ---- run 详情页封面横幅 ---- */
 vm.runInContext("RUN = {run_id:'r1', novel:'红楼梦', n_chunks:224, profiles:[], sections:[]}; setTab('chars')", ctx);

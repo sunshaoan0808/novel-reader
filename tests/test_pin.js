@@ -89,7 +89,7 @@ ctx2.window = ctx2; ctx2.globalThis = ctx2; ctx2.__DATA__ = DATA;
 vm.createContext(ctx2);
 for(const f of ["data.js", "icons.js", "rp/prompt.js", "rp/persona.js",
 "rp/memory.js", "rp/tasks.js", "rp/cardwriter.js", "rp/ooc.js", "rp/chat.js",
-"rp/group.js", "rp/traverse.js", "rp/achieve.js", "rp/pinlock.js", "app.js"]){
+"rp/group.js", "rp/traverse.js", "rp/achieve.js", "rp/pinlock.js", "rp/escutil.js", "app.js"]){
 vm.runInContext(fs.readFileSync(WWW + "/" + f, "utf8"), ctx2, {filename: f});
 }
 // 无PIN: 直接通过

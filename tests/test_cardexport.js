@@ -98,7 +98,7 @@ const html = fs.readFileSync(WWW+"/index.html", "utf8");
 t("cardexport.js in index.html", html.indexOf("rp/cardexport.js") >= 0);
 const asrc = fs.readFileSync(WWW+"/app.js", "utf8");
 t("exportCard exists", asrc.indexOf("window.exportCard") >= 0);
-t("export button on card", asrc.indexOf("exportCard('${c.id}')") >= 0);
+t("export button on card", asrc.indexOf("exportCard('${jq(c.id)}')") >= 0); /* P0-1: 已改 jq() 转义 */
 
 // --- 导出->导入往返: buildTavernCard -> normalizeTavern, 关键字段不丢 ---
 const csrc = fs.readFileSync(WWW+"/rp/cardimport.js", "utf8");
