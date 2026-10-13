@@ -171,11 +171,8 @@ function enrich(card, text, history, budget){
   return out;
 }
 
-function esc(s){
-  return String(s == null ? "" : s).replace(/[&<>"]/g, function(c){
-    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];
-  });
-}
+/* P2-11: 收敛到 escutil.js 的 escH()；独立加载（测试 vm）无 escH 时回退同款实现 */
+var esc = (typeof escH === "function") ? escH : function(s){ return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"); };
 
 /* debug 抽屉：字段名 + snippet，默认折叠由调用方控制 */
 function renderDebug(hits, banned){

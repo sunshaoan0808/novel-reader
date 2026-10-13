@@ -13,15 +13,14 @@ var S = {
   running: false
 };
 
-function esc(s){
-  return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
+/* P2-11: 收敛到 escutil.js 的 escH()（此前只转 & < >，现统一为全实体转义）；
+   独立加载（测试 vm）无 escH 时回退同款实现 */
+var esc = (typeof escH === "function") ? escH : function(s){ return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"); };
 
-/* HTML 属性转义：esc + 双引号。用于 data-* 属性值；dataset 读出即原文，
- * 无 JS 解析层，故只需 HTML 层转义 —— 但 " 必须转义，否则可破出双引号属性
- *（XSS 修复 2026-10-13；已实测 \" 不能阻止 HTML 属性截断）。 */
+/* HTML 属性转义：esc 现已含双引号转义，escA 仅保留为语义别名（data-* 属性值专用）。
+ * dataset 读出即原文，无 JS 解析层，只需 HTML 层转义（XSS 修复 2026-10-13）。 */
 function escA(s){
-  return esc(s).replace(/"/g, "&quot;");
+  return esc(s);
 }
 
 function show(){
@@ -366,12 +365,19 @@ function renderPackages(){
   }).join("");
 }
 
+/* P1-3 修复：document 级委托监听只注册一次（模块加载时），wire() 每次 render 不再累加。
+ * 旧实现 wire() 每 render +1 click +1 change 监听 → 点暂停翻转 N 次、选文件 import N 次。 */
+function onPauseClick(e){
+  if(e.target && (e.target.id === "d_pause" || e.target.id === "d_resume")) togglePause();
+}
+function onImportChange(e){
+  if(e.target && e.target.id === "d_import_pkg" && e.target.files[0]){
+    importPkg(e.target.files[0]);
+    e.target.value = "";
+  }
+}
 function wire(){
-  // 暂停/恢复用事件委托 (render 会重建 DOM)
-  document.addEventListener("click", function(e){
-    if(e.target && e.target.id === "d_pause"){ togglePause(); }
-    if(e.target && e.target.id === "d_resume"){ togglePause(); }
-  });
+  /* 暂停/恢复、导入文件选择均为一次性 document 委托（render 重建 DOM，无需重绑） */
   var f = document.getElementById("d_file");
   if(f) f.addEventListener("change", onFile);
 
@@ -935,18 +941,6 @@ function importPkg(file){
   rd.readAsText(file, "utf-8");
 }
 
-// wire 导入文件选择
-var _origWire = wire;
-wire = function(){
-  _origWire();
-  document.addEventListener("change", function(e){
-    if(e.target && e.target.id === "d_import_pkg" && e.target.files[0]){
-      importPkg(e.target.files[0]);
-      e.target.value = "";
-    }
-  });
-};
-
 // 世界书展示
 function showWorldbook(pkgId){
   var wb = DISTILL_PACKAGE.getData(pkgId, "worldbook");
@@ -1318,6 +1312,8 @@ function onDelegatedClick(e){
 }
 if(typeof document !== "undefined" && document && typeof document.addEventListener === "function"){
   document.addEventListener("click", onDelegatedClick);
+  document.addEventListener("click", onPauseClick);
+  document.addEventListener("change", onImportChange);
 }
 
 return api;

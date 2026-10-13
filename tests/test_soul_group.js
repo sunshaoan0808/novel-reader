@@ -22,9 +22,12 @@ ctx.RP_NET = {
       {dialogue: who + "道好", action: who + "点头", inner: "", silence: false}));
   }
 };
-/* findCard mock */
+/* findCard mock: 真实页面里 findCard 只活在 chat.js 的 RP IIFE 中 (RP.findCard),
+ * 没有全局 findCard。2026-10-13 前此处 stub 了全局 findCard, 导致接线 bug
+ * (soul_orch.js 裸 findCard 恒 undefined) 在测试里永远测不出来。
+ * 现在按真实作用域 stub, 并加回归断言。 */
 var cards = {};
-ctx.findCard = function(runId, name){ return cards[name] || null; };
+ctx.RP = {findCard: function(runId, name){ return cards[name] || null; }};
 vm.runInContext(fs.readFileSync(WWW + "/rp/soul.js", "utf8"), ctx, {filename: "rp/soul.js"});
 vm.runInContext(fs.readFileSync(WWW + "/rp/soul_runtime.js", "utf8"), ctx, {filename: "rp/soul_runtime.js"});
 vm.runInContext(fs.readFileSync(WWW + "/rp/soul_orch.js", "utf8"), ctx, {filename: "rp/soul_orch.js"});
@@ -43,6 +46,10 @@ function mkCard(name){
 
 async function main(){
   mkCard("黛玉"); mkCard("宝玉");
+
+  /* 0. 回归: 真实页面无全局 findCard, 接线必须走 RP.findCard */
+  t("回归: 无全局findCard", typeof ctx.findCard === "undefined");
+  t("回归: 经RP.findCard仍触发", RP_SOUL_ORCH.shouldUseSoulMode("r1", ["黛玉", "宝玉"], "c1") === true);
 
   /* 1. shouldUseSoulMode: 2 人有 soul 包 */
   t("触发: 2 soul", RP_SOUL_ORCH.shouldUseSoulMode("r1", ["黛玉", "宝玉"], "c1") === true);

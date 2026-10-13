@@ -37,7 +37,8 @@ function _load(){
   try{ var a = JSON.parse(localStorage.getItem(LS_KEY) || "[]"); return Array.isArray(a) ? a : []; }
   catch(e){ return []; }
 }
-function _saveAll(a){ try{ localStorage.setItem(LS_KEY, JSON.stringify(a)); }catch(e){} }
+function _saveAll(a){ try{ localStorage.setItem(LS_KEY, JSON.stringify(a)); }
+catch(e){ typeof RP_WARN!=="undefined"&&RP_WARN.saveFail("预设保存失败", e); } }
 
 function list(){ return _load(); }
 function get(id){

@@ -45,6 +45,7 @@
 <script src="rp/preset.js"></script>
 <script src="rp/presetexport.js"></script>
 <script src="rp/persona.js"></script>
+<script src="rp/warn.js"></script>
 <script src="rp/memory.js"></script>
 <script src="rp/apex.js"></script>
 <script src="rp/tasks.js"></script>
@@ -213,8 +214,6 @@
   fab.addEventListener("pointermove", onMove);
   fab.addEventListener("pointerup", onEnd);
   fab.addEventListener("pointercancel", onEnd);
-  /* 移除内联 onclick，改由拖拽逻辑统一处理点按 */
-  fab.removeAttribute("onclick");
 })();
 </script>
 </body>

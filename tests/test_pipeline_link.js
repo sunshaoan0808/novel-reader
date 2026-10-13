@@ -107,11 +107,12 @@ const sys2 = run(ctx, `RP_PROMPT.buildMessages(
 t("无纠错不注入", sys2.indexOf("OOC 纠错") < 0);
 
 /* ---- 5. 世界卡 tab ---- */
-run(ctx, pickFn("esc"));
+/* P2-11: app.js 的 esc 已收敛为 escutil.js 的 escH 别名，harness 直接加载 escutil 并起本地别名 */
+run(ctx, fs.readFileSync(WWW + "/rp/escutil.js", "utf8") + "\nvar esc = escH;");
 run(ctx, pickFn("skeletonHTML")); /* showWorldcard 先渲染骨架屏 */
 run(ctx, pickFn("humanizeGap")); /* 渲染缺口声明 */
 run(ctx, pickFn("prependRunBanner")); /* render 开头插入 run banner */
-run(ctx, `var _wcCache = {}, _wcData = null, view = document.getElementById("view"),
+run(ctx, `var _wcCache = {}, _wcFailed = {}, _wcData = null, view = document.getElementById("view"),
   RUN = {run_id: "wctest", novel: "测试小说"}, TAB = "world";`);
 run(ctx, `window.__WORLDCARD_wctest = {
   name: "测试小说（小说世界）", novelMaterialStatus: "partial",

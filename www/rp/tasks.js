@@ -24,7 +24,8 @@ function getState(runId, name, id){
   catch(e){ return null; }
 }
 function saveState(runId, name, id, st){
-  try { localStorage.setItem(stateKey(runId, name, id), JSON.stringify(st)); } catch(e){}
+  try { localStorage.setItem(stateKey(runId, name, id), JSON.stringify(st)); }
+  catch(e){ typeof RP_WARN!=="undefined"&&RP_WARN.saveFail("任务进度保存失败", e); }
 }
 function clearState(runId, name, id){
   try { localStorage.removeItem(stateKey(runId, name, id)); } catch(e){}

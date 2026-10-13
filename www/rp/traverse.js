@@ -39,7 +39,8 @@ try { return JSON.parse(localStorage.getItem(SES_PRE + id)) || null;} catch(e){ 
 }
 function save(s){
 s.updatedAt = Date.now();
-try { localStorage.setItem(SES_PRE + s.id, JSON.stringify(s));} catch(e){}
+try { localStorage.setItem(SES_PRE + s.id, JSON.stringify(s));}
+catch(e){ typeof RP_WARN!=="undefined"&&RP_WARN.saveFail("穿越会话保存失败", e); }
 }
 function del(id){
 try { localStorage.removeItem(SES_PRE + id);} catch(e){}
@@ -159,7 +160,8 @@ return JSON.parse(localStorage.getItem(WS_PRE + travId)) || defaultState();
 } catch(e){ return defaultState();}
 }
 function saveState(travId, st){
-try { localStorage.setItem(WS_PRE + travId, JSON.stringify(st));} catch(e){}
+try { localStorage.setItem(WS_PRE + travId, JSON.stringify(st));}
+catch(e){ typeof RP_WARN!=="undefined"&&RP_WARN.saveFail("穿越世界状态保存失败", e); }
 }
 /* 从回复里提取最后一个 <ws>{...}</ws> 块；返回 {clean, patch} */
 function parseWsBlock(text){

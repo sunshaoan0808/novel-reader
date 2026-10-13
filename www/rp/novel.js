@@ -27,7 +27,8 @@ return (o && Array.isArray(o.chapters))? o: null;
 }
 function saveNovel(chatId, novel){
 novel.updatedAt = Date.now();
-try{ localStorage.setItem(novelKey(chatId), JSON.stringify(novel));}catch(e){}
+try{ localStorage.setItem(novelKey(chatId), JSON.stringify(novel));}
+catch(e){ typeof RP_WARN!=="undefined"&&RP_WARN.saveFail("小说章节保存失败", e); }
 try{ if(typeof RP_STORE!== "undefined") RP_STORE.cacheSet(novelKey(chatId), JSON.stringify(novel));}catch(e){}
 }
 function delNovel(chatId){

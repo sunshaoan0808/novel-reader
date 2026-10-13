@@ -182,24 +182,31 @@ function idbSetItem(k, v){
     return _tx("readwrite", function(s){ return s.put({k: k, v: v}); }).then(function(){
       _lsSet(IDX_PREFIX + k, "1"); /* localStorage 只留索引标记 */
     }, function(){
-      _lsSet(k, v); /* IDB 抛错：同步回退 localStorage */
+      /* IDB 抛错：同步回退 localStorage。
+       * P1-9(a): 必须清掉 COPY 标记，否则 warmCache 会用 IDB 里的旧值盖掉本次回退的新值。
+       * P1-9(b): LS 回退也失败（配额）则 reject，不能 resolve 假装成功。 */
+      if(!_lsSet(k, v)) throw new Error("store: persist failed (idb+ls): " + k);
+      _lsDel(COPY_PREFIX + k);
     });
   }
-  _lsSet(k, v);
+  if(!_lsSet(k, v)) throw new Error("store: persist failed (ls): " + k);
   return Promise.resolve();
 }
 function setItemAsync(key, value){
   var k = String(key), v = String(value);
   if(fileOK() && v.length > FILE_MIN_BYTES){
+    /* P1-9(b): 文件层失败再走 IDB；IDB（含 LS 回退）也失败则整体 reject
+     *（此前最终都 resolve，成功提示是假的）。idbSetItem 只在全部落盘失败时 reject，
+     * 成功时 resolve，故此处无需二次校验（直接查 LS/MEM 会误判 IDB 成功为失败）。 */
     return fileSetItem(k, v).then(function(){}, function(){
-      return idbSetItem(k, v); /* 文件层失败（配额/IO）：回退 IDB */
+      return idbSetItem(k, v).then(function(){ MEM[k] = v; });
     });
   }
   if(fileOK() && hasFileMark(k)){
-    /* 值缩小到阈值下：撤下文件层，回 IDB/localStorage */
+    /* 值缩小到阈值下：撤下文件层，回 IDB/localStorage。
+     * P2-7: 不再 delete MEM[k]（降级不得比失败前更差，保留同步读命中）。 */
     _lsDel(FILE_PREFIX + k);
     NDFILE.removeItem(k).then(function(){}, function(){});
-    delete MEM[k];
   }
   return idbSetItem(k, v);
 }

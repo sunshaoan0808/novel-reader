@@ -17,7 +17,10 @@ window.__onBackPressed = ()=>{
   return false;
 };
 
-function esc(s){return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+/* P2-11: 转义收敛到 rp/escutil.js 的 escH()（index.html 最先加载 escutil；测试 vm 里同样先加载）。
+   独立加载场景无 escH 时回退同款实现。不用 jq()：那是"HTML属性+JS字符串"双上下文，
+   会把正文换行变成字面 \n、反斜杠加倍，只适用于 onclick 模板。 */
+const esc = (typeof escH !== "undefined") ? escH : function(s){return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));};
 
 /* ---------- 极简 markdown ---------- */
 function md(src){
@@ -56,7 +59,7 @@ return html;
 function setNav(n){
 NAV = n;
 try{ msgSheet(false); }catch(e){} /* L2: 切页时关消息菜单，背景压暗回 chat */
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 mainnav.querySelectorAll("button").forEach(b=>
 b.classList.toggle("active", b.dataset.nav===n));
 window.scrollTo(0,0);
@@ -103,7 +106,10 @@ ${coverHtml}
 }
 
 function openRun(runId){
-RUN = window.__DATA__.runs[runId];
+/* P2-4: data.js 截断/损坏时给可读提示（与 boot 一致），不许 TypeError 白屏 */
+const D = window.__DATA__;
+if(!D || !D.runs){ view.innerHTML = `<div class="empty">数据未生成<br><span style="font-size:12px">请先运行 snapshot.py</span></div>`; return; }
+RUN = D.runs[runId];
 if(!RUN){ view.innerHTML = `<div class="empty">该任务数据缺失</div>`; return;}
 tabs.classList.remove("hidden");
 setTab("chars");
@@ -177,7 +183,7 @@ if(c&&c.fields&&c.fields.core_identity) return String(c.fields.core_identity).sl
 const cards=((window.__DATA__&&window.__DATA__.rp_cards)||{})[runId]||[];
 const cd=cards.find(x=>x.name===name);
 if(cd){ const d=cd.description||cd.personality||""; if(d) return String(d).slice(0,46); }
-const run=(window.__DATA__.runs||{})[runId]||{};
+const run=((window.__DATA__||{}).runs||{})[runId]||{};
 const p=(run.profiles||[]).find(x=>x.name===name);
 if(p) return tagline(p);
 }catch(e){}
@@ -368,9 +374,13 @@ let _dagCache = {};
 function showStoryline(){
   const runId = RUN.run_id;
   view.innerHTML = skeletonHTML(3);
-  const render = (dag)=>{
+  const render = (dag, failed)=>{
     if(!dag || !dag.nodes || !dag.nodes.length){
-      view.innerHTML = `<div class="empty">暂无剧情线数据</div>`; return;
+      /* P2-5: 加载失败 ≠ 确实没有数据，分开文案并给重试 */
+      view.innerHTML = failed
+        ? `<div class="empty">剧情线数据加载失败<br><span style="font-size:12px">文件缺失或读取出错</span><br><button class="btn ghost" style="margin-top:10px" onclick="showStoryline()">重试</button></div>`
+        : `<div class="empty">暂无剧情线数据</div>`;
+      return;
     }
     const byId = {};
     dag.nodes.forEach(n=>{ byId[n.id] = n; });
@@ -402,12 +412,13 @@ function showStoryline(){
   var s = document.createElement("script");
   s.src = "data/event_dag_" + encodeURIComponent(runId) + ".js";
   s.onload = function(){ var dag = window[gk] || null; _dagCache[runId] = dag; if(TAB === "storyline") render(dag); };
-  s.onerror = function(){ if(TAB === "storyline") render(null); };
+  s.onerror = function(){ if(TAB === "storyline") render(null, true); };
   document.head.appendChild(s);
 }
 
 /* 事件日历懒加载（file:// 下用 script 标签），穿越事件选择器用 */
 let _calCache = {};
+let _calFailed = {}; /* P2-5: 加载失败标记——区分"加载失败"与"确实没有日历" */
 function loadEventCal(runId){
   if(!runId) return Promise.resolve(null);
   if(_calCache[runId]) return Promise.resolve(_calCache[runId]);
@@ -416,8 +427,8 @@ function loadEventCal(runId){
   return new Promise(function(resolve){
     var s = document.createElement("script");
     s.src = "data/event_calendar_" + encodeURIComponent(runId) + ".js";
-    s.onload = function(){ var cal = window[gk] || null; _calCache[runId] = cal; resolve(cal); };
-    s.onerror = function(){ resolve(null); };
+    s.onload = function(){ var cal = window[gk] || null; _calCache[runId] = cal; _calFailed[runId] = false; resolve(cal); };
+    s.onerror = function(){ _calFailed[runId] = true; resolve(null); };
     document.head.appendChild(s);
   });
 }
@@ -425,6 +436,7 @@ function loadEventCal(runId){
  * 懒加载 www/data/worldcard_<run_id>.js, 渲染世界概览/导演蓝图/世界书检索/次要人物/道具。 */
 let _wcCache = {};
 let _wcData = null;
+let _wcFailed = {}; /* P2-5: 加载失败标记——区分"加载失败"与"确实没有世界卡" */
 /* 世界卡懒加载（file:// 下用 script 标签），世界 tab 与导演系统共用 */
 function loadWorldcard(runId){
   if(!runId) return Promise.resolve(null);
@@ -435,10 +447,17 @@ function loadWorldcard(runId){
     var s = document.createElement("script");
     s.src = "data/worldcard_" + encodeURIComponent(runId) + ".js";
     s.onload = function(){ var wc = window[gk] || null; _wcCache[runId] = wc; res(wc); };
-    s.onerror = function(){ res(null); };
+    s.onerror = function(){ _wcFailed[runId] = true; res(null); };
     document.head.appendChild(s);
   });
 }
+/* P2-5: 世界卡加载失败后的重试——清失败标记与缓存，重新拉一遍 */
+window.retryWorldcard = ()=>{
+  const runId = RUN && RUN.run_id;
+  delete _wcFailed[runId]; delete _wcCache[runId];
+  try{ delete window["__WORLDCARD_" + runId]; }catch(e){}
+  showWorldcard();
+};
 function getWorldcard(runId){
   if(!runId) return null;
   return _wcCache[runId] || window["__WORLDCARD_" + runId] || null;
@@ -469,7 +488,10 @@ function showWorldcard(){
   const typeName = {setting:"世界概览",lore:"世界暗线",npcs:"次要人物",factions:"阵营",items:"道具",rules:"世界规则",economy:"经济",culture:"文化"};
   const render = (wc)=>{
     if(!wc || !wc.worldBookEntries){
-      view.innerHTML = `<div class="empty">暂无世界卡数据<br><span style="font-size:12px;color:var(--muted,#888)">管线执行 worldcard 阶段后自动出现</span></div>`;
+      /* P2-5: 加载失败 ≠ 确实没有数据，分开文案并给重试 */
+      view.innerHTML = _wcFailed[runId]
+        ? `<div class="empty">世界卡数据加载失败<br><span style="font-size:12px;color:var(--muted,#888)">文件缺失或读取出错</span><br><button class="btn ghost" style="margin-top:10px" onclick="retryWorldcard()">重试</button></div>`
+        : `<div class="empty">暂无世界卡数据<br><span style="font-size:12px;color:var(--muted,#888)">管线执行 worldcard 阶段后自动出现</span></div>`;
       prependRunBanner();
       return;
     }
@@ -734,7 +756,7 @@ const saveLore = (runId, arr)=>{
 const loreBack = {to:null};
 window.loreEditor = (runId, backTo)=>{
 __backAction = ()=>loreGoBack();
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 loreBack.to = backTo || "more";
 const run = ((window.__DATA__||{}).runs||{})[runId]||{};
 titleEl.textContent = "世界书管理"; subEl.textContent = (run.novel ? run.novel + " · " : "") + "自建条目进 prompt";
@@ -908,7 +930,7 @@ const regexBack = {to:null};
 window.regexEditor = (runId, name, backTo)=>{
 __backAction = ()=>regexGoBack();
 RX_CTX.runId = runId; RX_CTX.name = name;
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 regexBack.to = backTo || "chat";
 const names = name ? [name] : [];
 renderRegexList(runId, names[0]||"");
@@ -1200,14 +1222,23 @@ function rpToastOnce(msg){
   __toastOnceAt[msg] = now;
   try{ rpToast(msg); }catch(e){}
 }
+/* 聊天记录最多保留条数（P1-10：超出丢最早的，截断必须可见）。
+ * 常量放在 saveHist 内部：tests/test_gethist_fallback.js 按源码段提取执行，要求自包含；
+ * 调用方需要上限时用返回值里的 max。 */
 const saveHist = (k,h)=>{
-  const s = JSON.stringify(h.slice(-80));
+  const MAX_KEEP = 80;
+  const dropped = Math.max(0, h.length - MAX_KEEP);
+  const kept = h.length - dropped;
+  const s = JSON.stringify(dropped ? h.slice(-MAX_KEEP) : h);
   /* P0-3: localStorage 写入失败（配额满）必须让用户知道，不能静默，更不能抛到上层打断流程 */
   try{
     localStorage.setItem(k, s);
   }catch(e){
     rpToastOnce(isQuotaErr(e) ? "存储空间已满，聊天记录可能无法保存" : "聊天记录保存失败");
   }
+  /* P1-10: 超上限截断不再静默丢。固定文案 + rpToastOnce 节流，长聊天不刷屏；
+     导入场景的精确条数由导入方自己播报（见 doStChatImport）。 */
+  if(dropped) rpToastOnce(`聊天记录最多保留 ${MAX_KEEP} 条，更早的消息已丢弃`);
   /* P2: 大键双写 IDB（异步，失败静默回退 localStorage） */
   /* v36: 值缩小到文件层阈值下但旧文件还在时，必须把旧文件+标记清掉，
      否则下次冷启动 warmCache 会把旧大文件"复活"，盖掉 localStorage 里的新值。 */
@@ -1220,6 +1251,7 @@ const saveHist = (k,h)=>{
       RP_STORE.syncBig(k, s);
     }
   } }catch(e){}
+  return {kept: kept, dropped: dropped, max: MAX_KEEP};
 };
 
 let CHAT = {mode:"single", runId:null, name:null, members:[], forcedSpeaker:null};
@@ -1239,7 +1271,7 @@ try { RP_CARDIMPORT.list().forEach(c=>out.push({runId:"imported", novel:c.novel,
 for(const r of INDEX){
 const list = cards[r.run_id] || [];
 if(list.length){ list.forEach(c=>out.push({runId:r.run_id, novel:r.novel, name:c.name})); }
-else { const run = (window.__DATA__.runs||{})[r.run_id] || {};
+else { const run = ((window.__DATA__||{}).runs||{})[r.run_id] || {};
 (run.profiles||[]).forEach(p=>out.push({runId:r.run_id, novel:r.novel, name:p.name})); }
 }
 return out;
@@ -1355,7 +1387,7 @@ window.wallpaperEditor = (storeId)=>{
 _wallStore = (storeId === "global") ? "global" : "chat";
 const S = _wallStores[_wallStore];
 __backAction = ()=>S.back();
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 titleEl.innerHTML = S.title; subEl.textContent = S.sub;
 const o = S.get(), cur = o && o.url;
 const dim = o ? o.dim : 0, blur = o ? o.blur : 0;
@@ -1483,7 +1515,7 @@ const last = localStorage.getItem("nd_chat_last");
 const f = cs.find(c=>`${c.runId}|${c.name}`===last) || cs[0];
 CHAT = {runId:f.runId, name:f.name};
 }
-const run = (window.__DATA__.runs||{})[CHAT.runId] || {};
+const run = ((window.__DATA__||{}).runs||{})[CHAT.runId] || {};
 try{ if(CHAT.runId) loadWorldcard(CHAT.runId); }catch(e){} /* 世界卡预热：导演编排可用原著蓝图，fire-and-forget */
 let memN = 0;
 try{ const mst = RP_MEM.get(CHAT.runId, CHAT.name); memN = (mst && mst.short ? mst.short.length : 0); }catch(e){}
@@ -1663,7 +1695,7 @@ return;
 }
 if(!__gh0.length){
 const sp = ms[Math.floor(Math.random()*ms.length)];
-const run = (window.__DATA__.runs||{})[CHAT.runId] || {};
+const run = ((window.__DATA__||{}).runs||{})[CHAT.runId] || {};
 RP.greeting(CHAT.runId, sp, cfg, run.novel).then(g=>{
 let _gh2 = null;
 try{ _gh2 = getHist(k); }catch(e){ return; }
@@ -1713,7 +1745,7 @@ renderGRelBox();
 };
 function showChatPicker(){
 __backAction = null;
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 titleEl.textContent = "选个角色开聊";
 subEl.textContent = "";
 const cs = allChars();
@@ -1785,7 +1817,7 @@ albumPage(alb.id);
 };
 window.albumPage = (id)=>{
 __backAction = ()=>showChatPicker();
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 let alb = null;
 try{ alb = RP_ALBUM.get(id); }catch(e){}
 if(!alb){ showChatPicker(); return; }
@@ -1814,7 +1846,7 @@ try{ window.scrollTo(0,0); }catch(e){}
 };
 window.albumPick = (id)=>{
 __backAction = ()=>albumPage(id);
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 let alb = null;
 try{ alb = RP_ALBUM.get(id); }catch(e){}
 if(!alb){ showChatPicker(); return; }
@@ -1921,7 +1953,7 @@ return h + `</div>`;
 window.PICKER_TAG = "";
 window.pickTag = (t)=>{ window.PICKER_TAG = (window.PICKER_TAG === t ? "" : t); showChatPicker(); };
 window.exitChat = ()=>{ SEARCH.active=false; SEARCH.q=""; SEARCH.hits=[]; SEARCH.cur=-1; showChatPicker(); };
-window.exitChatTo = (n)=>{ document.body.classList.remove("chatmode"); setNav(n); };
+window.exitChatTo = (n)=>{ document.body.classList.remove("chatmode","immersive"); setNav(n); };
 window.toggleDrawer = (on)=>{
 document.getElementById("drawer").classList.toggle("on", !!on);
 document.getElementById("scrim").classList.toggle("on", !!on);
@@ -1933,6 +1965,11 @@ const l = document.getElementById("chatlog");
 if(!l) return true;
 return (l.scrollHeight - l.scrollTop - l.clientHeight) < (px || 140);
 }
+/* P2-1: 程序化滚动抑制 —— 流式 token / 打字机 / renderChat 的 scrollTop 赋值会触发
+   #chatlog 的 scroll 监听，与用户滚动无法区分，刚呼出的栏会被立刻藏回去。
+   程序滚动前 markProgScroll() 打标记，120ms 抑制窗口内的 scroll 不触发隐藏。 */
+let __progScrollAt = 0;
+function markProgScroll(){ __progScrollAt = Date.now(); }
 /* M3: 回到底部悬浮按钮（Talkie chat_page_with_bg_v2: 44x44dp, 右12/下20） */
 function ensureToBottom(){
 const wrap = document.querySelector(".chatwrap"); if(!wrap) return;
@@ -2009,11 +2046,12 @@ log.addEventListener("click", (e)=>{
     setBars(false);
   }
 }, true);
-/* 滑动隐藏：栏显示时一旦滚动就藏 */
+/* 滑动隐藏：栏显示时一旦滚动就藏（P2-1: 程序化滚动在抑制窗口内不触发隐藏） */
 let lastST = log.scrollTop;
 log.addEventListener("scroll", ()=>{
   const st = log.scrollTop;
-  if(Math.abs(st - lastST) > 8 && barsVisible){
+  const progScroll = (Date.now() - __progScrollAt) < 120;
+  if(!progScroll && Math.abs(st - lastST) > 8 && barsVisible){
     /* 输入框聚焦时不藏底栏（键盘弹起时） */
     const ae = document.activeElement;
     const typing = !!ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName || "");
@@ -2044,9 +2082,9 @@ renderForeshadow();
 };
 window.fsTab = (t)=>{ FS_TAB = t; renderForeshadow(); };
 function renderForeshadow(){
-const run = (window.__DATA__.runs||{})["honglou_full"] || {};
+const run = ((window.__DATA__||{}).runs||{})["honglou_full"] || {};
 __backAction = ()=>showChat();
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 titleEl.innerHTML = icon("book-open") + " 伏笔面板";
 const g = RP_FORE.group();
 subEl.textContent = (run.novel || "红楼梦") + ` · 未回收 ${g.unresolved.length} · 已回收 ${g.resolved.length}`;
@@ -2076,7 +2114,7 @@ window.scrollTo(0,0);
 /* 点击伏笔 -> 跳转对应回目 (事件日历/回目映射) */
 window.foreshadowChapter = (ch)=>{
 __backAction = ()=>renderForeshadow();
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 titleEl.innerHTML = icon("book-open") + ` 第 ${ch} 回`;
 subEl.textContent = "事件日历 · 回目事件";
 const evs = (typeof RP_FORE !== "undefined") ? RP_FORE.chapterOf(ch) : [];
@@ -2266,7 +2304,7 @@ inp.click();
 function stChatConfirm(){
 const p = STCHAT_PENDING; if(!p) return;
 __backAction = ()=>showChat();
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 titleEl.innerHTML = icon("upload") + " 导入 ST 聊天记录";
 const meta = p.parsed.meta || {};
 const charName = meta.character_name || "";
@@ -2309,7 +2347,7 @@ if(mode === "append"){
 try{ cur = getHist(k); }catch(e){ rpToast("聊天记录读取失败，导入已中止"); return; }
 }
 const merged = cur.concat(p.entries);
-saveHist(k, merged);
+const saved = saveHist(k, merged);
 /* 扩展数据透传: 覆盖模式连首行 chat_metadata 一起换(构画点线面间数据跟聊天走);
  * 追加模式保留当前聊天的, 只带走消息级 extra。 */
 if(mode === "replace"){
@@ -2317,7 +2355,12 @@ const cm = p.parsed.meta && p.parsed.meta.chat_metadata;
 setStChatMeta(cm && typeof cm === "object" ? cm : null);
 }
 STCHAT_PENDING = null;
-rpToast(`已导入 ${p.entries.length} 条`);
+/* P1-10: toast 播报实际入库条数——merged 超上限被 saveHist 截断时,
+ p.entries.length 是谎报；被丢弃的是"最早的 droppedTotal 条"（含被挤掉的旧记录） */
+const curKept = Math.max(0, cur.length - saved.dropped);
+const fileKept = saved.kept - curKept;
+rpToast(`已导入 ${fileKept} 条` +
+  (saved.dropped ? `（超出 ${saved.max} 条上限，最早的 ${saved.dropped} 条已丢弃）` : ""));
 showChat();
 };
 /* 构画便携包导入: 聊天页抽屉 -> 选 .json -> 确认页(模块清单/映射预览) -> 世界书+当前聊天
@@ -2344,7 +2387,7 @@ inp.click();
 function gouhuaConfirm(){
 const p = GOUHUA_PENDING; if(!p) return;
 __backAction = ()=>showChat();
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 titleEl.innerHTML = icon("upload") + " 导入构画便携包";
 subEl.textContent = p.file;
 const rows = RP_GOUHUA.summarize(p.pkg);
@@ -2540,6 +2583,8 @@ document.getElementById("msgscrim").classList.add("on");
 sh.classList.add("on");
 };
 window.editMsgSave = async (idx)=>{
+/* P2-2: 与在飞流互斥——流式中保存编辑会并发改同一批消息 */
+if(STREAMING || document.getElementById("live")){ rpToast("正在生成中，等这条回复完成再编辑"); return; }
 const ta = document.getElementById("editbox");
 const nv = ta ? ta.value : "";
 if(!nv.trim()){ alert("内容不能为空"); return; }
@@ -2733,7 +2778,7 @@ window._achvFrom = (from==="picker") ? "picker" : "settings";
 const backFn = window._achvFrom==="picker" ? "showChatPicker()" : "showSettings()";
 __backAction = ()=>{ if(window._achvFrom==="picker") showChatPicker(); else showSettings(); };
 titleEl.textContent = "成就"; subEl.textContent = `已解锁 ${RP_ACHV.count()}/${RP_ACHV.DEFS.length}`;
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 view.innerHTML = `<button class="back" onclick="${backFn}">${icon("back")} 返回${window._achvFrom==="picker"?"选人":"设置"}</button>
 <div class="hint">本地记录, 无数值无排行, 纯粹纪念。</div>`
 + RP_ACHV.list().map(a=>`<div class="card ${a.unlocked?"":"dimmed"}"><div class="row"><div class="avatar">${icon(a.icon,20)}</div>
@@ -2897,7 +2942,7 @@ function scrollToHit(){
 const idx = SEARCH.hits[SEARCH.cur];
 if(idx==null) return;
 const el = document.getElementById("smsg-"+idx);
-if(el && el.scrollIntoView) el.scrollIntoView({block:"center"});
+if(el && el.scrollIntoView){ markProgScroll(); el.scrollIntoView({block:"center"}); }
 }
 function updateSearchBar(){
 const n = document.getElementById("cs_num");
@@ -2916,15 +2961,16 @@ bar.innerHTML = `<div class="csbar">`
 + `<button onclick="toggleChatSearch(false)" title="关闭">${icon("x",14)}</button></div>`;
 }
 /* ============ P2: 打字机效果（AI 回复逐字呈现，可打断） ============ */
-let TW = {timer:null, key:"", idx:-1};
+let TW = {timer:null, key:"", idx:-1, mid:""};
 function twStop(){ if(TW.timer){ clearInterval(TW.timer); TW.timer = null; } }
 /* 立即打断完成：停掉定时器并整页重渲染出全文 */
 window.twFinish = ()=>{ if(!TW.timer) return; twStop(); renderChat(); };
-function twStart(idx, bodyText, cardHTML){
+function twStart(idx, bodyText, cardHTML, mid){
 const log = $("#chatlog"); if(!log) return;
 const frames = (typeof RP_TYPEWRITER!=="undefined") ? RP_TYPEWRITER.progressFrames(bodyText) : [bodyText];
 let fi = 0;
 TW.idx = idx;
+TW.mid = mid || "";
 /* 首帧立即置空+光标，避免 45ms 后才改造成的全文闪烁 */
 const el0 = document.getElementById("smsg-"+idx);
 if(el0){ const b0 = el0.querySelector(".bubble"); if(b0) b0.innerHTML = `<span class="twcur"></span>`; }
@@ -2932,13 +2978,15 @@ TW.timer = setInterval(()=>{
 fi++;
 const done = fi >= frames.length;
 const el = document.getElementById("smsg-"+idx);
-if(!el){ twStop(); return; }
+/* P2-3: idx 漂移（播放中插入/删除消息）——元素没了，或该位置已被别的消息顶替：
+   停掉定时器并整页重渲染，从历史补出剩余全文，不许永久停在半截/光标帧 */
+if(!el || (TW.mid && el.dataset && el.dataset.mid !== TW.mid)){ twStop(); renderChat(); return; }
 const bub = el.querySelector(".bubble");
 if(bub){
 const partial = frames[Math.min(fi, frames.length-1)];
 bub.innerHTML = hlRestore(md(hlSearchRaw(partial))) + (done?cardHTML:`<span class="twcur"></span>`);
 }
-if(chatNearBottom()) log.scrollTop = log.scrollHeight;
+if(chatNearBottom()){ markProgScroll(); log.scrollTop = log.scrollHeight; }
 if(done){ twStop(); renderChat(); /* M4: 播完重渲染，长消息挂上折叠结构 */ }
 }, 45);
 }
@@ -3016,12 +3064,12 @@ const bubbleInner = needFold
 /* Soul 冲突徽章 */
 const conflictBadge = (m._conflicts && m._conflicts.length && !m._conflictResolved && typeof RP_SOUL_CFG !== "undefined")
 ? RP_SOUL_CFG.conflictBadgeHTML(m._conflicts, idx) : "";
-return `<div class="msg ${m.role==="user"?"me":""}${mtype==="narr"?" narr":""}${mtype==="npc"?" npc":""}${isCur?" curhit":""}" id="smsg-${idx}" onclick="toggleTools(event,${jq(idx)})" oncontextmenu="event.preventDefault();msgMenu(${jq(idx)});return false;" ontouchstart="msgPressStart(event,${jq(idx)})" ontouchend="msgPressEnd()" ontouchmove="msgPressEnd()">`
+return `<div class="msg ${m.role==="user"?"me":""}${mtype==="narr"?" narr":""}${mtype==="npc"?" npc":""}${isCur?" curhit":""}" id="smsg-${idx}" data-mid="${esc(m.mid||m.id||"")}" onclick="toggleTools(event,${jq(idx)})" oncontextmenu="event.preventDefault();msgMenu(${jq(idx)});return false;" ontouchstart="msgPressStart(event,${jq(idx)})" ontouchend="msgPressEnd()" ontouchmove="msgPressEnd()">`
 + `<div class="msgcol">${showWho?`<div class="who">${esc(who)}</div>`:""}<div class="bubble${needFold?" foldable collapsed":""}">${bubbleInner}${conflictBadge}</div>${extra}</div>`
 + `</div>`;
 }).join("") || `<div class="empty">还没有对话，打个招呼吧<br><span style="font-size:12px">试试：你是谁？</span></div>`;
 renderCtxBar();
-if(stick) log.scrollTop = log.scrollHeight;
+if(stick){ markProgScroll(); log.scrollTop = log.scrollHeight; }
 renderWsBar();
 renderSimBar();
 /* P2 打字机：只对"最新一条 AI 消息"做逐字动画；重渲染旧消息不重复播 */
@@ -3033,7 +3081,7 @@ TW.key = key;
 const m = h[lastAI];
 const oc0 = parseOptCard(m.content);
 const body0 = oc0 ? m.content.replace(oc0.full,"").trim() : m.content;
-twStart(lastAI, body0, oc0 ? optCardHTML(oc0, true, lastAI) : "");
+twStart(lastAI, body0, oc0 ? optCardHTML(oc0, true, lastAI) : "", h[lastAI].mid || h[lastAI].id || "");
 }else{
 TW.key = key;
 }
@@ -3106,7 +3154,7 @@ function simChatKey(){
 }
 function simHint(){
   var novel = "";
-  try{ novel = ((window.__DATA__.runs||{})[CHAT.runId]||{}).novel || ""; }catch(e){}
+  try{ novel = (((window.__DATA__||{}).runs||{})[CHAT.runId]||{}).novel || ""; }catch(e){}
   if(CHAT.mode==="traverse"){
     try{ var t = (typeof RP_TRAVERSE!=="undefined") ? RP_TRAVERSE.get(CHAT.travId) : null;
       if(t && t.worldName) novel = t.worldName; }catch(e){}
@@ -3156,7 +3204,7 @@ window.simEditor = ()=>{
   const key = simChatKey(), hint = simHint();
   const st = RP_WORLDSIM.ensure(key, hint);
   __backAction = ()=>showChat();
-  document.body.classList.remove("chatmode");
+  document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   titleEl.innerHTML = icon("clock") + " 世界模拟"; subEl.textContent = "";
   const p = RP_WORLDSIM.curPlace(st);
   const wxOpts = RP_WORLDSIM.WEATHER.map(w=>
@@ -3344,6 +3392,8 @@ try{ h = getHist(k); }catch(e){ rpToast("聊天记录读取失败"); return; }
 if(RP.swipe(h[idx], dir)){ saveHist(k, h); renderChat(); achvUnlock("swipe_1"); }
 };
 window.regenMsg = async ()=>{
+/* P2-2: 与在飞流互斥——流式中重生会并发改同一批消息 */
+if(STREAMING || document.getElementById("live")){ rpToast("正在生成中，等这条回复完成再重生"); return; }
 const cfg = getCfg();
 const rcfg = getRpCfg();
 const k = chatHistKey();
@@ -3403,7 +3453,13 @@ function __abortGen(id){
 /* 停止当前在飞的轮次（停止按钮 / 切页 / 切会话时调用） */
 function abortStreaming(){ __abortGen(__curGen); }
 /* M6: 改写（猫箱 rewrite）：AI 润色本条回复、原意不变，原回复进候选可 swipe 切回 */
+/* P2-2: 改写自身的重入锁（与 STREAMING 一起构成互斥） */
+let REWRITING = false;
 window.rewriteMsg = async (idx)=>{
+/* P2-2: 与在飞流互斥——流式中改写同一条消息会并发覆盖；改写自身也不允许重入 */
+if(STREAMING || REWRITING || document.getElementById("live")){ rpToast("正在生成中，等这条回复完成再改写"); return; }
+REWRITING = true;
+try{
 const k = chatHistKey();
 let h = null;
 try{ h = getHist(k); }catch(e){ rpToast("聊天记录读取失败"); return; }
@@ -3430,6 +3486,9 @@ saveHist(k, h);
 }
 }catch(e){}
 renderChat();
+}finally{
+REWRITING = false;
+}
 };
 /* 输入栏（含旁白按钮；群聊多发言身份选择） */
 function chatbarInner(disabled){
@@ -3508,6 +3567,9 @@ const streamWho = ()=> STREAM_SPEAKER || CHAT.name || "TA";
 function streamToken(tok){
 /* P0-4: 只写"当前在飞轮次 + 当前会话"的 token。切会话/新轮次后旧流的 token 直接丢弃，防串台。 */
 if(__liveGen !== __curGen || chatHistKey() !== __liveKey) return;
+/* P2-2: 页面隐藏(切后台)时不往不可见 DOM 追加 token。流不中断，回前台后继续追加，
+   完成时照常 saveHist + renderChat 落全文，不会写坏状态。 */
+if(typeof document !== "undefined" && document.hidden) return;
 const log = $("#chatlog");
 let live = document.getElementById("live");
 if(!live){
@@ -3517,7 +3579,7 @@ log.insertAdjacentHTML("beforeend",
 live = document.getElementById("live");
 }
 live.textContent += tok;
-if(chatNearBottom()) log.scrollTop = log.scrollHeight;
+if(chatNearBottom()){ markProgScroll(); log.scrollTop = log.scrollHeight; }
 }
 window.sendChat = ()=>{
 const inp = $("#chat_in");
@@ -3733,13 +3795,13 @@ window.chapterPicker = ()=>{
   /* 保存返回动作 */
   window.__chapterBack = window.__backAction;
   window.__backAction = ()=>{ setTab("chat"); showChat(); };
-  document.body.classList.remove("chatmode");
+  document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   v.innerHTML = html;
   window.scrollTo(0,0);
 };
 window.plotEditor = ()=>{
 __backAction = ()=>plotGoBack();
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 const label = CHAT.mode==="group" ? ("群聊 · " + (CHAT.members||[]).join("、")) : (CHAT.name||"");
 const cur = activePlotOutline();
 const bundled = bundledPlot();
@@ -3898,7 +3960,7 @@ return `<h2 class="sec">${icon(ic,14)} ${title}</h2><div class="timeline">${html
 function renderAlbum(){
 const runId = ALBUM.runId, nm = ALBUM.name;
 __backAction = ()=>albumBack();
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 let st = RP_MEM.get(runId, nm);
 /* LeanMem: 事件簿打开时确保三库已迁移 (幂等), 展示分流结果 */
 if(st && RP_MEM.leanmemOn && RP_MEM.leanmemOn()) st = RP_MEM.migrate3(runId, nm, st);
@@ -4040,7 +4102,7 @@ renderAlbum();
 window.memEditForm = (id)=>{
 const runId = ALBUM.runId, nm = ALBUM.name;
 __backAction = ()=>renderAlbum();
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 const st = RP_MEM.get(runId, nm);
 const m = ((st && st.short)||[]).find(x=>x.id==id);
 if(!m){ alert("记忆不存在"); return; }
@@ -4097,7 +4159,7 @@ alert("记忆卡片已复制");
 window.factForm = (fid)=>{
 const runId = ALBUM.runId, nm = ALBUM.name;
 __backAction = ()=>renderAlbum();
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 const st = RP_MEM.get(runId, nm);
 const gf = RP_MEM.getFacts(st);
 const all = gf.auto.concat(gf.manual);
@@ -4133,7 +4195,7 @@ renderAlbum();
 window.memoryNovel = ()=>{
 const runId = ALBUM.runId, nm = ALBUM.name;
 __backAction = ()=>renderAlbum();
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 const st = RP_MEM.get(runId, nm);
 titleEl.innerHTML = icon("book-open")+" 记忆小说"; subEl.textContent = nm + " · 由记忆整理成篇";
 const cnNum = ["一","二","三","四","五","六","七","八","九","十"];
@@ -4237,7 +4299,7 @@ return `<span class="badge" style="background:#f5e6c8;color:#8a6d2f">概要已�
 }
 function renderNovel3(){
 __backAction = ()=>renderAlbum();
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 titleEl.innerHTML = icon("scroll") + " 小说工坊";
 subEl.textContent = NOV.name + " · 生成→改写→导出";
 const novel = RP_NOVEL.getNovel(novelChatId());
@@ -4320,7 +4382,7 @@ renderNovel3();
 /* 第三步: 阅读 */
 window.novelRead = ()=>{
 __backAction = ()=>renderNovel3();
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 const novel = RP_NOVEL.getNovel(novelChatId());
 if(!novel){ renderNovel3(); return; }
 titleEl.innerHTML = icon("book-open") + " " + esc(novel.title || "小说");
@@ -4372,7 +4434,7 @@ return {roots, children};
 window.openSaves = ()=>{ renderSaves(); };
 function renderSaves(){
 __backAction = ()=>showChat();
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 const label = CHAT.mode==="group" ? ("群聊·"+CHAT.members.length+"人") : CHAT.name;
 titleEl.innerHTML = icon("save")+" 平行存档"; subEl.textContent = label + " · 多时间线快照";
 const fmtT = (ts)=> new Date(ts).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
@@ -4649,7 +4711,7 @@ window.personaEditor = (scope, from)=>{
 const isOverride = !!scope;
 const p = (isOverride ? RP_PERSONA.getOverride(scope) : RP_PERSONA.getGlobal()) || {name:"", desc:"", extra:"", called:""};
 __backAction = ()=>{ from==="settings" ? showSettings() : showChat(); };
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 titleEl.innerHTML = icon("user")+" 我的人设";
 subEl.textContent = isOverride ? "仅本次聊天生效（覆盖全局人设）" : "全局生效：以后所有聊天都会告诉 AI 你是谁";
 view.innerHTML = `<button class="back" onclick="__backAction()">${icon("back")} 返回</button>
@@ -4719,7 +4781,7 @@ try{
 const r = await RP_CARDEXPORT.exportAndShare(c);
 if(r.shared){ alert("已调起系统分享"); return; }
 __backAction = ()=>showWriter();
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 titleEl.textContent = "角色卡 PNG"; subEl.textContent = c.name;
 view.innerHTML = `<button class="back" onclick="showWriter()">${icon("back")} 返回</button>
 <div class="card" style="text-align:center"><img src="${r.dataUrl}" style="max-width:100%;border-radius:8px" alt="角色卡"></div>
@@ -4969,7 +5031,7 @@ return (typeof RP !== "undefined" && RP.findCard) ? RP.findCard(runId, name) : n
 /* P2 开源卡：只读设定视图（对照学习，不可编辑） */
 window.viewCardSource = (runId, name)=>{
 __backAction = ()=>charDetail(runId, name);
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 const card = fullCardOf(runId, name);
 titleEl.innerHTML = icon("books") + " 设定源码"; subEl.textContent = name + " · 只读";
 if(!card){
@@ -5024,9 +5086,9 @@ window.detailOpenAlbum = ()=>{ openAlbum(DETAIL.runId, DETAIL.name, ()=>renderDe
 function renderDetail(){
 const runId = DETAIL.runId, nm = DETAIL.name;
 __backAction = ()=>detailBack();
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 const card = RP.findCard(runId, nm) || {name:nm, fields:{}};
-const run = (window.__DATA__.runs||{})[runId] || {};
+const run = ((window.__DATA__||{}).runs||{})[runId] || {};
 titleEl.innerHTML = icon("user")+" "+esc(nm); subEl.textContent = run.novel || "";
 const tabs = [["info","资料"],["memory","记忆"],["chat","最近聊天"],["arc","人物弧光"],["soul","灵魂包"]];
 let body = "";
@@ -5250,7 +5312,7 @@ window.showChatSettings = ()=>{
   var wsHtml = "";
   try{
     if(typeof RP_WORLDSIM !== "undefined" && RP_WORLDSIM.enabled()){
-      var st = RP_WORLDSIM.ensure(chatId, {novel: ((window.__DATA__.runs||{})[runId]||{}).novel});
+      var st = RP_WORLDSIM.ensure(chatId, {novel: (((window.__DATA__||{}).runs||{})[runId]||{}).novel});
       var p = RP_WORLDSIM.curPlace(st);
       wsHtml = `<div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:13px;margin-bottom:8px">🌍 世界状态</div>
         <div style="font-size:13px;margin-bottom:4px">时间：${esc(RP_WORLDSIM.fmtTime(st))}</div>
@@ -5271,7 +5333,7 @@ window.showChatSettings = ()=>{
       ${asstToggle("🔍 Continuity Checker", "检查逻辑矛盾", ctOn, "toggleCT")}
       ${asstToggle("📝 角色卡审计", "建议角色成长更新", !ceOff, "toggleCE")}
       ${asstToggle("🔗 关系动态", "聊天中关系演变", !rdOff, "toggleRD")}
-      ${typeof RP_SOUL_ORCH!=="undefined" ? asstToggle("👥 Soul 多智能体", "多角色并行独立回应", (function(){ try{ return localStorage.getItem("nd_soulmode_off_"+chatId)!=="1"; }catch(e){ return true; } })(), "toggleSoulMode") : ""}
+      ${typeof RP_SOUL_ORCH!=="undefined" ? asstToggle("👥 Soul 多智能体", "多角色并行独立回应", (function(){ try{ return localStorage.getItem("nd_soulmode_off_"+soulChatId())!=="1"; }catch(e){ return true; } })(), "toggleSoulMode") : ""}
       <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0">
         <div><div style="font-size:13px">🚀 Push Story</div>
         <div style="font-size:11px;color:var(--ink-faint)">${pushMode ? "已武装（" + (pushMode === "natural" ? "顺推" : "意外") + "），下条回复生效" : "一键推进剧情"}</div></div>
@@ -5330,8 +5392,16 @@ window.toggleLK = ()=>{ AGENT_LOREKEEPER.setEnabled(!AGENT_LOREKEEPER.isEnabled(
 window.toggleCT = ()=>{ AGENT_CONTINUITY.setEnabled(!AGENT_CONTINUITY.isEnabled()); };
 window.toggleCE = ()=>{ AGENT_CARDEVO.setEnabled(localStorage.getItem("nd_cardevo_off") === "1"); };
 window.toggleRD = ()=>{ AGENT_RELATIONS.setEnabled(localStorage.getItem("nd_reldyn_off") === "1"); };
+/* Soul 开关的 chatId 必须与 chat.js sendGroup 里门禁用的 _sChatId 一致:
+ * chatKey(runId, members.join(",")), 而不是 chatKey(runId, CHAT.name)
+ * (群聊时 CHAT.name 为 null, 曾导致开关写错 key, 门禁永远读不到)。
+ * 2026-10-13 修。 */
+function soulChatId(){
+  var nm = (CHAT.mode === "group" && CHAT.members && CHAT.members.length) ? CHAT.members.join(",") : CHAT.name;
+  return (typeof chatKey !== "undefined") ? chatKey(CHAT.runId, nm) : (CHAT.runId + "|" + nm);
+}
 window.toggleSoulMode = ()=>{
-  var chatId = (typeof chatKey !== "undefined") ? chatKey(CHAT.runId, CHAT.name) : (CHAT.runId + "|" + CHAT.name);
+  var chatId = soulChatId();
   try{
     var wasOff = localStorage.getItem("nd_soulmode_off_" + chatId) === "1";
     if(typeof RP_SOUL_ORCH !== "undefined") RP_SOUL_ORCH.setSoulMode(chatId, wasOff);
@@ -6370,7 +6440,7 @@ return;
 const defs = RP_TASKS.getDefs(CHAT.runId, nm);
 titleEl.textContent = "分析任务 · " + nm;
 subEl.textContent = "";
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 view.innerHTML = `
 <div class="hint">周期分析任务: 按消息条数或关键词自动触发, 把分析结果注入对话 (常驻/按需) 或仅存档。内置三层记忆不在此列, 每次触发约 1 次模型调用。</div>
 ${defs.map(d=>{const t=RP_TASKS.normDef(d); const st=RP_TASKS.getState(CHAT.runId,nm,t.id);
@@ -6390,7 +6460,7 @@ const defs = RP_TASKS.getDefs(CHAT.runId, name);
 const t = RP_TASKS.normDef(id ? (defs.find(d=>d.id===id)||{}) : {id: RP_TASKS.nextId(defs)});
 titleEl.textContent = (id?"编辑任务 · ":"新建任务 · ") + name;
 subEl.textContent = "";
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 view.innerHTML = `
 <div class="setcard">
 <div class="field"><label>任务名</label><input id="at_name" value="${esc(t.name)}"></div>
@@ -6434,7 +6504,7 @@ const t = defs.find(d=>d.id===id)||{};
 const st = RP_TASKS.getState(CHAT.runId, name, id);
 titleEl.textContent = "任务输出 · " + (t.name||"");
 subEl.textContent = "";
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 view.innerHTML = `<div class="setcard">
 <div class="kv">${st?("更新于 "+new Date(st.updatedAt).toLocaleString()+(st.reason?" · 触发: "+st.reason:"")):"尚未运行"}</div>
 <pre style="white-space:pre-wrap;font-size:13px">${esc((st&&st.output)||"(空)")}</pre>
@@ -6459,7 +6529,7 @@ window.showWriter = ()=>{
 __backAction = null;
 titleEl.textContent = "写卡助手";
 subEl.textContent = "分步采访, 写出能直接开聊的角色卡";
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 const ss = RP_WRITER.listSessions();
 const cs = RP_WRITER.getCustomChars();
 view.innerHTML = `
@@ -6604,7 +6674,7 @@ if(!card){ alert("卡片不存在"); return; }
 __backAction = ()=>{ src==="custom" ? showWriter() : showTraverse(); };
 titleEl.textContent = "编辑角色卡";
 subEl.textContent = esc(card.name) + (src==="custom"?" · 自创卡":" · 导入卡");
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 const f = card.fields || {};
 const aiFilled = (card.aiFilled && typeof card.aiFilled === "object") ? card.aiFilled : {};
 const rows = Object.keys(RP_PROMPT.LABELS).map(k=>{
@@ -6729,7 +6799,7 @@ __backAction = ()=>showWriter();
 const runs = (window.__DATA__.index||[]).map(r=>`<option value="${r.run_id}">${esc(r.novel)}</option>`).join("");
 titleEl.textContent = "新建写卡";
 subEl.textContent = "";
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 view.innerHTML = `<div class="setcard">
 <div class="field"><label>世界观 (可选, 绑定后聊天时可调用该小说的世界书)</label>
 <select id="w_world"><option value="">不绑定</option>${runs}</select></div>
@@ -6747,7 +6817,7 @@ if(!s){ showWriter(); return; }
 const st = RP_WRITER.STEPS[s.step];
 titleEl.textContent = "写卡 · " + st.name;
 subEl.textContent = st.desc;
-document.body.classList.remove("chatmode");
+document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 const log = s.history.map(m=>`<div class="msg ${m.role==="user"?"me":"ai"}"><div class="bub">${esc(m.content).replace(/\n/g,"<br>")}</div></div>`).join("");
 view.innerHTML = `
 <div class="hint">第 ${s.step+1}/5 步 · ${esc(st.name)}: ${esc(st.desc)}</div>
@@ -6912,7 +6982,7 @@ function travWorlds(){
 }
 function showTraverse(){
   __backAction = null;
-  document.body.classList.remove("chatmode");
+  document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   titleEl.innerHTML = icon("book-open")+" 穿越"; subEl.textContent = "进入书里活";
   const hintTimeline = `<div class="hint" style="margin:0 0 10px">🕰️ 穿越是独立的时间线：这里发生的事，不会影响「聊天」里的对话和记忆。</div>`;
   const modes = [
@@ -7032,7 +7102,7 @@ function goldenPickBook(){
 }
 window.goldenPickChar = (i)=>{
   const r = (window._goldenRuns||[])[i]; if(!r) return;
-  const run = (window.__DATA__.runs||{})[r.run_id] || {};
+  const run = ((window.__DATA__||{}).runs||{})[r.run_id] || {};
   const chars = (run.characters && run.characters.length ? run.characters : (r.characters||[])).slice(0, 24);
   window._golden = {bookIdx:i, runId:r.run_id, novel:r.novel, chars:chars, charIdx:-1, style:"slowburn", openingIdx:0};
   const styles = (typeof RP_DIRECTOR!=="undefined" && RP_DIRECTOR.STYLES) ? RP_DIRECTOR.STYLES : {slowburn:{name:"慢热",desc:""}};
@@ -7153,7 +7223,7 @@ window.cardGapfillPrompt = (cardId, keys, queue)=>{
   if(!card){ cardGapfillNext(queue); return; }
   window._gapfillQueue = queue || [];
   __backAction = ()=>{ showTraverse(); };
-  document.body.classList.remove("chatmode");
+  document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   titleEl.innerHTML = "✨ AI 补完"; subEl.textContent = card.name;
   const names = keys.map(k=>GAPFILL_LABEL[k]||k).join("、");
   view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
@@ -7257,7 +7327,7 @@ window.travVisionSetup = (dataUrl)=>{
   if(!cfg.key||!cfg.base){ alert("先去「设置」配好 API 地址/Key"); return; }
   window._visionDataUrl = dataUrl;
   __backAction = ()=>{ showTraverse(); };
-  document.body.classList.remove("chatmode");
+  document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   titleEl.textContent = "看图写卡"; subEl.textContent = "AI 识别图中人物";
   const tags = (typeof RP_MODELTAGS !== "undefined" && RP_MODELTAGS.get) ? RP_MODELTAGS.get(cfg.model||"") : [];
   const hasVision = tags.indexOf("视觉") >= 0;
@@ -7335,7 +7405,7 @@ window.travVisionImport = ()=>{
 /* ---- 魂穿：选目标 -> 选锚点 -> 开局 ---- */
 function soulPickTarget(){
   __backAction = ()=>showTraverse();
-  document.body.classList.remove("chatmode");
+  document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   titleEl.innerHTML = icon("user")+" 魂穿"; subEl.textContent = "选择你要成为的角色";
   const cs = allChars();
   view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
@@ -7355,7 +7425,7 @@ function soulOutlineFor(runId, name){
 }
 window.soulAnchors = (runId, name)=>{
   __backAction = ()=>soulPickTarget();
-  document.body.classList.remove("chatmode");
+  document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   titleEl.innerHTML = icon("user")+" 魂穿 · "+esc(name); subEl.textContent = "选择进入的剧情锚点";
   const anchors = RP_TRAVERSE.anchorsFor(soulOutlineFor(runId, name));
   const _anchNovel = ((((window.__DATA__||{}).runs||{})[runId]||{}).novel)||"";
@@ -7443,7 +7513,14 @@ window.travEventSearch = (runId)=>{
   /* 确保数据已加载 */
   if(!_calCache[runId] && !window["__EVENTCAL_" + runId]){
     listEl.innerHTML = `<div class="hint">加载事件数据…</div>`;
-    loadEventCal(runId).then(doSearch);
+    loadEventCal(runId).then(()=>{
+      /* P2-5: 加载失败区分于"没找到"，给重试入口 */
+      if(_calFailed[runId] && !_calCache[runId] && !window["__EVENTCAL_" + runId]){
+        listEl.innerHTML = `<div class="hint">事件数据加载失败 <button class="btn ghost sm" onclick="travEventSearch('${jq(runId)}')">重试</button></div>`;
+        return;
+      }
+      doSearch();
+    });
   }else doSearch();
 };
 window.travEventPick = (i)=>{
@@ -7498,7 +7575,7 @@ window.soulStart = async (runId, name)=>{
 /* ---- 肉身穿越：选世界 -> 捏身份 -> 开局 ---- */
 function bodyPickWorld(){
   __backAction = ()=>showTraverse();
-  document.body.classList.remove("chatmode");
+  document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   titleEl.innerHTML = icon("users")+" 肉身穿越"; subEl.textContent = "选择你要进入的世界";
   const ws = travWorlds();
   view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
@@ -7524,7 +7601,7 @@ function idtRow(kind, id, key, label, inputHtml){
 }
 window.bodyIdentity = (kind, id)=>{
   __backAction = ()=>bodyPickWorld();
-  document.body.classList.remove("chatmode");
+  document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   const wname = RP_TRAVERSE.worldDisplayName(kind, id);
   window._idtDraft = null;
   titleEl.innerHTML = icon("users")+" 肉身穿越"; subEl.textContent = wname+" · 捏造你的身份";
@@ -7755,7 +7832,7 @@ function renderWsBar(){
 window.travWsEditor = ()=>{
   const trav = RP_TRAVERSE.get(CHAT.travId); if(!trav) return;
   __backAction = ()=>showChat();
-  document.body.classList.remove("chatmode");
+  document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   const st = RP_TRAVERSE.getState(trav.id);
   titleEl.innerHTML = icon("scroll")+" 世界状态"; subEl.textContent = trav.worldName;
   const _wsCtx = "穿越世界「"+trav.worldName+"」的世界状态；最近剧情：\n"+RP_AIFILL._recentChatCtx(8,"nd_travchat_"+trav.id);
@@ -7790,7 +7867,7 @@ window.travWsSave = ()=>{
 window.travIdentityView = ()=>{
   const trav = RP_TRAVERSE.get(CHAT.travId); if(!trav) return;
   __backAction = ()=>showChat();
-  document.body.classList.remove("chatmode");
+  document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   titleEl.innerHTML = icon("user")+" 我的身份"; subEl.textContent = RP_TRAVERSE.MODES[trav.mode]||"";
   const body = trav.mode==="soul"
     ? `<div class="card"><div class="name" style="font-size:16px">${esc(trav.charName)}</div>
@@ -7897,7 +7974,7 @@ function travExtraPrompt(travId, userText){
 /* ---- P1: 角色卡世界 AI 补完 ---- */
 window.travWorldComplete = (kind, id)=>{
   __backAction = ()=>showTraverse();
-  document.body.classList.remove("chatmode");
+  document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   const wname = RP_TRAVERSE.worldDisplayName(kind, id);
   titleEl.innerHTML = icon("scroll")+" 世界补完"; subEl.textContent = wname;
   const card = (kind === "card" && typeof RP_CARDIMPORT !== "undefined") ? RP_CARDIMPORT.findById(id) : null;
@@ -7952,7 +8029,7 @@ window.travWorldCompleteSave = ()=>{
 /* ---- P2: 异世界穿越 ---- */
 window.isekaiPickSrc = ()=>{
   __backAction = ()=>showTraverse();
-  document.body.classList.remove("chatmode");
+  document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   titleEl.innerHTML = icon("repeat")+" 异世界穿越"; subEl.textContent = "第一步：选择穿越的角色";
   const cs = allChars();
   view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
@@ -7966,7 +8043,7 @@ window.isekaiPickSrc = ()=>{
 };
 window.isekaiPickDst = (srcRunId, srcName)=>{
   __backAction = ()=>isekaiPickSrc();
-  document.body.classList.remove("chatmode");
+  document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   titleEl.innerHTML = icon("repeat")+" 异世界穿越"; subEl.textContent = "第二步：选择目标世界";
   const worlds = RP_TRAVERSE2.listWorlds();
   view.innerHTML = `<button class="back" onclick="isekaiPickSrc()">${icon("back")} 返回</button>
@@ -7983,7 +8060,7 @@ window.isekaiPickDst = (srcRunId, srcName)=>{
 window.isekaiFusion = (srcRunId, srcName, dstKey)=>{
   const w = RP_TRAVERSE2.getWorld(dstKey);
   __backAction = ()=>isekaiPickDst(srcRunId, srcName);
-  document.body.classList.remove("chatmode");
+  document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   titleEl.innerHTML = icon("repeat")+" 异世界穿越"; subEl.textContent = "第三步：选择融合方式";
   view.innerHTML = `<button class="back" onclick="isekaiPickDst('${jq(srcRunId)}','${jq(srcName)}')">${icon("back")} 返回</button>
   <div class="card"><div class="name">${esc(srcName)} → 《${esc(w.title)}》</div>
@@ -8018,7 +8095,7 @@ window.isekaiStart = (srcRunId, srcName, dstKey)=>{
 /* ---- P3: 组团穿越 ---- */
 window.partySetup = ()=>{
   __backAction = ()=>showTraverse();
-  document.body.classList.remove("chatmode");
+  document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   titleEl.innerHTML = icon("chat")+" 组团穿越"; subEl.textContent = "第一步：选择世界";
   const ws = travWorlds();
   view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
@@ -8031,7 +8108,7 @@ window.partySetup = ()=>{
 };
 window.partyPickMain = (kind, id)=>{
   __backAction = ()=>partySetup();
-  document.body.classList.remove("chatmode");
+  document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   titleEl.innerHTML = icon("chat")+" 组团穿越"; subEl.textContent = "第二步：你的身份";
   const wname = RP_TRAVERSE.worldDisplayName(kind, id);
   view.innerHTML = `<button class="back" onclick="partySetup()">${icon("back")} 返回</button>
@@ -8044,7 +8121,7 @@ window.partyPickMain = (kind, id)=>{
 };
 window.partyPickMainSoul = (kind, id)=>{
   __backAction = ()=>partyPickMain(kind, id);
-  document.body.classList.remove("chatmode");
+  document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   titleEl.innerHTML = icon("chat")+" 组团穿越"; subEl.textContent = "选择你要扮演的角色";
   const cs = allChars();
   window._partyCands = cs;
@@ -8062,7 +8139,7 @@ window.partyPickMainSoulGo = (kind, id, ix)=>{
 };
 window.partyPickMainBody = (kind, id)=>{
   __backAction = ()=>partyPickMain(kind, id);
-  document.body.classList.remove("chatmode");
+  document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   titleEl.innerHTML = icon("chat")+" 组团穿越"; subEl.textContent = "肉身：快速捏身份";
   view.innerHTML = `<button class="back" onclick="partyPickMain('${jq(kind)}','${jq(id)}')">${icon("back")} 返回</button>
   <div class="card"><div class="field"><label>一句话设定你的身份/开场</label>
@@ -8078,7 +8155,7 @@ window.partyBodyNext = (kind, id)=>{
 };
 window.partyPickComps = (kind, id, main)=>{
   __backAction = ()=>partyPickMain(kind, id);
-  document.body.classList.remove("chatmode");
+  document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   titleEl.innerHTML = icon("chat")+" 组团穿越"; subEl.textContent = "第三步：选择队友（最多3人）";
   const cs = allChars().filter(c=>!(main.mode==="soul" && c.name===main.name));
   window._partyCands = cs; window._partySel = []; window._partyMain = main;
@@ -8128,7 +8205,7 @@ window.partyStart = (kind, id, main)=>{
 window.travPartyView = ()=>{
   const trav = RP_TRAVERSE.get(CHAT.travId); if(!trav) return;
   __backAction = ()=>showChat();
-  document.body.classList.remove("chatmode");
+  document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   titleEl.innerHTML = icon("chat")+" 队伍"; subEl.textContent = trav.worldName || "";
   const comps = RP_TRAVERSE2.getCompanions(trav.id);
   view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回</button>

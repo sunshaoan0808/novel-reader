@@ -294,6 +294,15 @@ return conflicts;
 
 /* 是否启用 soul 并行模式
  * 条件: per-chat 开关开 + 成员 >=2 + 至少 2 人有 soul 包 */
+/* findCard 只活在 chat.js 的 RP IIFE 里 (对外是 RP.findCard), 真实页面没有全局 findCard。
+ * 2026-10-13 修: 此处曾用裸 findCard, 在页面里恒为 undefined, 导致 shouldUseSoulMode
+ * 恒返回 false, soul 并行路径一次都没跑过。统一走 RP.findCard。 */
+function __soulFindCard(runId, m){
+  try{
+    if(typeof RP !== "undefined" && RP && typeof RP.findCard === "function") return RP.findCard(runId, m);
+  }catch(e){}
+  return null;
+}
 function shouldUseSoulMode(runId, members, chatId){
   try{
     if(chatId){
@@ -306,7 +315,7 @@ function shouldUseSoulMode(runId, members, chatId){
     var withSoul = 0;
     members.forEach(function(m){
       try{
-        var card = (typeof findCard !== "undefined") ? findCard(runId, m) : null;
+        var card = __soulFindCard(runId, m);
         if(card && typeof RP_SOUL !== "undefined" && RP_SOUL.getSoul(card)) withSoul++;
       }catch(e){}
     });
@@ -340,7 +349,7 @@ async function sendGroupSoul(runId, members, text, opts){
   var soulMembers = [];
   members.forEach(function(m){
     try{
-      var card = (typeof findCard !== "undefined") ? findCard(runId, m) : null;
+      var card = __soulFindCard(runId, m);
       if(card && typeof RP_SOUL !== "undefined" && RP_SOUL.getSoul(card)){
         soulMembers.push({card: card, name: m});
       }else{

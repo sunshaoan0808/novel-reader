@@ -88,8 +88,9 @@ function exampleLines(mesExample, charName){
   var out = [];
   String(mesExample || "").split(/<START>/i).forEach(function(blk){
     blk.split("\n").forEach(function(line){
+      /* P2-11: 角色名进正则前统一走 escRe 防正则注入（此前与 escRe 重复的内联转义已删） */
       var m = line.match(/^\s*\{\{\s*char\s*\}\}\s*:\s*(.+)$/i) ||
-              (charName && line.match(new RegExp("^\\s*" + charName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*[:：]\\s*(.+)$")));
+              (charName && line.match(new RegExp("^\\s*" + escRe(charName) + "\\s*[:：]\\s*(.+)$")));
       if(m && m[1].trim()) out.push(m[1].trim());
     });
   });
@@ -223,9 +224,11 @@ function list(){
 }
 function save(list){
   var s = JSON.stringify(list);
-  try { localStorage.setItem(STORE, s); } catch(e){}
-  /* P2: 大体积角色卡 IDB 双写（复制模式） */
+  var ok = true;
+  try { localStorage.setItem(STORE, s); } catch(e){ ok = false; typeof RP_WARN!=="undefined"&&RP_WARN.saveFail("角色卡库保存失败", e); }
+  /* P2: 大体积角色卡 IDB 双写（复制模式）；LS 失败时靠 syncBig 兜底，故仍尝试 */
   try{ if(typeof RP_STORE!=="undefined"){ RP_STORE.cacheSet(STORE, s); RP_STORE.syncBig(STORE, s); } }catch(e){}
+  return ok;
 }
 function find(name){
   var l = list();

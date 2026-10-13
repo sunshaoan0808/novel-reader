@@ -16,7 +16,8 @@ function getLore(runId){
   catch(e){ return []; }
 }
 function setLore(runId, arr){
-  try{ localStorage.setItem(loreKey(runId), JSON.stringify(arr)); }catch(e){}
+  try{ localStorage.setItem(loreKey(runId), JSON.stringify(arr)); }
+  catch(e){ typeof RP_WARN!=="undefined"&&RP_WARN.saveFail("世界书保存失败", e); }
 }
 
 /* 从最近 N 轮对话提取新事实 (LLM) */

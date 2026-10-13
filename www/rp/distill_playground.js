@@ -103,9 +103,9 @@ alert("已确认！" + S.name + " 的人设通过试玩。");
 DISTILL_UI.openCharacter(S.pkgId, S.name);
 }
 
-function esc(s){
-return String(s == null? "": s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
+/* P2-11: 收敛到 escutil.js 的 escH()（此前只转 & < >，现统一为全实体转义，保留换行）；
+   独立加载（测试 vm）无 escH 时回退同款实现 */
+var esc = (typeof escH === "function") ? escH : function(s){ return String(s == null? "": s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
 
 return {
 open: open,

@@ -15,12 +15,14 @@ var RP_PLOTRUN = (function(){
 /* ---------- 存储（全部 try/catch，参考 director.js） ---------- */
 function keyOf(id){ return "nd_plotrun_" + id; }
 function lsGet(k){ try{ var v = localStorage.getItem(k); return v ? JSON.parse(v) : null; }catch(e){ return null; } }
-function lsSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function lsSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }
+catch(e){ typeof RP_WARN!=="undefined"&&RP_WARN.saveFail("剧情线进度保存失败", e); } }
 function lsDel(k){ try{ localStorage.removeItem(k); }catch(e){} }
 
 /* ---------- 工具 ---------- */
 function cut(s, n){ s = String(s == null ? "" : s); return s.length > n ? s.slice(0, n) + "…" : s; }
-function esc(s){ return String(s == null ? "" : s).replace(/[&<>"]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
+/* P2-11: 收敛到 escutil.js 的 escH()；独立加载（测试 vm）无 escH 时回退同款实现 */
+var esc = (typeof escH === "function") ? escH : function(s){ return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
 function newId(){ return "pr" + Date.now().toString(36) + Math.floor(Math.random()*1296).toString(36); }
 
 /* ---------- 世界卡读取（只读） ---------- */

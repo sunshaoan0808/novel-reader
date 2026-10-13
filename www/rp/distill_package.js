@@ -10,8 +10,10 @@ var INDEX_KEY = "nd_package_index";
 
 // 混合存储: 小数据走 localStorage，大数据自动搬到 IndexedDB/文件层
 function _storeSet(key, json){
+  var ok = true;
   try{ localStorage.setItem(key, json); }catch(e){
-    console.warn("package save failed (quota):", key);
+    ok = false;
+    typeof RP_WARN!=="undefined"&&RP_WARN.saveFail("剧本包保存失败", e);
   }
   try{
     if(typeof RP_STORE !== "undefined"){
@@ -19,6 +21,7 @@ function _storeSet(key, json){
       RP_STORE.syncBig(key, json);
     }
   }catch(e){}
+  return ok;
 }
 function _storeGet(key){
   var s = null;

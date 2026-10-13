@@ -522,10 +522,10 @@ async function send(runId, name, text, opts){
   opts = opts || {};
   var cfg = opts.cfg || {};
   var h = opts.history || [];
-  var run = (window.__DATA__.runs || {})[runId] || {};
+  var run = (window.__DATA__ && window.__DATA__.runs || {})[runId] || {};
   if(runId === "custom" && typeof RP_WRITER !== "undefined"){
     var _cc = RP_WRITER.findCustom(name) || {};
-    var _wr = _cc.worldRunId ? ((window.__DATA__.runs || {})[_cc.worldRunId] || {}) : {};
+    var _wr = _cc.worldRunId ? ((window.__DATA__ && window.__DATA__.runs || {})[_cc.worldRunId] || {}) : {};
     run = {novel: _cc.novel || "自定义", worldbook: _wr.worldbook || [], relations: []};
   }
   var card = findCard(runId, name) || {name: name, fields: {}};
@@ -784,7 +784,7 @@ async function regenerate(runId, name, opts){
     if(h[i].role === "assistant" && h[i].content.indexOf("⚠️") !== 0){ last = h[i]; break; }
   }
   if(!last) return {history: h};
-  var run = (window.__DATA__.runs || {})[runId] || {};
+  var run = (window.__DATA__ && window.__DATA__.runs || {})[runId] || {};
   var card = findCard(runId, name) || {name: name, fields: {}};
   /* S-6 按卡温度: regenerate 同样覆盖 */
   opts.temperature = cardTempOf(card, opts.temperature);
@@ -874,7 +874,7 @@ async function sendGroup(runId, members, speakers, text, opts){
   if(!Array.isArray(speakers)) speakers = speakers ? [speakers] : [];
   var cfg = opts.cfg || {};
   var h = opts.history || [];
-  var run = (window.__DATA__.runs || {})[runId] || {};
+  var run = (window.__DATA__ && window.__DATA__.runs || {})[runId] || {};
   var budget = opts.budget || {};
   if(!budget.maxContext && cfg.maxContext) budget.maxContext = cfg.maxContext;
 

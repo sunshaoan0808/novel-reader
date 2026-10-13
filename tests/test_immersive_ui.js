@@ -98,11 +98,14 @@ alert: () => {},
 document: { getElementById: () => null },
 window: {},
 };
+/* P2-2: rewriteMsg 现在与在飞流互斥（STREAMING/REWRITING/rpToast），harness 补注入 */
 const fn = new Function(
 "chatHistKey", "getHist", "saveHist", "renderChat", "getCfg", "RP_NET", "msgSheet", "alert", "document", "window",
+"STREAMING", "REWRITING", "rpToast",
 rewriteSrc + "\nreturn window.rewriteMsg;");
 h.rewriteMsg = fn(h.chatHistKey, h.getHist, h.saveHist, h.renderChat, h.getCfg,
-h.RP_NET, h.msgSheet, h.alert, h.document, h.window);
+h.RP_NET, h.msgSheet, h.alert, h.document, h.window,
+false, false, ()=>{});
 return { h, msgs, calls };
 }
 (async ()=>{

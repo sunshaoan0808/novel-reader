@@ -9,7 +9,8 @@ function load(){
   try{ var d = JSON.parse(localStorage.getItem(KEY)); return Array.isArray(d) ? d : []; }
   catch(e){ return []; }
 }
-function save(a){ try{ localStorage.setItem(KEY, JSON.stringify(a)); }catch(e){} }
+function save(a){ try{ localStorage.setItem(KEY, JSON.stringify(a)); }
+catch(e){ typeof RP_WARN!=="undefined"&&RP_WARN.saveFail("记忆事件簿保存失败", e); } }
 function uid(){ return "alb" + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36); }
 function list(){ return load(); }
 function get(id){

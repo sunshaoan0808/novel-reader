@@ -31,4 +31,16 @@ function jqJ(s){
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
-if(typeof window !== "undefined"){ window.jq = jq; window.jqJ = jqJ; }
+/* HTML 文本/属性通用转义（P2-11 收敛：替代各文件自复制的 esc/escHtml）：
+ * 只做 HTML 层实体转义（& < > " '），保留 \n \r 原样——正文/textarea 里的换行
+ * 必须保持真实换行，故不能用 jq()（jq 是"HTML属性+JS字符串"双上下文，
+ * 会把 \n 变成字面 \\\n、\ 变成 \\\\，只适用于 onclick 模板）。 */
+function escH(s){
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+if(typeof window !== "undefined"){ window.jq = jq; window.jqJ = jqJ; window.escH = escH; }

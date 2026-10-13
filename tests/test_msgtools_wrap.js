@@ -3,7 +3,7 @@ const WWW = fs.existsSync("assets/www") ? "assets/www" : "www";
 // UI-02 回归: 点按消息浮现工具条(msgtools)时, 文字块变宽并向右越界。
 // 根因: .msgtools 是不换行的 flex 行, 7 个按钮的固有宽度(~390px)远超消息列宽;
 //   消息列 div 又是 .msg(display:flex) 的子项, min-width:auto 顶住不让压缩,
-//   列被撑宽 -> 气泡跟着变宽, 超出 .msg{max-width:85%} 后工具条/气泡直接向右溢出
+//   列被撑宽 -> 气泡跟着变宽, 超出 .msg{max-width:100%} 后工具条/气泡直接向右溢出
 //   (360px 真机实测: 工具条溢出右边界 44~84px)。
 // 修法: 1) .msgtools 加 flex-wrap:wrap, 按钮换行, 固有宽度只剩最宽的一颗按钮;
 //   2) 消息列加 class="msgcol" + min-width:0, 允许在 .msg 里被压缩, 永不撑破 max-width。

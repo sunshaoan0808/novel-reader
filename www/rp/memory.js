@@ -16,7 +16,8 @@ try { return JSON.parse(localStorage.getItem(memKey(runId, name))) || null;}
 catch(e){ return null;}
 }
 function save(runId, name, m){
-try { localStorage.setItem(memKey(runId, name), JSON.stringify(m));} catch(e){}
+try { localStorage.setItem(memKey(runId, name), JSON.stringify(m));}
+catch(e){ typeof RP_WARN!=="undefined"&&RP_WARN.saveFail("长期记忆保存失败", e); }
 }
 function clear(runId, name){
 try { localStorage.removeItem(memKey(runId, name));} catch(e){}

@@ -49,7 +49,8 @@ function getSession(id){
 function saveSession(s){
   s.updatedAt = Date.now();
   var str = JSON.stringify(s), key = SES_PRE + s.id;
-  try { localStorage.setItem(key, str); } catch(e){}
+  try { localStorage.setItem(key, str); }
+  catch(e){ typeof RP_WARN!=="undefined"&&RP_WARN.saveFail("写卡草稿保存失败", e); }
   /* P2: 写卡草稿大体积时 IDB 双写（复制模式） */
   try{ if(typeof RP_STORE!=="undefined"){ RP_STORE.cacheSet(key, str); RP_STORE.syncBig(key, str); } }catch(e){}
 }
@@ -74,7 +75,8 @@ function getCustomChars(){
 }
 function saveCustomChars(list){
   var s = JSON.stringify(list);
-  try { localStorage.setItem(CHAR_KEY, s); } catch(e){}
+  try { localStorage.setItem(CHAR_KEY, s); }
+  catch(e){ typeof RP_WARN!=="undefined"&&RP_WARN.saveFail("自定义角色保存失败", e); }
   /* P2: 大体积角色卡 IDB 双写（复制模式） */
   try{ if(typeof RP_STORE!=="undefined"){ RP_STORE.cacheSet(CHAR_KEY, s); RP_STORE.syncBig(CHAR_KEY, s); } }catch(e){}
 }

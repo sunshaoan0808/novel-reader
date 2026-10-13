@@ -54,14 +54,18 @@ if(typeof getRpCfg === "function"){ var c = getRpCfg(); return c.temporal!== fal
 return true;
 }
 
-var _cal = null, _loading = null;
+var _cal = null, _loading = null, _failNotified = false;
 function calendarFor(novel){
 if(novel!== NOVEL) return Promise.resolve(null);
 if(_cal) return Promise.resolve(_cal);
 if(_loading) return _loading;
 _loading = fetch(CAL_URL).then(function(r){ if(!r.ok) throw new Error("http"); return r.json();})
 .then(function(j){ _cal = j; return _cal;})
-.catch(function(){ _loading = null; return null;});
+.catch(function(){ _loading = null;
+/* P2-5: fetch 失败不再永远静默——一次性提示（固定文案防刷屏），时序检索自动降级为不可用 */
+if(!_failNotified){ _failNotified = true;
+  try{ if(typeof rpToast === "function") rpToast("事件日历加载失败，时序检索（往事注入）本次不可用"); }catch(e){} }
+return null;});
 return _loading;
 }
 /* 测试/诊断用：直接注入日历数据，绕过 fetch */
