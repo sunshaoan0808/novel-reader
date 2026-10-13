@@ -20,12 +20,22 @@ dd = os.path.join(www, "data")
 index = json.load(open(os.path.join(dd, "index.json"), encoding="utf-8"))
 runs = {}
 rp_cards = {}
+missing_cards = []
 for r in index:
     rid = r["run_id"]
     runs[rid] = json.load(open(os.path.join(dd, f"{rid}.json"), encoding="utf-8"))
     cp = os.path.join(dd, f"rp_cards_{rid}.json")
     if os.path.exists(cp):
         rp_cards[rid] = json.load(open(cp, encoding="utf-8"))
+    else:
+        # P2-6: 缺失不再静默跳过——打明告警, 避免 index 与 rp_cards 事实源分叉
+        missing_cards.append(rid)
+if missing_cards:
+    print("=" * 60, file=sys.stderr)
+    print("WARNING: 以下 run 缺少 rp_cards_*.json, data.js 中其角色卡为空:", file=sys.stderr)
+    for rid in missing_cards:
+        print(f"  - {rid}", file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
 with open(os.path.join(www, "data.js"), "w", encoding="utf-8") as f:
     f.write("window.__DATA__=")
     json.dump({"index": index, "runs": runs, "rp_cards": rp_cards}, f, ensure_ascii=False, separators=(",", ":"))
