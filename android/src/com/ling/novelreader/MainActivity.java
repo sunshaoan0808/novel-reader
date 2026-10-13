@@ -46,9 +46,14 @@ public class MainActivity extends Activity {
             String u = MainActivity.this.lastPageUrl;
             return u != null && u.startsWith("file:///android_asset/");
         }
+        /* P1#3: 单次桥调用大小上限（纵深防御）。sharePng/ndFileWrite 在解码/分配前
+         * 先做廉价长度预检，避免恶意超大输入直接触发 OOM（2GB 配额检查在分配之后，拦不住）。 */
+        private static final long ND_SINGLE_OP_MAX = 5L * 1024 * 1024;
         @JavascriptInterface
         public void sharePng(final String base64Png, final String fileName) {
             if(!pageAllowed()) return;
+            /* base64 约膨胀 4/3，5MB 上限对应输入约 6.6M 字符 */
+            if(base64Png == null || (long)base64Png.length() > ND_SINGLE_OP_MAX * 4 / 3) return;
             try {
                 byte[] data = Base64.decode(base64Png, Base64.DEFAULT);
                 File dir = new File(getCacheDir(), "shared");
@@ -129,6 +134,9 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String ndFileWrite(final String name, final String text){
             if(!pageAllowed()) return "err:forbidden";
+            /* P1#3: 先做字符数预检（UTF-8 下 1 字符至多 4 字节，保守按 4 估），
+             * 避免 getBytes() 直接分配超大数组；2GB 总配额检查保留在后。 */
+            if(text != null && (long)text.length() * 4 > ND_SINGLE_OP_MAX) return "err:too_large";
             try{
                 File dir = ndBlobDir();
                 File f = ndResolveFile(name); /* 命中老名时先迁移为新名 */

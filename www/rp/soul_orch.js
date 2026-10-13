@@ -411,13 +411,15 @@ async function sendGroupSoul(runId, members, text, opts){
   h.push({role: "assistant", content: outText,
     _soul: true, _speakers: woven.speakers, _turnId: turnId,
     _conflicts: woven.conflicts, _conflictResolved: false});
-  /* 大事件自动记入共享记忆 */
+  /* 大事件记入各 soul 自身视角记忆（P1#1 修复：不再写共享池。
+   * 共享池会被所有 soul 当可信记忆注入 prompt，而事件来自 LLM 原始输出未经清洗；
+   * 改记到 sm.name 视角池后，事件仍对本 soul 可见，但不再污染他 soul 的共享事实。） */
   try{
     var _big = detectBigEvents(runR.results);
     if(_big.length && typeof RP_SOUL !== "undefined"){
       active.forEach(function(sm){
         _big.forEach(function(ev){
-          RP_SOUL.addFact(sm.card, null,
+          RP_SOUL.addFact(sm.card, sm.name,
             ev.actor + ": " + (ev.action || ev.dialogue).slice(0, 100));
         });
       });
@@ -457,7 +459,7 @@ async function twoStageCall(soulName, card, soul, scene, userText, history, cfg,
   if(!thinkCfg || !speakCfg) return null;
 
   /* 阶段1: 想 */
-  var thinkPrompt = buildSoulPrompt(soulName, soul, scene, userText, history) +
+  var thinkPrompt = buildSoulPrompt(soul, soulName, scene, userText, history) +
     "\n\n只输出内心独白和动作意向, JSON: {\"inner\": \"...\", \"action\": \"...\"}";
   var thinkRaw = await RP_NET.complete(thinkCfg,
     [{role: "user", content: thinkPrompt}], 0.7, null, {signal: opts.signal});
@@ -467,7 +469,7 @@ async function twoStageCall(soulName, card, soul, scene, userText, history, cfg,
   try{ if(m) think = JSON.parse(m[0]); }catch(e){}
 
   /* 阶段2: 说 */
-  var speakPrompt = buildSoulPrompt(soulName, soul, scene, userText, history) +
+  var speakPrompt = buildSoulPrompt(soul, soulName, scene, userText, history) +
     "\n\n内心: " + (think.inner || "") + "\n动作意向: " + (think.action || "") +
     "\n\n基于以上内心和动作, 只输出台词和最终动作, JSON: {\"dialogue\": \"...\", \"action\": \"...\"}";
   var speakRaw = await RP_NET.complete(speakCfg,
