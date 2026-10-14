@@ -12,6 +12,19 @@
 var RP_SOUL_ORCH = (function(){
 "use strict";
 
+/* P2 修复(2026-10-14): per-soul 设置键按 runId 命名空间隔离, 避免不同卡同名 soul 互覆盖。
+ * _soulNs 在 sendGroupSoul 入口设置; 读时回退老 key(兼容旧数据), 写只走新 key。 */
+var _soulNs = "";
+function _chattyKey(name){ return "nd_soul_chatty_" + (_soulNs ? _soulNs + "_" : "") + name; }
+function _twostageKey(name){ return "nd_soul_twostage_" + (_soulNs ? _soulNs + "_" : "") + name; }
+function _lsGet2(newK, oldK){
+  try{
+    var v = localStorage.getItem(newK);
+    if(v !== null && v !== undefined) return v;
+    return localStorage.getItem(oldK);
+  }catch(e){ return null; }
+}
+
 /* ============ Selector ============ */
 
 /* 确定性规则选人 (不调 LLM)
@@ -217,7 +230,7 @@ var profile = (typeof RP_SOUL!== "undefined")
 /* 两阶段: 检查该 soul 是否配了 think/speak 双 profile */
 var twoCfg = null;
 try{
-  var _ts = localStorage.getItem("nd_soul_twostage_" + s.name);
+  var _ts = _lsGet2(_twostageKey(s.name), "nd_soul_twostage_" + s.name);
   if(_ts) twoCfg = JSON.parse(_ts);
 }catch(e){}
 if(twoCfg && twoCfg.think && twoCfg.speak && typeof RP_SOUL_CFG !== "undefined"){
@@ -225,8 +238,7 @@ if(twoCfg && twoCfg.think && twoCfg.speak && typeof RP_SOUL_CFG !== "undefined")
   var _think = null, _speak = null;
   _plist.forEach(function(pp){ if(pp.name === twoCfg.think) _think = pp; if(pp.name === twoCfg.speak) _speak = pp; });
   if(_think && _speak){
-    var _soul = (typeof RP_SOUL !== "undefined") ? RP_SOUL.getSoul(s.card) : null;
-    return twoStageCall(s.name, s.card, _soul, scene, userText, history,
+    return twoStageCall(s.name, s.card, scene, userText, history,
       {think: _think, speak: _speak}, opts).then(function(r){
       if(!r.ok) return {name: s.name, ok: false, error: r.error};
       return {name: s.name, ok: true, reply: __detoneReply(parseSoulReply(r.text)),
@@ -345,12 +357,12 @@ function shouldUseSoulMode(runId, members, chatId){
 /* 发言频率: quiet(0.3) / normal(1) / chatty(2), 影响被选中的概率 */
 function getChattiness(soulName){
   try{
-    var v = localStorage.getItem("nd_soul_chatty_" + soulName);
+    var v = _lsGet2(_chattyKey(soulName), "nd_soul_chatty_" + soulName);
     return v === "quiet" ? 0.3 : (v === "chatty" ? 2 : 1);
   }catch(e){ return 1; }
 }
 function setChattiness(soulName, level){
-  try{ localStorage.setItem("nd_soul_chatty_" + soulName, level); }catch(e){}
+  try{ localStorage.setItem(_chattyKey(soulName), level); }catch(e){}
 }
 function setSoulMode(chatId, on){
   try{
@@ -361,6 +373,7 @@ function setSoulMode(chatId, on){
 
 /* Soul 并行群聊主入口 */
 async function sendGroupSoul(runId, members, text, opts){
+  _soulNs = runId || "";
   opts = opts || {};
   var cfg = opts.cfg || {};
   var h = opts.history || [];
@@ -472,13 +485,13 @@ async function sendGroupSoul(runId, members, text, opts){
 
 /* 两阶段调用: 便宜模型"想" (inner+action), 好模型"说" (dialogue)
  * soul 绑定两个 profile: {think: "便宜", speak: "好"} 时启用 */
-async function twoStageCall(soulName, card, soul, scene, userText, history, cfg, opts){
+async function twoStageCall(soulName, card, scene, userText, history, cfg, opts){
   opts = opts || {};
   var thinkCfg = cfg.think, speakCfg = cfg.speak;
   if(!thinkCfg || !speakCfg) return null;
 
   /* 阶段1: 想 */
-  var thinkPrompt = buildSoulPrompt(soul, soulName, scene, userText, history) +
+  var thinkPrompt = buildSoulPrompt(card, soulName, scene, userText, history) +
     "\n\n只输出内心独白和动作意向, JSON: {\"inner\": \"...\", \"action\": \"...\"}";
   var thinkRaw = await RP_NET.complete(thinkCfg,
     [{role: "user", content: thinkPrompt}], 0.7, null, {signal: opts.signal});
@@ -488,7 +501,7 @@ async function twoStageCall(soulName, card, soul, scene, userText, history, cfg,
   try{ if(m) think = JSON.parse(m[0]); }catch(e){}
 
   /* 阶段2: 说 */
-  var speakPrompt = buildSoulPrompt(soul, soulName, scene, userText, history) +
+  var speakPrompt = buildSoulPrompt(card, soulName, scene, userText, history) +
     "\n\n内心: " + (think.inner || "") + "\n动作意向: " + (think.action || "") +
     "\n\n基于以上内心和动作, 只输出台词和最终动作, JSON: {\"dialogue\": \"...\", \"action\": \"...\"}";
   var speakRaw = await RP_NET.complete(speakCfg,

@@ -1281,7 +1281,9 @@ const saveHist = (k,h)=>{
 };
 
 let CHAT = {mode:"single", runId:null, name:null, members:[], forcedSpeaker:null};
-const groupKey = (runId, members)=> `nd_group_${runId}_${members.slice().sort().join("_")}`;
+/* P1 修复(2026-10-14): 成员名下划线双写转义, 避免 ['a_b','c'] 与 ['a','b_c'] 拼出同 key。
+ * 无下划线的名字转义后不变, 老 key 保持兼容。 */
+const groupKey = (runId, members)=> `nd_group_${runId}_${members.slice().sort().map(function(m){ return String(m).replace(/_/g, "__"); }).join("_")}`;
 const chatHistKey = ()=> CHAT.mode==="group" ? groupKey(CHAT.runId, CHAT.members)
   : CHAT.mode==="traverse" ? `nd_travchat_${CHAT.travId}`
   : chatKey(CHAT.runId, CHAT.name);
@@ -5522,7 +5524,7 @@ window.toggleSoulMode = ()=>{
   }catch(e){}
 };
 window.saveChatParams = ()=>{
-  var chatId = (typeof chatKey !== "undefined") ? chatKey(CHAT.runId, CHAT.name) : (CHAT.runId + "|" + CHAT.name);
+  var chatId = soulChatId();
   var tp = document.getElementById("cs_temp").value, mt = document.getElementById("cs_maxtok").value;
   try{
     if(tp) localStorage.setItem("nd_temp_" + chatId, tp); else localStorage.removeItem("nd_temp_" + chatId);
@@ -5531,7 +5533,7 @@ window.saveChatParams = ()=>{
   alert("已保存");
 };
 window.saveChatSoulProfile = ()=>{
-  var chatId = (typeof chatKey !== "undefined") ? chatKey(CHAT.runId, CHAT.name) : (CHAT.runId + "|" + CHAT.name);
+  var chatId = soulChatId();
   var v = document.getElementById("cs_soul_profile").value;
   try{
     if(typeof RP_SOUL_CFG !== "undefined") RP_SOUL_CFG.setChatOverride(chatId, v);

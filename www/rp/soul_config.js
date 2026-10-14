@@ -412,7 +412,7 @@ function soulViewHTML(card, runId, name){
     (function(){
       var q2 = escHtml(runId), n2 = escHtml(name);
       var cur = "normal";
-      try{ cur = localStorage.getItem("nd_soul_chatty_" + name) || "normal"; }catch(e){}
+      try{ cur = localStorage.getItem("nd_soul_chatty_" + runId + "_" + name) || localStorage.getItem("nd_soul_chatty_" + name) || "normal"; }catch(e){}
       return "<div class=\"card\"><div class=\"name\" style=\"font-size:calc(14px * var(--fs))\">发言频率</div>" +
         "<div class=\"btnrow\">" +
         ["quiet", "normal", "chatty"].map(function(lv){
@@ -585,10 +585,8 @@ var SOUL_TEMPLATES = [
 ];
 
 function setChattyUI(runId, name, level){
-  try{
-    if(typeof RP_SOUL_ORCH !== "undefined") RP_SOUL_ORCH.setChattiness(name, level);
-    else localStorage.setItem("nd_soul_chatty_" + name, level);
-  }catch(e){}
+  /* P2 修复: 直接写 runId 命名空间 key, 不经过模块函数(模块命名空间可能指向别的 run) */
+  try{ localStorage.setItem("nd_soul_chatty_" + runId + "_" + name, level); }catch(e){}
   if(typeof renderDetail === "function") renderDetail();
 }
 
