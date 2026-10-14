@@ -1,4 +1,44 @@
 /* 蒸馏工坊 v5: 墨色鎏金主题 */
+/* ===== Noto Serif SC 自托管 =====
+   DESIGN.md:27 承诺"标题/书名/人名用 Noto Serif SC"，但此前全项目零 @font-face、
+   只在 --serif 里写了字体名：Android 没有 "Songti SC"，最终落到系统 serif，
+   这条承诺在多数真机上从未成立。现在兑现。
+
+   为什么不用 Google Fonts 外链：App 可离线运行，内网/国内 CDN 不可达，
+   而且外链等于把每个用户的请求交给第三方。
+
+   切分：按 unicode-range 分 latin / common 两片，浏览器只下当前页面用到的那片。
+     latin  118KB —— 拉丁字母、数字、中西文标点、假名、全角形（永远要用，先到）
+     common 1.7MB —— GB2312 一级+二级字（6763 字，覆盖现代简体中文全部常用字）
+   只出 600/700 两档：--serif 只用于标题/书名/人名，600 是标题常用字重，
+   700 用于强调，正文黑体从不需要衬线体，带上 400 纯属白付几百 KB。
+
+   代价（知情取舍）：common 声明 U+4E00-9FFF 整块，文件里只有 GB2312 字。
+   生僻字（GB2312 之外的汉字、异体字）会回落到 --serif 的下一级系统宋体，
+   字形略变但不会出豆腐块。想全覆盖得再拆 rare 片，代价是 31KB 的
+   unicode-range 列表塞进 CSS —— 不值当。 */
+@font-face{
+  font-family:"Noto Serif SC"; font-style:normal; font-weight:600; font-display:swap;
+  src:url("fonts/NotoSerifSC-600-latin.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,
+    U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD,U+3000-30FF,U+FF00-FFF0;
+}
+@font-face{
+  font-family:"Noto Serif SC"; font-style:normal; font-weight:600; font-display:swap;
+  src:url("fonts/NotoSerifSC-600-common.woff2") format("woff2");
+  unicode-range:U+4E00-9FFF;
+}
+@font-face{
+  font-family:"Noto Serif SC"; font-style:normal; font-weight:700; font-display:swap;
+  src:url("fonts/NotoSerifSC-700-latin.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,
+    U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD,U+3000-30FF,U+FF00-FFF0;
+}
+@font-face{
+  font-family:"Noto Serif SC"; font-style:normal; font-weight:700; font-display:swap;
+  src:url("fonts/NotoSerifSC-700-common.woff2") format("woff2");
+  unicode-range:U+4E00-9FFF;
+}
 :root{
   --bg:#12100d; --bg2:#171411; --card:#1d1915; --card2:#23201b;
   --line:#2d2720; --line-soft:#242019;
