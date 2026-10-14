@@ -7,12 +7,18 @@
 <link rel="stylesheet" href="style.css">
 <script src="rp/theme.js"></script>
 <script src="rp/escutil.js"></script>
-<script>try{ RP_THEME.init(); }catch(e){} try{ document.documentElement.style.zoom = parseFloat(localStorage.getItem("nd_font_scale"))||1; }catch(e){}</script>
+<script>
+try{ RP_THEME.init(); }catch(e){}
+/* P0-28：字号倍率在样式解析前就得落到根元素上（app.js 里的 applyFontScale 兜底重放）。
+   只缩文字不缩布局盒子，详见 style.css 的 --fs */
+try{ var _fsv = parseFloat(localStorage.getItem("nd_font_scale"));
+      document.documentElement.style.setProperty("--fs", String([1,1.15,1.3].indexOf(_fsv)>=0?_fsv:1)); }catch(e){}
+</script>
 </head>
 <body>
 <div id="app">
   <header id="topbar"><span id="title">浮生</span><span id="sub"></span></header>
-  <nav id="tabs" class="hidden">
+  <nav id="tabs" class="hidden" data-xfade>
     <button data-tab="chars" class="active">人物</button>
     <button data-tab="outline">大纲</button>
     <button data-tab="relations">关系</button>
@@ -154,7 +160,7 @@
 <script src="rp/checkin.js"></script>
 <script src="rp/album.js"></script>
 <script src="app.js"></script>
-<button id="asst_fab" title="浮生小助手">💡</button>
+<button id="asst_fab" type="button" title="浮生小助手" aria-label="浮生小助手">💡</button>
 <script>
 /* 小助手悬浮球：可拖动，点按打开；位置记忆 */
 (function(){
@@ -215,6 +221,23 @@
   fab.addEventListener("pointermove", onMove);
   fab.addEventListener("pointerup", onEnd);
   fab.addEventListener("pointercancel", onEnd);
+
+  /* P0-2/P1-32 内容避让：
+     1) 球被拖过（或上次就存过位置）就标 .pinned，此后一律交给 inline left/top，
+        CSS 里的按页摆位规则不再插手 —— 用户的摆放说了算；
+     2) 没 pin 时滚动就淡出让位，停手 700ms 再回来。悬浮球天生要盖在内容上，
+        滚动时收起是唯一既不挡内容又不牺牲可点的办法。 */
+  try{
+    var saved = JSON.parse(localStorage.getItem("nd_asst_fab_pos") || "null");
+    if(saved && typeof saved.x === "number" && typeof saved.y === "number") fab.classList.add("pinned");
+  }catch(e){}
+  var awayTimer = null;
+  window.addEventListener("scroll", function(){
+    if(fab.classList.contains("pinned")) return;
+    fab.classList.add("away");
+    clearTimeout(awayTimer);
+    awayTimer = setTimeout(function(){ fab.classList.remove("away"); }, 700);
+  }, {passive:true});
 })();
 </script>
 </body>

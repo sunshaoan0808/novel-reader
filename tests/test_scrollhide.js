@@ -41,6 +41,7 @@ return els[mm[1]] || (els[mm[1]] = mkEl());
 },
 querySelectorAll: () => [],
 createElement: () => mkEl(),
+  addEventListener(){},   /* P0-1: attachHeadHide 挂了 document 级键盘恢复钩子；本测试不覆盖，走浏览器 E2E */
 };
 const ctx = {localStorage: ls, document, console,
 alert(){}, confirm(){ return true;}, prompt(){ return null;},

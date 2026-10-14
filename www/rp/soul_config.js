@@ -214,7 +214,7 @@ function debugHTML(){
     if(typeof RP_SOUL_RT !== "undefined") hist = RP_SOUL_RT.getCallHistory();
   }catch(e){}
   var rows = hist.map(function(h){
-    return "<div class=\"kv\" style=\"font-size:12px\">" +
+    return "<div class=\"kv\" style=\"font-size:calc(12px * var(--fs))\">" +
       "<span>" + (h.ok ? "OK" : "FAIL") + " <b>" + escHtml(h.soul) + "</b></span>" +
       "<span class=\"dim\">" + escHtml(h.model || "") +
       (h.fallback && h.fallback !== "profile" ? " (降级:" + escHtml(h.fallback) + ")" : "") +
@@ -232,10 +232,10 @@ function debugHTML(){
 /* 降级链说明 (当前顺序: 绑定 > 聊天覆盖 > 第一个 > 主配置) */
 function fallbackHTML(){
   return "<div class=\"setcard\"><h3>模型降级链</h3>" +
-    "<div class=\"kv\" style=\"font-size:12px\"><span>1. 角色绑定</span><span class=\"dim\">角色卡单独绑定的模型</span></div>" +
-    "<div class=\"kv\" style=\"font-size:12px\"><span>2. 聊天覆盖</span><span class=\"dim\">本聊临时指定的模型</span></div>" +
-    "<div class=\"kv\" style=\"font-size:12px\"><span>3. 第一个 Profile</span><span class=\"dim\">多模型配置里的第一个</span></div>" +
-    "<div class=\"kv\" style=\"font-size:12px\"><span>4. 主配置</span><span class=\"dim\">设置页的主 API</span></div>" +
+    "<div class=\"kv\" style=\"font-size:calc(12px * var(--fs))\"><span>1. 角色绑定</span><span class=\"dim\">角色卡单独绑定的模型</span></div>" +
+    "<div class=\"kv\" style=\"font-size:calc(12px * var(--fs))\"><span>2. 聊天覆盖</span><span class=\"dim\">本聊临时指定的模型</span></div>" +
+    "<div class=\"kv\" style=\"font-size:calc(12px * var(--fs))\"><span>3. 第一个 Profile</span><span class=\"dim\">多模型配置里的第一个</span></div>" +
+    "<div class=\"kv\" style=\"font-size:calc(12px * var(--fs))\"><span>4. 主配置</span><span class=\"dim\">设置页的主 API</span></div>" +
     "<div class=\"meta\" style=\"margin-top:6px\">按顺序尝试，失败自动降级。调用追踪里会标注实际用了哪一级。</div>" +
     "</div>";
 }
@@ -251,9 +251,9 @@ function promptPreviewHTML(){
   var rows = names.map(function(n){
     var p = prompts[n];
     return "<div class=\"kv\"><span><b>" + escHtml(n) + "</b> (" + p.length + "字)</span>" +
-      "<span><button class=\"btn ghost\" style=\"font-size:11px\" data-sact=\"showPrompt\" data-sname=\"" +
+      "<span><button class=\"btn ghost\" style=\"font-size:calc(11px * var(--fs))\" data-sact=\"showPrompt\" data-sname=\"" +
       escHtml(n) + "\">查看</button> " +
-      "<button class=\"btn ghost\" style=\"font-size:11px\" data-sact=\"replaySoulUI\" data-sname=\"" +
+      "<button class=\"btn ghost\" style=\"font-size:calc(11px * var(--fs))\" data-sact=\"replaySoulUI\" data-sname=\"" +
       escHtml(n) + "\">重跑</button></span></div>";
   }).join("");
   return "<div class=\"setcard\"><h3>Prompt 预览</h3>" + rows + "</div>";
@@ -276,7 +276,7 @@ function costHTML(){
   }catch(e){}
   var rows = Object.keys(cost).map(function(m){
     var c = cost[m];
-    return "<div class=\"kv\" style=\"font-size:12px\"><span>" + escHtml(m) + "</span>" +
+    return "<div class=\"kv\" style=\"font-size:calc(12px * var(--fs))\"><span>" + escHtml(m) + "</span>" +
       "<span class=\"dim\">" + c.calls + "次 · " + c.tokens + "tok · " + Math.round(c.ms/1000) + "s</span></div>";
   }).join("");
   return "<div class=\"setcard\"><h3>成本统计</h3>" +
@@ -298,11 +298,11 @@ function perfHTML(){
   }catch(e){}
   return "<div class=\"setcard\"><h3>性能设置</h3>" +
     "<div class=\"kv\"><span>最大并行数</span><span>" +
-    "<button class=\"btn ghost\" style=\"font-size:12px\" onclick=\"RP_SOUL_CFG.setPerf('concurrent',-1)\">-</button> " +
-    conc + " <button class=\"btn ghost\" style=\"font-size:12px\" onclick=\"RP_SOUL_CFG.setPerf('concurrent',1)\">+</button></span></div>" +
+    "<button class=\"btn ghost\" style=\"font-size:calc(12px * var(--fs))\" onclick=\"RP_SOUL_CFG.setPerf('concurrent',-1)\">-</button> " +
+    conc + " <button class=\"btn ghost\" style=\"font-size:calc(12px * var(--fs))\" onclick=\"RP_SOUL_CFG.setPerf('concurrent',1)\">+</button></span></div>" +
     "<div class=\"kv\"><span>单 soul 超时 (秒)</span><span>" +
-    "<button class=\"btn ghost\" style=\"font-size:12px\" onclick=\"RP_SOUL_CFG.setPerf('timeout',-10)\">-</button> " +
-    timeout + " <button class=\"btn ghost\" style=\"font-size:12px\" onclick=\"RP_SOUL_CFG.setPerf('timeout',10)\">+</button></span></div>" +
+    "<button class=\"btn ghost\" style=\"font-size:calc(12px * var(--fs))\" onclick=\"RP_SOUL_CFG.setPerf('timeout',-10)\">-</button> " +
+    timeout + " <button class=\"btn ghost\" style=\"font-size:calc(12px * var(--fs))\" onclick=\"RP_SOUL_CFG.setPerf('timeout',10)\">+</button></span></div>" +
     "</div>";
 }
 function setPerf(key, delta){
@@ -362,7 +362,7 @@ function soulViewHTML(card, runId, name){
       escHtml((e.text || "").slice(0, 60)) + "</div>";
   }).join("");
   var trajs = traj.slice(-5).reverse().map(function(x){
-    return "<div class=\"kv\" style=\"font-size:12px\"><span class=\"dim\">" +
+    return "<div class=\"kv\" style=\"font-size:calc(12px * var(--fs))\"><span class=\"dim\">" +
       escHtml((x.t || "").slice(11, 16)) + "</span> " +
       escHtml(x.actor || "") + " " + escHtml((x.action || "").slice(0, 40)) + "</div>";
   }).join("");
@@ -371,66 +371,66 @@ function soulViewHTML(card, runId, name){
   /* 去AI味全局开关 (RP_DETONE, 默认开) */
   var _dtOn = true;
   try{ _dtOn = (typeof RP_DETONE === "undefined") ? true : RP_DETONE.isEnabled(); }catch(e){}
-  var _dtCard = "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">去AI味 (全局)</div>" +
+  var _dtCard = "<div class=\"card\"><div class=\"name\" style=\"font-size:calc(14px * var(--fs))\">去AI味 (全局)</div>" +
     "<div class=\"kv\">soul 输出自动规避典型 AI 腔 (翻案腔/起手式/提示语冒号等)，prompt 注入 + 确定性后处理两层。</div>" +
     "<div class=\"btnrow\" style=\"margin-top:8px\">" +
-    "<button class=\"btn" + (_dtOn ? "" : " ghost") + "\" style=\"font-size:12px\" " +
+    "<button class=\"btn" + (_dtOn ? "" : " ghost") + "\" style=\"font-size:calc(12px * var(--fs))\" " +
     "data-sact=\"setDetoneUI\" data-sid=\"" + escHtml(runId) + "\" data-sname=\"" + escHtml(name) + "\" data-slv=\"on\">开启</button>" +
-    "<button class=\"btn" + (_dtOn ? " ghost" : "") + "\" style=\"font-size:12px\" " +
+    "<button class=\"btn" + (_dtOn ? " ghost" : "") + "\" style=\"font-size:calc(12px * var(--fs))\" " +
     "data-sact=\"setDetoneUI\" data-sid=\"" + escHtml(runId) + "\" data-sname=\"" + escHtml(name) + "\" data-slv=\"off\">关闭</button>" +
     "</div></div>";
   return _dtCard +
-    "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">宪章</div>" +
-    "<div style=\"font-size:13px\">" + escHtml((soul.soul_md || "未填写").slice(0, 300)) + "</div></div>" +
-    "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">性格特质</div>" +
+    "<div class=\"card\"><div class=\"name\" style=\"font-size:calc(14px * var(--fs))\">宪章</div>" +
+    "<div style=\"font-size:calc(13px * var(--fs))\">" + escHtml((soul.soul_md || "未填写").slice(0, 300)) + "</div></div>" +
+    "<div class=\"card\"><div class=\"name\" style=\"font-size:calc(14px * var(--fs))\">性格特质</div>" +
     "<div>" + (traits || "<span class=\"dim\">无</span>") + "</div></div>" +
-    "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">动机</div>" +
+    "<div class=\"card\"><div class=\"name\" style=\"font-size:calc(14px * var(--fs))\">动机</div>" +
     "<div class=\"kv\">" + escHtml((pp.motivations || []).join("、") || "无") + "</div></div>" +
-    (bg.secrets ? "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">秘密</div>" +
-    "<div style=\"font-size:13px\">" + escHtml(bg.secrets.slice(0, 200)) + "</div></div>" : "") +
-    "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">记忆 (" +
+    (bg.secrets ? "<div class=\"card\"><div class=\"name\" style=\"font-size:calc(14px * var(--fs))\">秘密</div>" +
+    "<div style=\"font-size:calc(13px * var(--fs))\">" + escHtml(bg.secrets.slice(0, 200)) + "</div></div>" : "") +
+    "<div class=\"card\"><div class=\"name\" style=\"font-size:calc(14px * var(--fs))\">记忆 (" +
     ((mem.facts || []).length) + " 条)</div>" +
     (facts || "<div class=\"dim\">暂无</div>") + (emos || "") +
     "<div class=\"btnrow\" style=\"margin-top:8px\">" +
-    "<button class=\"btn ghost\" style=\"font-size:12px\" data-sact=\"editMemoryUI\" data-sid=\"" +
+    "<button class=\"btn ghost\" style=\"font-size:calc(12px * var(--fs))\" data-sact=\"editMemoryUI\" data-sid=\"" +
     escHtml(runId) + "\" data-sname=\"" + escHtml(name) + "\">编辑记忆</button></div></div>" +
-    "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">行动日志 (" + traj.length + " 条)</div>" +
+    "<div class=\"card\"><div class=\"name\" style=\"font-size:calc(14px * var(--fs))\">行动日志 (" + traj.length + " 条)</div>" +
     (trajs || "<div class=\"dim\">暂无</div>") + "</div>" +
     (function(){
       var items = {};
       try{ if(typeof RP_SOUL_ORCH !== "undefined") items = RP_SOUL_ORCH.trackItems(card); }catch(e){}
       var keys = Object.keys(items);
       if(!keys.length) return "";
-      return "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">物品流转</div>" +
+      return "<div class=\"card\"><div class=\"name\" style=\"font-size:calc(14px * var(--fs))\">物品流转</div>" +
         keys.map(function(k){
-          return "<div class=\"kv\" style=\"font-size:12px\"><span>" + escHtml(k) + "</span>" +
+          return "<div class=\"kv\" style=\"font-size:calc(12px * var(--fs))\"><span>" + escHtml(k) + "</span>" +
             "<span class=\"dim\">" + escHtml(items[k].holder) + "</span></div>";
         }).join("") + "</div>";
     })() +
-    "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">绑定模型</div>" +
+    "<div class=\"card\"><div class=\"name\" style=\"font-size:calc(14px * var(--fs))\">绑定模型</div>" +
     "<div class=\"kv\">" + escHtml(profile || "默认") + "</div></div>" +
     (function(){
       var q2 = escHtml(runId), n2 = escHtml(name);
       var cur = "normal";
       try{ cur = localStorage.getItem("nd_soul_chatty_" + name) || "normal"; }catch(e){}
-      return "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">发言频率</div>" +
+      return "<div class=\"card\"><div class=\"name\" style=\"font-size:calc(14px * var(--fs))\">发言频率</div>" +
         "<div class=\"btnrow\">" +
         ["quiet", "normal", "chatty"].map(function(lv){
           var label = lv === "quiet" ? "沉默" : (lv === "normal" ? "适中" : "话痨");
-          return "<button class=\"btn" + (cur === lv ? "" : " ghost") + "\" style=\"font-size:12px\" " +
+          return "<button class=\"btn" + (cur === lv ? "" : " ghost") + "\" style=\"font-size:calc(12px * var(--fs))\" " +
             "data-sact=\"setChattyUI\" data-sid=\"" + q2 + "\" data-sname=\"" + n2 + "\" data-slv=\"" + lv + "\">" + label + "</button>";
         }).join("") + "</div></div>";
     })() +
     (function(){
       var h = soulHealth(card);
       var q = escHtml(runId), n = escHtml(name);
-      return "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">健康度 " + h.score + "分</div>" +
+      return "<div class=\"card\"><div class=\"name\" style=\"font-size:calc(14px * var(--fs))\">健康度 " + h.score + "分</div>" +
         (h.issues.length ? "<div class=\"kv\" style=\"color:var(--danger)\">" + escHtml(h.issues.join("、")) + "</div>"
           : "<div class=\"kv\" style=\"color:green\">完整</div>") +
         "<div class=\"btnrow\" style=\"margin-top:8px;flex-wrap:wrap\">" +
-        "<button class=\"btn ghost\" style=\"font-size:12px\" data-sact=\"exportSoulUI\" data-sid=\"" + q + "\" data-sname=\"" + n + "\">导出</button>" +
-        "<button class=\"btn ghost\" style=\"font-size:12px\" data-sact=\"importSoulUI\" data-sid=\"" + q + "\" data-sname=\"" + n + "\">导入</button>" +
-        "<button class=\"btn ghost\" style=\"font-size:12px\" data-sact=\"applyTemplateUI\" data-sid=\"" + q + "\" data-sname=\"" + n + "\">人格模板</button>" +
+        "<button class=\"btn ghost\" style=\"font-size:calc(12px * var(--fs))\" data-sact=\"exportSoulUI\" data-sid=\"" + q + "\" data-sname=\"" + n + "\">导出</button>" +
+        "<button class=\"btn ghost\" style=\"font-size:calc(12px * var(--fs))\" data-sact=\"importSoulUI\" data-sid=\"" + q + "\" data-sname=\"" + n + "\">导入</button>" +
+        "<button class=\"btn ghost\" style=\"font-size:calc(12px * var(--fs))\" data-sact=\"applyTemplateUI\" data-sid=\"" + q + "\" data-sname=\"" + n + "\">人格模板</button>" +
         "</div></div>";
     })();
 }
@@ -457,7 +457,7 @@ async function genSoulUI(runId, name){
 /* 冲突仲裁 UI: 返回冲突徽章 HTML, 点击后弹窗选择 */
 function conflictBadgeHTML(conflicts, msgIdx){
   if(!conflicts || !conflicts.length) return "";
-  return "<div style=\"margin-top:6px\"><button class=\"btn ghost\" style=\"font-size:11px;color:var(--danger)\" " +
+  return "<div style=\"margin-top:6px\"><button class=\"btn ghost\" style=\"font-size:calc(11px * var(--fs));color:var(--danger)\" " +
     "onclick=\"RP_SOUL_CFG.arbitrateUI(" + msgIdx + ")\">⚠️ 动作冲突 (" + conflicts.length + ") 点击裁决</button></div>";
 }
 
@@ -497,7 +497,7 @@ function compareSoulsUI(runId, nameA, nameB){
     ["记忆", (((sA.memory || {}).long_term || {}).facts || []).length + "条", (((sB.memory || {}).long_term || {}).facts || []).length + "条"],
     ["健康度", soulHealth(cardA).score + "分", soulHealth(cardB).score + "分"]
   ];
-  var html = "<table style=\"width:100%;font-size:12px;border-collapse:collapse\">" +
+  var html = "<table style=\"width:100%;font-size:calc(12px * var(--fs));border-collapse:collapse\">" +
     "<tr><th></th><th>" + escHtml(nameA) + "</th><th>" + escHtml(nameB) + "</th></tr>" +
     rows.map(function(r){
       return "<tr style=\"border-top:1px solid var(--line)\"><td><b>" + r[0] + "</b></td>" +

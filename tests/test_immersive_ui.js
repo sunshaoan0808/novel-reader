@@ -145,7 +145,8 @@ src.indexOf("showWho") >= 0 && src.indexOf('showWho?`<div class="who">') >= 0
 && src.indexOf('const showWho = CHAT.mode==="group"') >= 0);
 
 /* ---------- S1/S2/S3/S7/S8: 气泡 CSS ---------- */
-ok("S1 字号行高: 16px/24px", /font-size:16px; line-height:24px/.test(css));
+/* P0-28：字号改写成 calc(Npx * var(--fs))，断言跟着改成"16px 基准 × 倍率" */
+ok("S1 字号行高: 16px 基准/24px 行高", /font-size:calc\(16px \* var\(--fs\)\); line-height:24px/.test(css));
 ok("S2 圆角12px 无阴影", css.indexOf("border-radius:12px") >= 0 && /\.bubble\{[^}]*box-shadow:none/.test(css));
 ok("S3 内边距 10px 16px", css.indexOf("padding:10px 16px") >= 0);
 ok("S7/S8 纸感化: AI 白5% / 用户金13%", css.indexOf("rgba(255,255,255,.05)") >= 0 && css.indexOf("rgba(212,162,78,.13)") >= 0);

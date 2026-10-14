@@ -243,7 +243,7 @@ function renderReport(q){
   return `<div class="card" style="margin-bottom:12px">
     <div style="font-weight:600;margin-bottom:8px">质量门 <span style="color:${LEVEL_COLOR[q.level]}">${LEVEL_ICON[q.level]} ${q.score}分</span></div>
     ${q.checks.map(function(c){
-      return `<div style="font-size:12px;padding:3px 0">
+      return `<div style="font-size:calc(12px * var(--fs));padding:3px 0">
         <span style="color:${LEVEL_COLOR[c.level]}">${LEVEL_ICON[c.level]}</span> ${esc(c.msg)}</div>`;
     }).join("")}
   </div>`;

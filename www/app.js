@@ -77,7 +77,7 @@ b.addEventListener("click", ()=>setNav(b.dataset.nav)));
 async function boot(){
 const D = window.__DATA__;
 if(!D ||!D.index){
-view.innerHTML = `<div class="empty">数据未生成<br><span style="font-size:12px">请先运行 snapshot.py</span></div>`;
+view.innerHTML = `<div class="empty">数据未生成<br><span style="font-size:calc(12px * var(--fs))">请先运行 snapshot.py</span></div>`;
 return;
 }
 INDEX = D.index;
@@ -108,7 +108,7 @@ ${coverHtml}
 function openRun(runId){
 /* P2-4: data.js 截断/损坏时给可读提示（与 boot 一致），不许 TypeError 白屏 */
 const D = window.__DATA__;
-if(!D || !D.runs){ view.innerHTML = `<div class="empty">数据未生成<br><span style="font-size:12px">请先运行 snapshot.py</span></div>`; return; }
+if(!D || !D.runs){ view.innerHTML = `<div class="empty">数据未生成<br><span style="font-size:calc(12px * var(--fs))">请先运行 snapshot.py</span></div>`; return; }
 RUN = D.runs[runId];
 if(!RUN){ view.innerHTML = `<div class="empty">该任务数据缺失</div>`; return;}
 tabs.classList.remove("hidden");
@@ -142,6 +142,32 @@ view.insertAdjacentHTML("afterbegin",
 }
 tabs.querySelectorAll("button").forEach(b=>
 b.addEventListener("click", ()=>setTab(b.dataset.tab)));
+
+/* 横滑轨道两端渐隐（P0-12 顶部标签行 / P1-23 chips 轨道）。
+   纯 CSS 不知道轨道还有没有内容，所以用一个轻量 scroll/resize 监听维护
+   .xedge-l / .xedge-r 两个类，由 CSS 变量把 mask 的渐隐长度在 0↔28px 之间切。
+   scroll-snap 让一格一格停，触屏不再"滑到一半不知道停哪"。 */
+function bindEdgeFade(el, snap){
+  if(!el || el.__edgeFadeBound) return;
+  el.__edgeFadeBound = true;
+  if(snap) el.classList.add("xsnap");
+  const upd = ()=>{
+    const over = el.scrollWidth - el.clientWidth;
+    el.classList.toggle("xedge-l", over > 2 && el.scrollLeft > 2);
+    el.classList.toggle("xedge-r", over > 2 && el.scrollLeft < over - 2);
+  };
+  el.addEventListener("scroll", upd, {passive:true});
+  if(typeof ResizeObserver === "function") new ResizeObserver(upd).observe(el);
+  setTimeout(upd, 0);
+  el.__edgeFadeUpdate = upd;
+}
+window.bindEdgeFade = bindEdgeFade;
+window.refreshEdgeFades = (root)=>{
+  (root||document).querySelectorAll("[data-xfade]").forEach(el=>{
+    if(el.__edgeFadeUpdate) el.__edgeFadeUpdate();
+  });
+};
+bindEdgeFade(tabs, true);   /* #tabs：6 个标签在 360px 下放不下，"更多"被硬切 */
 
 function tagline(p){
 /* 兼容两种档案格式: 红楼 `- **core_identity**: ...` / 水浒 `- core_identity: ...` */
@@ -378,7 +404,7 @@ function showStoryline(){
     if(!dag || !dag.nodes || !dag.nodes.length){
       /* P2-5: 加载失败 ≠ 确实没有数据，分开文案并给重试 */
       view.innerHTML = failed
-        ? `<div class="empty">剧情线数据加载失败<br><span style="font-size:12px">文件缺失或读取出错</span><br><button class="btn ghost" style="margin-top:10px" onclick="showStoryline()">重试</button></div>`
+        ? `<div class="empty">剧情线数据加载失败<br><span style="font-size:calc(12px * var(--fs))">文件缺失或读取出错</span><br><button class="btn ghost" style="margin-top:10px" onclick="showStoryline()">重试</button></div>`
         : `<div class="empty">暂无剧情线数据</div>`;
       return;
     }
@@ -388,7 +414,7 @@ function showStoryline(){
     const head = `<div class="card"><div class="kvline"><b>事件节点</b>：${dag.nodes.length} 个</div>`
       + `<div class="kvline"><b>因果边</b>：${(dag.edges || []).length} 条</div>`
       + `<div class="kvline"><b>主干剧情线</b>：${paths.length} 条</div>`
-      + `<div style="color:var(--muted,#888);font-size:12px;margin-top:6px">启发式因果图（关键词重叠+转折点加成），非人工定稿</div></div>`;
+      + `<div style="color:var(--muted,#888);font-size:calc(12px * var(--fs));margin-top:6px">启发式因果图（关键词重叠+转折点加成），非人工定稿</div></div>`;
     const body = paths.map((p, pi)=>{
       const items = p.node_ids.map((nid)=>{
         const n = byId[nid] || {};
@@ -490,8 +516,8 @@ function showWorldcard(){
     if(!wc || !wc.worldBookEntries){
       /* P2-5: 加载失败 ≠ 确实没有数据，分开文案并给重试 */
       view.innerHTML = _wcFailed[runId]
-        ? `<div class="empty">世界卡数据加载失败<br><span style="font-size:12px;color:var(--muted,#888)">文件缺失或读取出错</span><br><button class="btn ghost" style="margin-top:10px" onclick="retryWorldcard()">重试</button></div>`
-        : `<div class="empty">暂无世界卡数据<br><span style="font-size:12px;color:var(--muted,#888)">管线执行 worldcard 阶段后自动出现</span></div>`;
+        ? `<div class="empty">世界卡数据加载失败<br><span style="font-size:calc(12px * var(--fs));color:var(--muted,#888)">文件缺失或读取出错</span><br><button class="btn ghost" style="margin-top:10px" onclick="retryWorldcard()">重试</button></div>`
+        : `<div class="empty">暂无世界卡数据<br><span style="font-size:calc(12px * var(--fs));color:var(--muted,#888)">管线执行 worldcard 阶段后自动出现</span></div>`;
       prependRunBanner();
       return;
     }
@@ -510,7 +536,7 @@ function showWorldcard(){
       + `<div class="stat"><div class="v">${nodes.length}</div><div class="k">剧情节点</div></div>`
       + `<div class="stat"><div class="v">${actors.length}</div><div class="k">演员</div></div>`
       + `</div>`
-      + (gaps.length?`<div class="kvline" style="color:var(--muted,#888);font-size:12px">待补：${esc(gaps.slice(0,3).map(humanizeGap).join("；"))}${gaps.length>3?"…":""}</div>`:"")
+      + (gaps.length?`<div class="kvline" style="color:var(--muted,#888);font-size:calc(12px * var(--fs))">待补：${esc(gaps.slice(0,3).map(humanizeGap).join("；"))}${gaps.length>3?"…":""}</div>`:"")
       + `</div>`;
     const conflict = dd.coreConflict
       ? `<h2 class="sec">核心冲突</h2><div class="card"><div class="st">${esc(dd.coreConflict)}</div>`
@@ -960,7 +986,7 @@ ${regexCharSel(runId, name)}
 <div class="btnrow" style="margin-bottom:10px"><button class="btn" onclick="importStRegex()">${icon("download")} 导入 ST 脚本</button><button class="btn ghost" onclick="exportStRegex()">导出 ST 脚本</button><button class="btn" onclick="regexForm('${jq(runId)}','${jq(name)}')">${icon("plus")} 新增规则</button></div>
 <div class="hint">AI 回复发出前按顺序执行：查找（正则）→ 替换为。如把"好的"替换成"好"，或统一口头禅。非法正则会被跳过。</div>
 ${arr.map((r,i)=>`
-<div class="card">${r.name?`<div class="kv" style="color:var(--gold)">${esc(r.name)}${r.flags&&r.flags!=="g"?` <span style="color:var(--ink-faint)">/${esc(r.flags)}</span>`:""}</div>`:""}<div class="name" style="font-size:13px">${esc(r.find||"")} <span style="color:var(--ink-faint)">→</span> ${esc(String(r.replace||"")).slice(0,60)}</div>
+<div class="card">${r.name?`<div class="kv" style="color:var(--gold)">${esc(r.name)}${r.flags&&r.flags!=="g"?` <span style="color:var(--ink-faint)">/${esc(r.flags)}</span>`:""}</div>`:""}<div class="name" style="font-size:calc(13px * var(--fs))">${esc(r.find||"")} <span style="color:var(--ink-faint)">→</span> ${esc(String(r.replace||"")).slice(0,60)}</div>
 <div class="meta">${r.enabled===false?"停用":"启用"}${r.markdownOnly?` · <span class="badge">markdown显示时</span>`:""}${r.promptOnly&&!r.markdownOnly?` · <span class="badge">纯prompt(不执行)</span>`:""}${r.minDepth!=null?` · 深度≥${r.minDepth}`:""}${r.maxDepth!=null?` · 深度≤${r.maxDepth}`:""}</div>
 <div class="btnrow" style="margin-top:8px">
 <button class="btn ghost" onclick="regexForm('${jq(runId)}','${jq(name)}',${jq(i)})">编辑</button>
@@ -1394,7 +1420,7 @@ const dim = o ? o.dim : 0, blur = o ? o.blur : 0;
 view.innerHTML = `<button class="back" onclick="__backAction()">${icon("back")} 返回</button>
 <div class="card" style="text-align:center">
 ${cur ? `<img id="wall_preview" src="${cur}" style="max-width:100%;border-radius:8px;filter:${wallFilterCSS(o)}" alt="当前壁纸">`
-      : `<div style="padding:24px;color:var(--ink-faint)">当前使用默认壁纸<br><span style="font-size:12px">上传后可调暗度和模糊</span></div>`}
+      : `<div style="padding:24px;color:var(--ink-faint)">当前使用默认壁纸<br><span style="font-size:calc(12px * var(--fs))">上传后可调暗度和模糊</span></div>`}
 </div>
 ${cur ? `<div class="field"><label>暗度 <span id="wall_dim_v">${dim}%</span></label>
 <input type="range" id="wall_dim" min="0" max="70" value="${dim}" oninput="wallOptUI()"></div>
@@ -1533,7 +1559,7 @@ ${chatBgHTML()}
 <button class="backbtn" onclick="exitChat()">‹</button>
 <div class="avatar">${esc((CHAT.name||"?")[0])}</div>
 <div class="chead-main"><div class="cname">${esc(CHAT.name)}<span class="aimark">AI</span></div>
-<div class="cstat">${run.novel?`<span>${esc(run.novel)}</span>`:""}<span id="chapter_hbadge" style="display:none;font-size:11px;color:var(--gold);border:1px solid var(--line-soft);border-radius:999px;padding:1px 8px;cursor:pointer" onclick="chapterPicker()"></span><button onclick="toggleDrawer(false);openAlbum(CHAT.runId,CHAT.name)"><span class="mement">${icon("brain",15)} ${memN}条记忆</span>›</button></div></div>
+<div class="cstat">${run.novel?`<span>${esc(run.novel)}</span>`:""}<span id="chapter_hbadge" style="display:none;font-size:calc(11px * var(--fs));color:var(--gold);border:1px solid var(--line-soft);border-radius:999px;padding:1px 8px;cursor:pointer" onclick="chapterPicker()"></span><button onclick="toggleDrawer(false);openAlbum(CHAT.runId,CHAT.name)"><span class="mement">${icon("brain",15)} ${memN}条记忆</span>›</button></div></div>
 <button class="menubtn" onclick="toggleChatSearch()" title="搜索聊天记录">${icon("search")}</button>
 <button class="menubtn" onclick="toggleDrawer(true)" title="菜单">${icon("menu")}</button>
 </div>
@@ -1562,7 +1588,7 @@ ${povChipsHTML()}
 <button class="ditem" onclick="toggleDrawer(false);charDetail(CHAT.runId,CHAT.name)">${icon("user")} 角色详情</button>
 <button class="ditem" onclick="toggleDrawer(false);showATasks()">${icon("chart")} 分析任务</button>
 <button class="ditem" onclick="toggleDrawer(false);plotEditor()">${icon("book-open")} 剧情线</button>
-<button class="ditem" onclick="toggleDrawer(false);chapterPicker()">${icon("bookmark")} 章节进度<span id="chapter_badge" style="margin-left:auto;font-size:11px;color:var(--gold)"></span></button>
+<button class="ditem" onclick="toggleDrawer(false);chapterPicker()">${icon("bookmark")} 章节进度<span id="chapter_badge" style="margin-left:auto;font-size:calc(11px * var(--fs));color:var(--gold)"></span></button>
 <button class="ditem" onclick="toggleDrawer(false);loreEditor(CHAT.runId,'chat')">${icon("book-open")} 世界书管理</button>
 <button class="ditem" onclick="toggleDrawer(false);regexEditor(CHAT.runId,CHAT.name,'chat')">🔤 正则替换</button>
 <button class="ditem" onclick="toggleDrawer(false);showSystem()">${icon("settings")} 人设 prompt 预览</button>
@@ -1632,7 +1658,7 @@ ${chatBgHTML()}
 <div class="chathead" id="chathead">
 <button class="backbtn" onclick="exitChat()">‹</button>
 <div class="stack">${stack}</div>
-<div class="cname">群聊 · ${ms.length} 人<span class="aimark">AI</span><small>${esc(ms.join("、"))}</small> <span id="chapter_hbadge" style="display:none;font-size:11px;color:var(--gold);border:1px solid var(--line-soft);border-radius:999px;padding:1px 8px;cursor:pointer" onclick="chapterPicker()"></span></div>
+<div class="cname">群聊 · ${ms.length} 人<span class="aimark">AI</span><small>${esc(ms.join("、"))}</small> <span id="chapter_hbadge" style="display:none;font-size:calc(11px * var(--fs));color:var(--gold);border:1px solid var(--line-soft);border-radius:999px;padding:1px 8px;cursor:pointer" onclick="chapterPicker()"></span></div>
 <button class="menubtn" onclick="toggleChatSearch()" title="搜索聊天记录">${icon("search")}</button>
 <button class="menubtn" onclick="toggleDrawer(true)" title="菜单">${icon("menu")}</button>
 </div>
@@ -1753,7 +1779,7 @@ const cs = allChars();
 let keyBanner = "";
 try{ if(!(getCfg().key)) keyBanner = `<div class="apibanner" onclick="setNav('settings')"><span>⚠️ 还没配置 API Key，配好才能开始聊天</span><span class="ab-go">去设置 ›</span></div>`; }catch(e){}
 if(!cs.length){
-view.innerHTML = `<div class="empty"><span class="big">🎭</span>还没有角色<br><span style="font-size:12px">去「写卡」创建你的第一个角色</span><br><button class="btn" style="margin-top:10px" onclick="setNav('writer')">去写卡</button></div>`;
+view.innerHTML = `<div class="empty"><span class="big">🎭</span>还没有角色<br><span style="font-size:calc(12px * var(--fs))">去「写卡」创建你的第一个角色</span><br><button class="btn" style="margin-top:10px" onclick="setNav('writer')">去写卡</button></div>`;
 return;
 }
 /* P1 多轨道发现：最近玩过 / 我的收藏 / 换一批看看（横滑轨道，本地计算） */
@@ -2000,13 +2026,48 @@ function setBars(v){
   if(bar) bar.style.display = barsVisible ? "" : "none";
   if(document.body && document.body.classList)
     document.body.classList.toggle("immersive", !barsVisible);
-  /* 兼容旧钩子 */
+  /* 对外发布显隐态：P0-1 的键盘恢复要跨会话读它 */
+  window.__barsVisible = barsVisible;
   try{ if(window.__immState) window.__immState.visible = barsVisible; }catch(e){}
 }
 /* 初始：隐藏，进入全屏沉浸 */
 setBars(false);
 /* 兼容旧测试钩子：__setHeadHidden(true)=隐藏，(false)=显示 */
 window.__setHeadHidden = (hide)=>setBars(!hide);
+/* P0-1 首屏死路：进入聊天三栏全收起，输入框/顶栏都不在屏上，唯一的恢复入口
+   是"点屏幕中间"——既没有任何提示，键盘用户更是完全走不通。补三条路：
+   (1) window.__showBars 供键盘/外部调用；(2) document 级 Escape 与可打印键
+       自动唤回（全局只挂一次，避免每次进聊天重复叠加）；(3) 一次性居中引导。*/
+window.__showBars = ()=>{ if(!barsVisible) setBars(true); };
+if(!window.__immKeysBound){
+  window.__immKeysBound = true;
+  document.addEventListener("keydown", (e)=>{
+    if(!document.body.classList.contains("chatmode")) return;   /* 不在聊天页就别插手 */
+    if(window.__barsVisible !== false) return;                  /* 栏本来就看得见 */
+    const ae = document.activeElement;
+    if(ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName||"")) return;   /* 已在输入框里打字：别抢 */
+    const k = e.key || "";
+    if(k !== "Escape" && k !== "Enter" && k !== " " && k.length !== 1) return;
+    if(typeof window.__showBars === "function") window.__showBars();
+    if(k.length === 1){ setTimeout(()=>{ const i=document.getElementById("chat_in"); if(i && !i.disabled) i.focus(); }, 0); }
+  });
+}
+window.__immActive = true;
+window.__barsVisible = barsVisible;
+try{
+  if(!localStorage.getItem("nd_immguide")){
+    setTimeout(()=>{
+      /* 用户自己先唤出来了：这次不打扰，也不写标志 —— 否则 TA 永远看不到了 */
+      if(barsVisible) return;
+      const g = document.createElement("div");
+      g.className = "immguide"; g.setAttribute("role","status");
+      g.innerHTML = "点屏幕任意空白处<br>唤回输入栏";
+      document.body.appendChild(g);
+      try{ localStorage.setItem("nd_immguide", "1"); }catch(_){}
+      setTimeout(()=>{ if(g.parentNode) g.remove(); }, 4600);
+    }, 700);
+  }
+}catch(e){}
 /* 点按中间呼出/隐藏：栏隐藏时，点中部任意位置（包括消息气泡）只呼出栏，
    不触发消息的编辑栏（capture 拦截 + 吞掉事件）；栏显示时点空白处隐藏栏。
    轻点判定：位移<12px、时长<400ms；中部区域为屏幕 20%~80%。 */
@@ -2094,7 +2155,7 @@ const cards = list.slice(0, CAP).map(x=>{
 const e = x.e;
 const resolved = RP_FORE.isResolved(e);
 return `<div class="card" onclick="foreshadowChapter(${jq(e.ch)})" style="cursor:pointer">
-<div style="font-size:13px;margin-bottom:6px">${esc(e.s || "")}</div>
+<div style="font-size:calc(13px * var(--fs));margin-bottom:6px">${esc(e.s || "")}</div>
 <div class="row"><span class="badge" style="${resolved?"":"background:#f5e6c8;color:#8a6d2f"}">${esc(RP_FORE.statusText(e))}</span>
 <span class="kv">第 ${e.ch} 回</span>
 <span class="kv">${esc(RP_FORE.peopleText(e))}</span>
@@ -2123,7 +2184,7 @@ const groups = {};
 evs.forEach(x=>{ const k = x.e.k || "event"; (groups[k] = groups[k] || []).push(x); });
 const body = Object.keys(groups).map(k=>
 `<h2 class="sec">${KN[k] || k} · ${groups[k].length}</h2>` +
-groups[k].map(x=>`<div class="card"><div style="font-size:13px">${esc(x.e.s || "")}</div>
+groups[k].map(x=>`<div class="card"><div style="font-size:calc(13px * var(--fs))">${esc(x.e.s || "")}</div>
 <div class="kv" style="margin-top:4px">${esc(RP_FORE.peopleText(x.e))}</div></div>`).join("")
 ).join("") || `<div class="empty">该回目暂无事件</div>`;
 view.innerHTML = `<button class="back" onclick="renderForeshadow()">${icon("back")} 返回伏笔面板</button>
@@ -2482,7 +2543,7 @@ let h = null;
 try{ h = getHist(chatHistKey()); }catch(e){ rpToast("聊天记录读取失败"); return; }
 const m = h[idx]; if(!m) return;
 bub.dataset.orig = bub.innerHTML;
-bub.innerHTML = `<textarea id="editbox" onclick="event.stopPropagation()" style="width:100%;min-height:80px;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px;font-size:14px">${esc(m.content)}</textarea>`
+bub.innerHTML = `<textarea id="editbox" onclick="event.stopPropagation()" style="width:100%;min-height:80px;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px;font-size:calc(14px * var(--fs))">${esc(m.content)}</textarea>`
 + `<div class="btnrow" style="margin-top:6px" onclick="event.stopPropagation()"><button class="btn" onclick="editMsgSave(${jq(idx)})">保存${m.role==="user"?"并重生成":""}</button>`
 + `<button class="btn ghost" onclick="editMsgCancel(${jq(idx)})">取消</button></div>`;
 const ta = document.getElementById("editbox");
@@ -2707,16 +2768,25 @@ return `<div class="themerow" style="margin-top:8px">` + RP_THEME.THEMES.map(t=>
 <div class="tname">${esc(t.name)}</div><div class="tdesc">${esc(t.desc)}</div></div>`).join("") + `</div>`;
 }catch(e){ return ""; }
 }
-/* ============ 字号缩放（root zoom，全界面等比） ============ */
-function getFontScale(){ try{ return parseFloat(localStorage.getItem("nd_font_scale"))||1; }catch(e){ return 1; } }
-function applyFontScale(){ try{ document.documentElement.style.zoom = getFontScale(); }catch(e){} }
+/* ============ 字号缩放（P0-28：--fs 文本倍率） ============
+   旧实现是 documentElement.style.zoom，zoom 会把布局视口一起等比缩小
+   （360px 视口在 1.3 档下有效宽度仅 277px，底栏"蒸馏"折成两行），
+   且 position:fixed / env() 各引擎行为不一致。改为只缩 font-size：
+   所有字号写成 calc(Npx * var(--fs))，布局盒子（padding/高度/宽度）不动。*/
+const FONT_SCALES = [1, 1.15, 1.3];
+function getFontScale(){
+  let v = 1;
+  try{ v = parseFloat(localStorage.getItem("nd_font_scale")); }catch(e){}
+  return FONT_SCALES.indexOf(v) >= 0 ? v : 1;   /* 只认设置页给的档位，脏值回落 1 */
+}
+function applyFontScale(){ try{ document.documentElement.style.setProperty("--fs", String(getFontScale())); }catch(e){} }
 window.setFontScale = (v)=>{
   try{ localStorage.setItem("nd_font_scale", String(v)); }catch(e){}
   applyFontScale(); showSettings();
 };
 function fontScaleCardsHTML(){
   const fs = getFontScale();
-  const opts = [[1,"标准"],[1.15,"大"],[1.3,"特大"]];
+  const opts = [[1,"标准"],[1.15,"大"],[1.3,"特大"]];   /* 与 FONT_SCALES 同档 */
   return `<div class="chiprow" style="margin-top:8px">` + opts.map(o=>
     `<button class="pickchip${fs===o[0]?" on":""}" onclick="setFontScale(${jq(o[0])})">${o[1]}</button>`).join("") + `</div>`;
 }
@@ -3067,7 +3137,7 @@ const conflictBadge = (m._conflicts && m._conflicts.length && !m._conflictResolv
 return `<div class="msg ${m.role==="user"?"me":""}${mtype==="narr"?" narr":""}${mtype==="npc"?" npc":""}${isCur?" curhit":""}" id="smsg-${idx}" data-mid="${esc(m.mid||m.id||"")}" onclick="toggleTools(event,${jq(idx)})" oncontextmenu="event.preventDefault();msgMenu(${jq(idx)});return false;" ontouchstart="msgPressStart(event,${jq(idx)})" ontouchend="msgPressEnd()" ontouchmove="msgPressEnd()">`
 + `<div class="msgcol">${showWho?`<div class="who">${esc(who)}</div>`:""}<div class="bubble${needFold?" foldable collapsed":""}">${bubbleInner}${conflictBadge}</div>${extra}</div>`
 + `</div>`;
-}).join("") || `<div class="empty">还没有对话，打个招呼吧<br><span style="font-size:12px">试试：你是谁？</span></div>`;
+}).join("") || `<div class="empty">还没有对话，打个招呼吧<br><span style="font-size:calc(12px * var(--fs))">试试：你是谁？</span></div>`;
 renderCtxBar();
 if(stick){ markProgScroll(); log.scrollTop = log.scrollHeight; }
 renderWsBar();
@@ -3120,7 +3190,7 @@ bar.innerHTML = `<div class="ctxrow"><div class="ctxbar-bg"><div class="ctxbar-f
 + (hits.length ? `<span class="ctxfold" onclick="toggleCtxLore(event)">触发${hits.length}条 ▾</span>` : "")
 + `</div>`
 + (hits.length ? `<div class="ctxlore" id="ctxlore">${icon("book-open",14)} 触发：${hitDet.length
-? hitDet.map(d=>`${esc(d.title)}<span style="opacity:.6;font-size:11px"> ${d.probability}%·P${d.priority}</span>`).join("、")
+? hitDet.map(d=>`${esc(d.title)}<span style="opacity:.6;font-size:calc(11px * var(--fs))"> ${d.probability}%·P${d.priority}</span>`).join("、")
 : hits.map(x=>esc(x)).join("、")}</div>` : "")
 /* Tier2 #6: C.AI "Older messages will fade from Memory, but anything you save to Story Memory is kept safe." */
 + (pct > 90 ? `<div class="ctxwarn">旧消息会逐渐从记忆中褪色，但你置顶 / 存入事件簿的记忆会一直保留。</div>` : "");
@@ -3229,7 +3299,7 @@ window.simEditor = ()=>{
   const chOpts = Array.from({length:120},(_,i)=>`<option value="${i+1}" ${i+1===storyCh?"selected":""}>第${i+1}回</option>`).join("");
   view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回</button>
   <div class="card"><h3>${icon("clock",15)} 时间</h3>
-    <div class="kv" style="font-size:17px;margin-bottom:8px">${esc(RP_WORLDSIM.fmtTime(st))}</div>
+    <div class="kv" style="font-size:calc(17px * var(--fs));margin-bottom:8px">${esc(RP_WORLDSIM.fmtTime(st))}</div>
     <div class="btnrow">
       <button class="btn ghost" style="white-space:nowrap" onclick="wsAdjustTime(30)">+30分钟</button>
       <button class="btn ghost" style="white-space:nowrap" onclick="wsAdjustTime(120)">+2小时</button>
@@ -3247,7 +3317,7 @@ window.simEditor = ()=>{
     <button class="btn ghost" onclick="wsAddPlace()">添加</button></div></div>
     <div class="hint">前往地点消耗 ${st.travelMin||30} 分钟（联动时间）。AI 也可在回复中用 ⟦地点=xxx⟧ 自行移动。</div></div>
   <div class="card"><h3>📖 故事进度</h3>
-    <div class="kv" style="font-size:15px;margin-bottom:8px">当前：第${storyCh}回${storyManual?"（手动设定）":"（按角色阶段默认·近似）"}</div>
+    <div class="kv" style="font-size:calc(15px * var(--fs));margin-bottom:8px">当前：第${storyCh}回${storyManual?"（手动设定）":"（按角色阶段默认·近似）"}</div>
     <div class="modelrow"><select id="ws_chsel">${chOpts}</select>
     <button class="btn" onclick="wsSetChapter()">设为此回</button></div>
     <div class="hint">时序感知只取此回之前的事件注入【往事】；之后的事角色一概不知，防"提前知道剧本"式穿帮。</div></div>`;
@@ -3469,7 +3539,7 @@ const cfg = getCfg();
 if(!cfg.key){ alert("还没配大模型接口"); return; }
 const el = document.getElementById("smsg-"+idx);
 const bub = el ? el.querySelector(".bubble") : null;
-if(bub) bub.innerHTML = `<span style="color:var(--ink-faint);font-size:13px">改写中…</span>`;
+if(bub) bub.innerHTML = `<span style="color:var(--ink-faint);font-size:calc(13px * var(--fs))">改写中…</span>`;
 try{
 const prompt = "你是角色扮演对话的文字润色助手。把下面这条 AI 回复改写得更生动自然、更有文采，"
 + "但严格保持原意：不增删剧情要点，不改变说话人口吻，不添加原文没有的对话或旁白。"
@@ -3770,7 +3840,7 @@ window.chapterPicker = ()=>{
   var v = document.getElementById("view");
   var html = `<button class="back" onclick="setTab('chat');showChat()">${icon("back")} 返回聊天</button>
     <h2 class="sec">📖 章节进度</h2>
-    <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px;line-height:1.8">
+    <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint);margin-bottom:12px;line-height:1.8">
       选择后，角色只知道该章节及之前发生的事，对之后剧情一无所知。<br>
       选"全部（无限制）"则角色拥有完整原著知识。
     </div>
@@ -3785,11 +3855,11 @@ window.chapterPicker = ()=>{
       return `<div class="card${active?"":""}" onclick="setChapterIdx(${jq(i)});chapterPicker()"
         style="cursor:pointer;${active?"border-color:var(--gold-deep);background:rgba(212,162,78,.08)":""}">
         <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:12px;color:var(--gold);white-space:nowrap">第${i+1}章</span>
-          <span style="font-size:14px;flex:1">${esc(s.title||("章节"+(i+1)))}</span>
+          <span style="font-size:calc(12px * var(--fs));color:var(--gold);white-space:nowrap">第${i+1}章</span>
+          <span style="font-size:calc(14px * var(--fs));flex:1">${esc(s.title||("章节"+(i+1)))}</span>
           ${active?'<span style="color:var(--gold)">✓</span>':""}
         </div>
-        ${s.summary?`<div style="font-size:11px;color:var(--ink-faint);margin-top:4px;line-height:1.6">${esc(s.summary.slice(0,120))}${s.summary.length>120?"…":""}</div>`:""}
+        ${s.summary?`<div style="font-size:calc(11px * var(--fs));color:var(--ink-faint);margin-top:4px;line-height:1.6">${esc(s.summary.slice(0,120))}${s.summary.length>120?"…":""}</div>`:""}
       </div>`;
     }).join("") + `</div><div style="height:40px"></div>`;
   /* 保存返回动作 */
@@ -4075,7 +4145,7 @@ ${memStatusHtml}
 + diarySectionHTML("置顶记忆 · pinned-memories", "pin", pinned, evCard)
 + diarySectionHTML("自动记忆 · auto-memories", "clock", rest, evCard)
 + (st && st.long ? `<h2 class="sec">长远印象</h2><div class="card"><div class="alb-fact">${esc(st.long)}</div></div>` : "")
-+ (!short.length && !(st && st.long) ? `<div class="empty"><span class="big">${icon("brain",44)}</span>还没有记忆<br><span style="font-size:12px">每 ${(getRpCfg().memCycle||10)} 条消息自动整理一次</span><br><button class="btn ghost" style="margin-top:10px" onclick="albumBack()">去聊天产生记忆</button></div>` : "")
++ (!short.length && !(st && st.long) ? `<div class="empty"><span class="big">${icon("brain",44)}</span>还没有记忆<br><span style="font-size:calc(12px * var(--fs))">每 ${(getRpCfg().memCycle||10)} 条消息自动整理一次</span><br><button class="btn ghost" style="margin-top:10px" onclick="albumBack()">去聊天产生记忆</button></div>` : "")
 + `<div class="btnrow" style="margin-top:12px"><button class="btn" onclick="memoryNovel()">${icon("book-open")} 转成小说</button><button class="btn ghost" onclick="showNovel3()">${icon("scroll")} 分章小说 · 可改写</button></div>
 <div style="height:40px"></div>`;
 window.scrollTo(0,0);
@@ -4305,13 +4375,13 @@ subEl.textContent = NOV.name + " · 生成→改写→导出";
 const novel = RP_NOVEL.getNovel(novelChatId());
 let body = "";
 if(!novel){
-body = `<div class="empty"><span class="big">${icon("scroll",44)}</span>还没有章节规划<br><span style="font-size:12px">AI 会按聊天记录与记忆事件, 先出章节列表 (标题+梗概), 再逐章扩写正文</span><br>
+body = `<div class="empty"><span class="big">${icon("scroll",44)}</span>还没有章节规划<br><span style="font-size:calc(12px * var(--fs))">AI 会按聊天记录与记忆事件, 先出章节列表 (标题+梗概), 再逐章扩写正文</span><br>
 <button class="btn" style="margin-top:10px" onclick="novelPlan()">✨ 生成章节</button></div>`;
 }else{
-body = `<div class="card"><div class="name" style="font-size:15px">${esc(novel.title || "")}</div>
+body = `<div class="card"><div class="name" style="font-size:calc(15px * var(--fs))">${esc(novel.title || "")}</div>
 <div class="kv">${novel.chapters.length} 章 · ${novel.chapters.filter(c=>c.status===RP_NOVEL.ST_DONE).length} 章正文已完成</div></div>` +
 novel.chapters.map((ch, i)=>`<div class="card">
-<div class="row"><div><div class="name" style="font-size:14px">${/^第.{1,4}章/.test(ch.title||"") ? esc(ch.title) : `第${i + 1}章 · ${esc(ch.title)}`}</div>
+<div class="row"><div><div class="name" style="font-size:calc(14px * var(--fs))">${/^第.{1,4}章/.test(ch.title||"") ? esc(ch.title) : `第${i + 1}章 · ${esc(ch.title)}`}</div>
 <div class="kv">${esc(ch.overview || "")}</div></div>${novelStatusBadge(ch)}</div>
 <div class="btnrow" style="margin-top:8px">
 <button class="btn ghost" onclick="novelRewriteUI(${jq(i)})">✏️ ${ch.status===RP_NOVEL.ST_DONE?"再次改写":"生成正文"}</button>
@@ -4462,7 +4532,7 @@ tree.roots.forEach(s=>walk(s, 0, ""));
 view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回</button>
 <div class="btnrow" style="margin-bottom:10px"><button class="btn" onclick="newSaveSlot()">＋ 新建存档</button></div>
 <div class="hint">加载某个存档后, 新建的存档会从它分出一条分支, 形成故事树。</div>`
-+ (rows ? `<div class="timeline">` + rows + `</div>` : `<div class="empty"><span class="big">${icon("save",44)}</span>还没有存档<br><span style="font-size:12px">在关键剧情点存个档，就能随时回到这条时间线，或从这里分出新的平行剧情</span></div>`)
++ (rows ? `<div class="timeline">` + rows + `</div>` : `<div class="empty"><span class="big">${icon("save",44)}</span>还没有存档<br><span style="font-size:calc(12px * var(--fs))">在关键剧情点存个档，就能随时回到这条时间线，或从这里分出新的平行剧情</span></div>`)
 + `<div style="height:40px"></div>`;
 window.scrollTo(0,0);
 }
@@ -4904,6 +4974,20 @@ window.chatWithOpening = (runId, name, idx)=>{
   startChat(runId, name);
 };
 /* P1 开场选择器半屏：列出开场 + 随机开场 */
+/* P0-15：原来只能点遮罩或直接挑一个开场，取消路径等于没有。
+   补三样：顶部「取消」行、把把手做成可点、Esc 关闭。
+   Esc 处理器只挂一次（openSheet 会被反复调用），靠 sheet 的 .on 判活。 */
+window.__opensheetEsc = (e)=>{
+  if(e.key !== "Escape") return;
+  const sh = document.getElementById("opensheet");
+  if(sh && sh.classList.contains("on")) openSheet(false);
+};
+try{
+  if(document && typeof document.addEventListener === "function" && !window.__opensheetEscBound){
+    window.__opensheetEscBound = true;
+    document.addEventListener("keydown", window.__opensheetEsc);
+  }
+}catch(e){}
 window.openSheet = (on, runId, name)=>{
 let sh = document.getElementById("opensheet");
 let sc = document.getElementById("openscrim");
@@ -4914,17 +4998,26 @@ sc = document.createElement("div"); sc.id = "openscrim"; sc.className = "scrim m
 sc.onclick = ()=>openSheet(false);
 document.body.appendChild(sc);
 sh = document.createElement("div"); sh.id = "opensheet"; sh.className = "msgsheet";
+sh.setAttribute("role","dialog"); sh.setAttribute("aria-modal","true");
+sh.setAttribute("aria-label","选择开场");
 document.body.appendChild(sh);
 }
+/* 把手也可点：点它 = 取消（原来它只是 4px 装饰条，用户看得出能拖却拖不动） */
+const hd = sh.querySelector(".mshandle");
+if(hd) hd.addEventListener("click", ()=>openSheet(false));
 const nums = ["一","二","三","四","五","六","七","八"];
-sh.innerHTML = `<div class="mshandle"></div><div class="msprev">选个开场，和 ${esc(name)} 开聊</div>`
+/* P0-15：面板内容。取消行放最上面（拇指可达），Esc 处理器见 __opensheetEsc。 */
+sh.innerHTML = `<button class="msitem mscancel" onclick="openSheet(false)" aria-label="关闭开场选择">取消</button>`
++ `<div class="mshandle" role="separator" aria-hidden="true"></div><div class="msprev">选个开场，和 ${esc(name)} 开聊</div>`
 + ops.map((g, i)=>{
 const prev = g.text.length > 64 ? g.text.slice(0, 64) + "…" : g.text;
 const lab = g.label || ("开场" + (nums[i] || (i+1)));
 return `<button class="msitem opitem" onclick="pickOpening('${jq(runId)}','${jq(name)}',${jq(i)})"><span class="opn">${esc(lab)}</span><span class="opp">${esc(prev)}</span></button>`;
 }).join("")
-+ `<button class="msitem" onclick="pickOpening('${jq(runId)}','${jq(name)}',-1)">🎲 随机开场</button>`;
++ `<button class="msitem" onclick="pickOpening('${jq(runId)}','${jq(name)}',-1)">随机开场</button>`;
 sc.classList.add("on"); sh.classList.add("on");
+/* 焦点进面板，Esc / Tab 都有落点 */
+setTimeout(()=>{ const c=sh.querySelector(".mscancel"); if(c) c.focus(); }, 60);
 };
 window.pickOpening = (runId, name, idx)=>{
 openSheet(false);
@@ -4972,7 +5065,7 @@ function cardLandingHTML(runId, nm, card, run){
   /* 3. CTA */
   h += `<button class="btn landcta" onclick="chatWith('${jq(runId)}','${jq(nm)}')">▶ 立即开始游玩</button>`;
   /* 4. 简介 */
-  if(brief) h += `<h2 class="sec">简介</h2><div class="card"><div style="font-size:13.5px;line-height:1.7">${esc(brief)}</div></div>`;
+  if(brief) h += `<h2 class="sec">简介</h2><div class="card"><div style="font-size:calc(13.5px * var(--fs));line-height:1.7">${esc(brief)}</div></div>`;
   /* 5. 规格网格 */
   const avgW = (st && st.s) ? (st.t / st.s).toFixed(0) + "轮/局" : "—";
   h += `<h2 class="sec">规格</h2><div class="specgrid">`
@@ -4988,8 +5081,8 @@ function cardLandingHTML(runId, nm, card, run){
       const prev = g.length > 72 ? g.slice(0, 72) + "…" : g;
       return `<div class="card opencard" onclick="chatWithOpening('${jq(runId)}','${jq(nm)}',${jq(i)})">`
         + `<div class="kv">开场${["一","二","三","四","五","六","七","八"][i] || (i+1)}</div>`
-        + `<div style="font-size:13px;margin-top:5px;line-height:1.6">${esc(prev)}</div>`
-        + `<div style="margin-top:8px;font-size:12px;color:var(--gold)">用这个开场开聊 ›</div></div>`;
+        + `<div style="font-size:calc(13px * var(--fs));margin-top:5px;line-height:1.6">${esc(prev)}</div>`
+        + `<div style="margin-top:8px;font-size:calc(12px * var(--fs));color:var(--gold)">用这个开场开聊 ›</div></div>`;
     }).join("");
   } else {
     h += `<div class="hint" style="margin:6px 2px">这张卡没有固定开场白，开聊后 AI 会根据人设现场生成开场。</div>`;
@@ -5044,7 +5137,7 @@ const wb = card.worldbook || [];
 const line = (k, v)=>`<div class="kvline"><b>${esc(k)}</b>：${esc(String(v == null ? "" : v))}</div>`;
 let h = `<button class="back" onclick="charDetail('${jq(runId)}','${jq(name)}')">${icon("back")} 返回</button>`
 + `<div class="hint" style="margin:2px 0 10px">开源卡：设定对所有人只读开放，可对照学习写卡思路，不可在此编辑。</div>`
-+ `<div class="card"><div class="name" style="font-size:14px">基本信息</div>`
++ `<div class="card"><div class="name" style="font-size:calc(14px * var(--fs))">基本信息</div>`
 + line("名字", card.name) + line("出处", card.novel || runId)
 + (card.creator ? line("作者", card.creator) : "")
 + (card.characterVersion ? line("版本", card.characterVersion) : "")
@@ -5105,18 +5198,18 @@ const _iron = RP_MEM.getIronLaw(runId, nm, _dc.id || null);
 const _chatsum = RP_MEM.getChatSummary(runId, nm);
 /* Tier2 #15: 简洁回复开关 (Janitor "Snappier, more concise replies.") */
 const _copt = getChatOpt(runId, nm);
-body = `<div class="card"><div class="name" style="font-size:14px">铁律记忆 · 永远最先注入${RP_AIFILL.btn("ironlaw_box","对"+nm+"的铁律","3~5条硬性要求，一条一行，如：绝不在人前提起穿越者的身份；对黛玉永远温柔","角色扮演：约束 AI 扮演 "+nm+" 时必须遵守的铁律")}</div>`
+body = `<div class="card"><div class="name" style="font-size:calc(14px * var(--fs))">铁律记忆 · 永远最先注入${RP_AIFILL.btn("ironlaw_box","对"+nm+"的铁律","3~5条硬性要求，一条一行，如：绝不在人前提起穿越者的身份；对黛玉永远温柔","角色扮演：约束 AI 扮演 "+nm+" 时必须遵守的铁律")}</div>`
 + `<div class="meta">不用等它自己学会的重要事实：对${esc(nm)}的硬性要求（如绝不做的事、必须遵守的设定），2000 字以内，每次对话必带，立即可用</div>`
 + `<div class="field" style="margin:8px 0 0"><textarea id="ironlaw_box" rows="4" maxlength="2000" placeholder="如：绝不在人前提起穿越者的身份；对黛玉永远温柔…" oninput="ironlawCount()">${esc(_iron)}</textarea></div>`
 + `<div class="btnrow"><span class="kv" id="ironlaw_cnt">${_iron.length}/2000</span><span style="flex:1"></span><button class="btn" onclick="saveIronLawUI()">保存铁律</button></div></div>`
-+ `<div class="card"><div class="name" style="font-size:14px">本聊摘要 · 手写长期记忆${RP_AIFILL.btn("chatsum_box","和"+nm+"的聊天摘要","2~3句话概括你和这个角色的当前关系与共同经历", "角色 "+nm+"；最近对话：\n"+RP_AIFILL._recentChatCtx(8,"nd_chat_"+runId+"_"+nm))}</div>`
++ `<div class="card"><div class="name" style="font-size:calc(14px * var(--fs))">本聊摘要 · 手写长期记忆${RP_AIFILL.btn("chatsum_box","和"+nm+"的聊天摘要","2~3句话概括你和这个角色的当前关系与共同经历", "角色 "+nm+"；最近对话：\n"+RP_AIFILL._recentChatCtx(8,"nd_chat_"+runId+"_"+nm))}</div>`
 + `<div class="meta">一句话概括这段聊天（1000 字以内），每次对话会最先注入，作为长期记忆</div>`
 + `<div class="field" style="margin:8px 0 0"><textarea id="chatsum_box" rows="3" maxlength="1000" placeholder="如：我们是青梅竹马，正在一起调查家族旧事…" oninput="chatsumCount()">${esc(_chatsum)}</textarea></div>`
 + `<div class="btnrow"><span class="kv" id="chatsum_cnt">${_chatsum.length}/1000</span><span style="flex:1"></span><button class="btn" onclick="saveChatSumUI()">保存摘要</button></div></div>`
-+ `<div class="card"><div class="name" style="font-size:14px">回复风格</div>`
++ `<div class="card"><div class="name" style="font-size:calc(14px * var(--fs))">回复风格</div>`
 + `<div class="field"><label><input id="concise_sw" type="checkbox" style="width:auto" ${_copt.concise?"checked":""}> 简洁回复（Snappier：回答简短精炼，节奏轻快；关掉则回复更长）</label></div>`
 + `<div class="btnrow"><button class="btn" onclick="saveConciseUI()">保存</button></div></div>`
-+ `<div class="card"><div class="name" style="font-size:14px">${st&&st.mood&&st.mood.state?esc(st.mood.state):"还没有心境记录"}</div>`
++ `<div class="card"><div class="name" style="font-size:calc(14px * var(--fs))">${st&&st.mood&&st.mood.state?esc(st.mood.state):"还没有心境记录"}</div>`
 + `<div class="meta">${n} 条近期记忆${st&&st.long?" · 有长远印象":""}</div>`
 + `<div class="btnrow" style="margin-top:8px"><button class="btn" onclick="detailOpenAlbum()">${icon("books")} 打开记忆事件簿</button></div></div>`;
 } else if(DETAIL.tab === "arc"){
@@ -5127,7 +5220,7 @@ body = (typeof RP_SOUL_CFG !== "undefined") ? RP_SOUL_CFG.soulViewHTML(card, run
 const h = getHistSafe(`nd_chat_${runId}_${nm}`).slice(-10);
 body = (h.map(m=>{
 const who = m.role==="user" ? "我" : nm;
-return `<div class="card"><div class="kv">${esc(who)}</div><div style="font-size:13px">${esc(m.content.slice(0,120))}${m.content.length>120?"…":""}</div></div>`;
+return `<div class="card"><div class="kv">${esc(who)}</div><div style="font-size:calc(13px * var(--fs))">${esc(m.content.slice(0,120))}${m.content.length>120?"…":""}</div></div>`;
 }).join("") || `<div class="empty">还没有聊天记录</div>`)
 + `<div class="btnrow" style="margin-top:12px"><button class="btn" onclick="chatWith('${jq(runId)}','${jq(nm)}')">${icon("chat")} 和${esc(nm)}开聊</button><button class="btn ghost" onclick="soulAnchors('${jq(runId)}','${jq(nm)}')">${icon("user")} 魂穿成${esc(nm)}</button></div>`;
 }
@@ -5172,17 +5265,17 @@ window.showRelManager = ()=>{
   });
   var v = document.getElementById("view");
   var html = `<h2 class="sec">🔗 关系管理</h2>
-    <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">聊天中关系会自动演变，锁定的关系 AI 不会再动</div>`;
-  if(!myRels.length) html += `<div class="card"><div style="font-size:13px;color:var(--ink-faint)">暂无关系数据</div></div>`;
+    <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint);margin-bottom:12px">聊天中关系会自动演变，锁定的关系 AI 不会再动</div>`;
+  if(!myRels.length) html += `<div class="card"><div style="font-size:calc(13px * var(--fs));color:var(--ink-faint)">暂无关系数据</div></div>`;
   myRels.forEach(function(r){
     var other = r.source_character === name ? r.target_character : r.source_character;
     var locked = r._locked;
-    var dyn = r._dynamic ? " <span style='font-size:11px;color:#e8a13c'>动态</span>" : "";
+    var dyn = r._dynamic ? " <span style='font-size:calc(11px * var(--fs));color:#e8a13c'>动态</span>" : "";
     html += `<div class="card" style="margin-bottom:8px;padding:12px">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div><b>${esc(other)}</b>${dyn}<br>
-        <span style="font-size:13px;color:var(--ink-faint)">${esc(r.relationship_summary || r.type || "")}</span></div>
-        <button class="btn${locked ? " primary" : ""}" style="font-size:12px;padding:4px 10px"
+        <span style="font-size:calc(13px * var(--fs));color:var(--ink-faint)">${esc(r.relationship_summary || r.type || "")}</span></div>
+        <button class="btn${locked ? " primary" : ""}" style="font-size:calc(12px * var(--fs));padding:4px 10px"
           onclick="AGENT_RELATIONS.setLock('${jq(runId)}','${jq(name)}','${jq(other)}',${!locked});showRelManager();">
           ${locked ? "🔒 已锁定" : "🔓 锁定"}</button>
       </div></div>`;
@@ -5197,17 +5290,17 @@ window.showCardEvo = ()=>{
   var pending = list.filter(function(s){ return s.status === "pending"; });
   var v = document.getElementById("view");
   var html = `<h2 class="sec">📝 角色卡更新建议 (${pending.length} 待处理)</h2>
-    <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">AI 观察到角色在聊天中的持久变化，建议更新到卡上。每条都要你确认，不会自动改。</div>`;
-  if(!pending.length) html += `<div class="card"><div style="font-size:13px;color:var(--ink-faint)">暂无待处理建议。聊得久一点，AI 会发现角色的成长。</div></div>`;
+    <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint);margin-bottom:12px">AI 观察到角色在聊天中的持久变化，建议更新到卡上。每条都要你确认，不会自动改。</div>`;
+  if(!pending.length) html += `<div class="card"><div style="font-size:calc(13px * var(--fs));color:var(--ink-faint)">暂无待处理建议。聊得久一点，AI 会发现角色的成长。</div></div>`;
   pending.forEach(function(s, i){
     var idx = list.indexOf(s);
     html += `<div class="card" style="margin-bottom:8px;padding:12px">
-      <div style="font-size:12px;color:var(--ink-faint)">字段：${esc(s.field)}</div>
-      <div style="font-size:13px;margin:6px 0"><b>建议：</b>${esc(s.newVal)}</div>
-      <div style="font-size:12px;color:var(--ink-faint)">理由：${esc(s.reason || "")}</div>
+      <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint)">字段：${esc(s.field)}</div>
+      <div style="font-size:calc(13px * var(--fs));margin:6px 0"><b>建议：</b>${esc(s.newVal)}</div>
+      <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint)">理由：${esc(s.reason || "")}</div>
       <div class="btnrow" style="margin-top:8px">
-        <button class="btn primary" style="font-size:12px" onclick="acceptCardEvo(${jq(idx)})">接受</button>
-        <button class="btn" style="font-size:12px" onclick="AGENT_CARDEVO.reject('${jq(runId)}','${jq(name)}',${idx});showCardEvo();">拒绝</button>
+        <button class="btn primary" style="font-size:calc(12px * var(--fs))" onclick="acceptCardEvo(${jq(idx)})">接受</button>
+        <button class="btn" style="font-size:calc(12px * var(--fs))" onclick="AGENT_CARDEVO.reject('${jq(runId)}','${jq(name)}',${idx});showCardEvo();">拒绝</button>
       </div></div>`;
   });
   html += `<button class="btn" onclick="showChat()">返回聊天</button>`;
@@ -5228,10 +5321,20 @@ window.acceptCardEvo = (idx)=>{
 /* ===== 浮生小助手 UI (2026-10-07) ===== */
 window.openAssistant = ()=>{
   if(document.getElementById("asst_win")) return;
+  /* P0-3：抽屉原先只有自己一层，右侧 12px 亮缝直接露出底层页面，观感像错位。
+     补一层遮罩压暗，抽屉才有"浮起来"的层次。 */
+  var sc = document.createElement("div");
+  sc.id = "asst_scrim";
+  sc.onclick = function(){ closeAssistant(); };
+  document.body.appendChild(sc);
   var w = document.createElement("div");
   w.id = "asst_win";
-  w.innerHTML = `<div class="asst_head"><span>💡 浮生小助手</span>
-    <button class="btn ghost" style="padding:4px 10px" onclick="closeAssistant()">✕</button></div>
+  w.setAttribute("role","dialog");
+  w.setAttribute("aria-modal","true");
+  w.setAttribute("aria-label","浮生小助手");
+  w.innerHTML = `<div class="asst_head"><span>浮生小助手</span>
+    <button class="btn ghost" style="padding:4px 10px" onclick="closeAssistant()"
+      aria-label="关闭小助手">✕</button></div>
     <div class="asst_msgs" id="asst_msgs"></div>
     <div class="asst_chips" id="asst_chips"></div>
     <div class="asst_input">
@@ -5246,7 +5349,17 @@ window.openAssistant = ()=>{
 };
 window.closeAssistant = ()=>{
   var w = document.getElementById("asst_win"); if(w) w.remove();
+  var s = document.getElementById("asst_scrim"); if(s) s.remove();
+  var f = document.getElementById("asst_fab"); if(f){ f.style.pointerEvents = ""; }
 };
+/* Escape 关抽屉：guard 一下 document（部分内嵌环境/测试桩没有 addEventListener） */
+try{
+  if(document && typeof document.addEventListener === "function"){
+    document.addEventListener("keydown", function(e){
+      if(e.key === "Escape" && document.getElementById("asst_win")) closeAssistant();
+    });
+  }
+}catch(e){}
 function renderAsstChips(){
   var c = document.getElementById("asst_chips"); if(!c) return;
   c.innerHTML = ASSISTANT.chips().map(function(ch){
@@ -5314,54 +5427,54 @@ window.showChatSettings = ()=>{
     if(typeof RP_WORLDSIM !== "undefined" && RP_WORLDSIM.enabled()){
       var st = RP_WORLDSIM.ensure(chatId, {novel: (((window.__DATA__||{}).runs||{})[runId]||{}).novel});
       var p = RP_WORLDSIM.curPlace(st);
-      wsHtml = `<div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:13px;margin-bottom:8px">🌍 世界状态</div>
-        <div style="font-size:13px;margin-bottom:4px">时间：${esc(RP_WORLDSIM.fmtTime(st))}</div>
-        <div style="font-size:13px;margin-bottom:4px">天气：${esc(RP_WORLDSIM.weatherName(st.wx))} · 地点：${esc(p.name)}</div>
-        ${(st.present && st.present.length) ? `<div style="font-size:13px;margin-bottom:4px">在场：${esc(st.present.join("、"))}</div>` : ""}
+      wsHtml = `<div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:calc(13px * var(--fs));margin-bottom:8px">🌍 世界状态</div>
+        <div style="font-size:calc(13px * var(--fs));margin-bottom:4px">时间：${esc(RP_WORLDSIM.fmtTime(st))}</div>
+        <div style="font-size:calc(13px * var(--fs));margin-bottom:4px">天气：${esc(RP_WORLDSIM.weatherName(st.wx))} · 地点：${esc(p.name)}</div>
+        ${(st.present && st.present.length) ? `<div style="font-size:calc(13px * var(--fs));margin-bottom:4px">在场：${esc(st.present.join("、"))}</div>` : ""}
         <div class="btnrow" style="margin-top:8px">
-          <button class="btn" style="font-size:12px" onclick="wsAdjustTimePrompt()">⏰ 调时间</button>
-          <button class="btn" style="font-size:12px" onclick="wsSetPlacePrompt()">📍 换地点</button>
+          <button class="btn" style="font-size:calc(12px * var(--fs))" onclick="wsAdjustTimePrompt()">⏰ 调时间</button>
+          <button class="btn" style="font-size:calc(12px * var(--fs))" onclick="wsSetPlacePrompt()">📍 换地点</button>
         </div></div>`;
     }
   }catch(e){}
 
   var html = `<h2 class="sec">🎛️ 聊天设置</h2>
-    <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">本次聊天的专属配置，不影响其他聊天</div>
+    <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint);margin-bottom:12px">本次聊天的专属配置，不影响其他聊天</div>
 
-    <div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:13px;margin-bottom:8px">🤖 AI 助手</div>
+    <div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:calc(13px * var(--fs));margin-bottom:8px">🤖 AI 助手</div>
       ${asstToggle("📚 Lorebook Keeper", "聊天自动提炼世界书", lkOn, "toggleLK")}
       ${asstToggle("🔍 Continuity Checker", "检查逻辑矛盾", ctOn, "toggleCT")}
       ${asstToggle("📝 角色卡审计", "建议角色成长更新", !ceOff, "toggleCE")}
       ${asstToggle("🔗 关系动态", "聊天中关系演变", !rdOff, "toggleRD")}
       ${typeof RP_SOUL_ORCH!=="undefined" ? asstToggle("👥 Soul 多智能体", "多角色并行独立回应", (function(){ try{ return localStorage.getItem("nd_soulmode_off_"+soulChatId())!=="1"; }catch(e){ return true; } })(), "toggleSoulMode") : ""}
       <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0">
-        <div><div style="font-size:13px">🚀 Push Story</div>
-        <div style="font-size:11px;color:var(--ink-faint)">${pushMode ? "已武装（" + (pushMode === "natural" ? "顺推" : "意外") + "），下条回复生效" : "一键推进剧情"}</div></div>
-        <button class="btn" style="font-size:12px;padding:4px 10px" onclick="togglePushStory(event);showChatSettings();">${pushMode ? "解除" : "武装"}</button>
+        <div><div style="font-size:calc(13px * var(--fs))">🚀 Push Story</div>
+        <div style="font-size:calc(11px * var(--fs));color:var(--ink-faint)">${pushMode ? "已武装（" + (pushMode === "natural" ? "顺推" : "意外") + "），下条回复生效" : "一键推进剧情"}</div></div>
+        <button class="btn" style="font-size:calc(12px * var(--fs));padding:4px 10px" onclick="togglePushStory(event);showChatSettings();">${pushMode ? "解除" : "武装"}</button>
       </div>
     </div>
 
-    <div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:13px;margin-bottom:8px">🎚️ 生成参数（本次聊天）</div>
+    <div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:calc(13px * var(--fs));margin-bottom:8px">🎚️ 生成参数（本次聊天）</div>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-        <span style="font-size:13px">温度</span>
+        <span style="font-size:calc(13px * var(--fs))">温度</span>
         <input id="cs_temp" type="number" step="0.1" min="0" max="2" value="${esc(tp)}" placeholder="默认"
           style="width:80px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:inherit">
-        <span style="font-size:13px">最大token</span>
+        <span style="font-size:calc(13px * var(--fs))">最大token</span>
         <input id="cs_maxtok" type="number" step="100" min="100" value="${esc(mt)}" placeholder="默认"
           style="width:90px;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:inherit">
-        <button class="btn" style="font-size:12px" onclick="saveChatParams()">保存</button>
+        <button class="btn" style="font-size:calc(12px * var(--fs))" onclick="saveChatParams()">保存</button>
       </div>
-      <div style="font-size:11px;color:var(--ink-faint)">留空用全局设置。温度越高越发散，0-2。</div>
+      <div style="font-size:calc(11px * var(--fs));color:var(--ink-faint)">留空用全局设置。温度越高越发散，0-2。</div>
     </div>
 
-    ${typeof RP_SOUL_CFG!=="undefined" ? `<div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:13px;margin-bottom:8px">🔌 Soul 模型（本次聊天覆盖）</div>
-      <div style="font-size:12px;color:var(--ink-faint);margin-bottom:6px">覆盖角色卡上的绑定，仅本次聊天有效</div>
+    ${typeof RP_SOUL_CFG!=="undefined" ? `<div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:calc(13px * var(--fs));margin-bottom:8px">🔌 Soul 模型（本次聊天覆盖）</div>
+      <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint);margin-bottom:6px">覆盖角色卡上的绑定，仅本次聊天有效</div>
       <div style="display:flex;gap:8px;align-items:center">
         <select id="cs_soul_profile" style="flex:1;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:inherit">
           <option value="">不覆盖（用角色绑定）</option>
           ${RP_SOUL_CFG.list().map(p=>`<option value="${esc(p.name)}" ${RP_SOUL_CFG.getChatOverride(chatId)===p.name?"selected":""}>${esc(p.name)} · ${esc(p.model||"")}</option>`).join("")}
         </select>
-        <button class="btn" style="font-size:12px" onclick="saveChatSoulProfile()">保存</button>
+        <button class="btn" style="font-size:calc(12px * var(--fs))" onclick="saveChatSoulProfile()">保存</button>
       </div></div>` : ""}
 
     ${wsHtml}
@@ -5370,11 +5483,11 @@ window.showChatSettings = ()=>{
     ${typeof RP_SOUL_CFG!=="undefined" ? `<div id="soul_perf_wrap" style="margin-bottom:8px">${RP_SOUL_CFG.perfHTML()}${RP_SOUL_CFG.costHTML()}</div>` : ""}
     ${typeof RP_SOUL_CFG!=="undefined" ? `<div style="margin-bottom:8px">${RP_SOUL_CFG.fallbackHTML()}${RP_SOUL_CFG.promptPreviewHTML()}</div>` : ""}
 
-    <div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:13px;margin-bottom:8px">🔗 快捷入口</div>
+    <div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:calc(13px * var(--fs));margin-bottom:8px">🔗 快捷入口</div>
       <div class="btnrow">
-        <button class="btn" style="font-size:12px" onclick="showRelManager()">关系管理</button>
-        <button class="btn" style="font-size:12px" onclick="showCardEvo()">卡更新建议</button>
-        <button class="btn" style="font-size:12px" onclick="loreEditor(CHAT.runId,'chat')">世界书</button>
+        <button class="btn" style="font-size:calc(12px * var(--fs))" onclick="showRelManager()">关系管理</button>
+        <button class="btn" style="font-size:calc(12px * var(--fs))" onclick="showCardEvo()">卡更新建议</button>
+        <button class="btn" style="font-size:calc(12px * var(--fs))" onclick="loreEditor(CHAT.runId,'chat')">世界书</button>
       </div>
     </div>
 
@@ -5383,9 +5496,9 @@ window.showChatSettings = ()=>{
 };
 function asstToggle(name, desc, on, fn){
   return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0">
-    <div><div style="font-size:13px">${name}</div>
-    <div style="font-size:11px;color:var(--ink-faint)">${desc}</div></div>
-    <button class="btn${on ? " primary" : ""}" style="font-size:12px;padding:4px 14px" onclick="${fn}();showChatSettings();">${on ? "开" : "关"}</button>
+    <div><div style="font-size:calc(13px * var(--fs))">${name}</div>
+    <div style="font-size:calc(11px * var(--fs));color:var(--ink-faint)">${desc}</div></div>
+    <button class="btn${on ? " primary" : ""}" style="font-size:calc(12px * var(--fs));padding:4px 14px" onclick="${fn}();showChatSettings();">${on ? "开" : "关"}</button>
   </div>`;
 }
 window.toggleLK = ()=>{ AGENT_LOREKEEPER.setEnabled(!AGENT_LOREKEEPER.isEnabled()); };
@@ -5444,7 +5557,7 @@ if(!LAST_SYSTEM){ alert("先发一句话，引擎组装好人设 prompt 后这�
 __backAction = ()=>showChat();
 titleEl.textContent = "人设 prompt 预览"; subEl.textContent = CHAT.name||"";
 view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回聊天</button>
-<pre style="white-space:pre-wrap;font-size:13px;background:#fff;border:1px solid #e5e0d8;border-radius:10px;padding:12px">${esc(LAST_SYSTEM)}</pre>`;
+<pre style="white-space:pre-wrap;font-size:calc(13px * var(--fs));background:#fff;border:1px solid #e5e0d8;border-radius:10px;padding:12px">${esc(LAST_SYSTEM)}</pre>`;
 window.scrollTo(0,0);
 };
 
@@ -5495,17 +5608,17 @@ const fidelityRows =
 __backAction = ()=>showChat();
 titleEl.innerHTML = icon("chart") + " Prompt 诊断"; subEl.textContent = CHAT.name || "";
 view.innerHTML = `<button class="back" onclick="showChat()">${icon("back")} 返回聊天</button>
-<div class="card"><div class="name" style="font-size:14px">预设：${esc(s.preset || "")}</div>
+<div class="card"><div class="name" style="font-size:calc(14px * var(--fs))">预设：${esc(s.preset || "")}</div>
 <div class="meta">上下文 ${s.maxCtx ?? "—"} · 可用预算 ${s.avail ?? "—"} tokens</div>
 <div class="storbar"><div class="storbar-fg" style="width:${sysPct.toFixed(1)}%"></div></div>
 <div class="storow"><span>系统段（含人设/记忆/世界书）</span><span>${s.sysTokens} tok</span></div>
 <div class="storow"><span>聊天历史（保留 ${s.histKept ?? "—"} 条）</span><span>${s.histTokens ?? "—"} tok${s.histDropped ? ` · 丢弃最早 ${s.histDropped} 条` : ""}</span></div></div>
-<div class="card"><div class="name" style="font-size:14px">各段 token</div>${segRows || '<div class="empty">无</div>'}</div>
-<div class="card"><div class="name" style="font-size:14px">记忆三池</div>${poolRows || '<div class="empty">本轮未注入记忆</div>'}
+<div class="card"><div class="name" style="font-size:calc(14px * var(--fs))">各段 token</div>${segRows || '<div class="empty">无</div>'}</div>
+<div class="card"><div class="name" style="font-size:calc(14px * var(--fs))">记忆三池</div>${poolRows || '<div class="empty">本轮未注入记忆</div>'}
 <div class="storow"><span>世界模拟注入</span><span>${lp.hasWorldsim ? "有" : "无"}</span></div>
 <div class="storow"><span>导演指令注入</span><span>${lp.hasDirector ? "有" : "无"}</span></div></div>
-<div class="card"><div class="name" style="font-size:14px">人设保真</div>${fidelityRows}</div>
-<div class="card"><div class="name" style="font-size:14px">丢弃情况</div>
+<div class="card"><div class="name" style="font-size:calc(14px * var(--fs))">人设保真</div>${fidelityRows}</div>
+<div class="card"><div class="name" style="font-size:calc(14px * var(--fs))">丢弃情况</div>
 <div class="kv">${dropped ? "整段丢弃：" + esc(dropped) : "无整段丢弃"}</div>
 ${(s.loreHits && s.loreHits.length) ? `<div class="kv" style="margin-top:6px">世界书命中：${s.loreHits.map(esc).join("、")}</div>` : ""}</div>
 <div style="height:40px"></div>`;
@@ -5734,9 +5847,9 @@ const warn = lsPct >= 80;
 return `<div class="setcard"><h3>本地存储用量</h3>
 <div class="storbar"><div class="storbar-fg${warn?" warn":""}" style="width:${pct.toFixed(1)}%"></div></div>
 <div class="stornum${warn?" warn":""}">${fmtBytes(su.total)} / 2 GB（${pct.toFixed(0)}%）${warn?" · 空间告急，建议清理":""}</div>
-<div class="storow"><span>浏览器本地存储<br><small style="color:var(--ink-faint);font-size:11px">上限 5MB，超限聊天无法保存</small></span><span class="${warn?"warn":""}">${fmtBytes(su.lsTotal||0)} / 5 MB（${lsPct.toFixed(0)}%）</span></div>
+<div class="storow"><span>浏览器本地存储<br><small style="color:var(--ink-faint);font-size:calc(11px * var(--fs))">上限 5MB，超限聊天无法保存</small></span><span class="${warn?"warn":""}">${fmtBytes(su.lsTotal||0)} / 5 MB（${lsPct.toFixed(0)}%）</span></div>
 ${su.groups.map(g=>`<div class="storow"><span>${g.label}</span><span>${g.keys} 项 · ${fmtBytes(g.bytes)}</span></div>`).join("")}
-<div class="storow" id="fileline"><span>大文件存储<br><small style="color:var(--ink-faint);font-size:11px">App 私有目录，上限 2GB</small></span><span>${su.fileCount} 个文件 · ${fmtBytes(su.fileBytes)}</span></div>
+<div class="storow" id="fileline"><span>大文件存储<br><small style="color:var(--ink-faint);font-size:calc(11px * var(--fs))">App 私有目录，上限 2GB</small></span><span>${su.fileCount} 个文件 · ${fmtBytes(su.fileBytes)}</span></div>
 <div class="storow" id="idbline"><span>浏览器大文件存储（估算）</span><span>统计中…</span></div>
 <div class="storow" id="idbcopied"><span>已备份到大文件存储</span><span>—</span></div>
 <div class="btnrow"><button class="btn ghost" onclick="if(confirm('清空所有单聊/群聊/穿越聊天记录？\n会清空记忆和关系，从头来过。'))clearChat()">清空聊天记录</button>
@@ -6121,7 +6234,7 @@ box.innerHTML = `① <span class='conn-ok'>${icon("check",14)} 地址/Key 有效
 + `② <span class='conn-ok'>${icon("check",14)} 模型 ${esc(cfg.model)} 可用</span>（${((Date.now()-t0)/1000).toFixed(1)}s，回复：${esc(String(reply).slice(0,20))}）`;
 }catch(e){
 box.innerHTML = `<span class="conn-bad">${icon("x",14)} ${esc(e.message)}</span><br>`
-+ `<span style="color:var(--ink-faint);font-size:12px">检查地址/Key/模型名，或手机网络/代理。</span>`;
++ `<span style="color:var(--ink-faint);font-size:calc(12px * var(--fs))">检查地址/Key/模型名，或手机网络/代理。</span>`;
 }
 };
 window.saveRpCfgUI = ()=>{
@@ -6507,7 +6620,7 @@ subEl.textContent = "";
 document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 view.innerHTML = `<div class="setcard">
 <div class="kv">${st?("更新于 "+new Date(st.updatedAt).toLocaleString()+(st.reason?" · 触发: "+st.reason:"")):"尚未运行"}</div>
-<pre style="white-space:pre-wrap;font-size:13px">${esc((st&&st.output)||"(空)")}</pre>
+<pre style="white-space:pre-wrap;font-size:calc(13px * var(--fs))">${esc((st&&st.output)||"(空)")}</pre>
 <div class="btnrow"><button class="btn ghost" onclick="showATasks('${jq(name)}')">返回</button></div></div>`;
 };
 window.runATaskNow = async (name, id)=>{
@@ -6560,7 +6673,7 @@ ops:`<button class="go" onclick="event.stopPropagation();chatWith('custom','${jq
 +`<button onclick="event.stopPropagation();editCard('custom','${jq(c.id)}')">编辑</button>`
 +`<button onclick="event.stopPropagation();exportCard('${jq(c.id)}')">导出</button>`
 +`<button class="danger" onclick="event.stopPropagation();if(confirm('删除这张角色卡?')){RP_WRITER.delCustom('${jq(c.id)}');showWriter();}">删</button>`
-})).join("")+`</div>`:`<div class="empty"><span class="big">🎭</span>还没有自创角色<br><span style="font-size:12px">点下面「新建写卡」，和 Ruby 一起创作</span></div>`}
+})).join("")+`</div>`:`<div class="empty"><span class="big">🎭</span>还没有自创角色<br><span style="font-size:calc(12px * var(--fs))">点下面「新建写卡」，和 Ruby 一起创作</span></div>`}
 <div class="btnrow"><button class="btn" onclick="newWriter()">${icon("plus")} 新建写卡</button></div>
 <div class="hint">写卡全程走你在设置里配的大模型接口, 每步约 1-3 次调用。写完的角色可直接开聊, 也能配分析任务。</div>`;
 };
@@ -6596,11 +6709,11 @@ btn.disabled = false; cancel.style.display = "none"; QG_ABORT = null;
 let VIBE_STATE = {desc: "", attempt: 0, card: null, busy: false};
 const VIBE_PHASES = ["正在生成角色…", "正在构思性格…", "正在写开场白…", "正在润色卡片…"];
 function vibePreviewHTML(card){
-return `<div class="card" style="background:#fffdf7"><div class="name" style="font-size:16px">🎭 ${esc(card.name || "未命名")}</div>
-<div class="kv">性格</div><div style="font-size:13px;margin-bottom:6px">${esc(card.personality || "—")}</div>
-<div class="kv">背景</div><div style="font-size:13px;margin-bottom:6px">${esc(card.background || "—")}</div>
-<div class="kv">开场白</div><div class="bub" style="font-size:13px;margin-bottom:6px">${esc(card.greeting || "—")}</div>
-<div class="kv">示例对话</div><div style="font-size:12px;white-space:pre-wrap;color:#555">${esc(card.exampleDialogue || "—")}</div>
+return `<div class="card" style="background:#fffdf7"><div class="name" style="font-size:calc(16px * var(--fs))">🎭 ${esc(card.name || "未命名")}</div>
+<div class="kv">性格</div><div style="font-size:calc(13px * var(--fs));margin-bottom:6px">${esc(card.personality || "—")}</div>
+<div class="kv">背景</div><div style="font-size:calc(13px * var(--fs));margin-bottom:6px">${esc(card.background || "—")}</div>
+<div class="kv">开场白</div><div class="bub" style="font-size:calc(13px * var(--fs));margin-bottom:6px">${esc(card.greeting || "—")}</div>
+<div class="kv">示例对话</div><div style="font-size:calc(12px * var(--fs));white-space:pre-wrap;color:#555">${esc(card.exampleDialogue || "—")}</div>
 <div class="btnrow" style="margin-top:10px">
 <button class="btn ghost" onclick="vibeGen(true)">🎲 换一批</button>
 <button class="btn ghost" onclick="vibeToManual()">✏️ 手动微调</button>
@@ -7052,7 +7165,7 @@ function plotlinePickBook(){
   view.innerHTML = `<button class="back" onclick="showTraverse()">‹ 返回穿越</button>`
     + (runs.length ? runs.map(r=>`<div class="card" onclick="plotlinePickStage('${jq(r.run_id)}')">
       <div class="name">${esc(r.novel)}</div><div class="meta">${esc(r.run_id)} · <span class="badge">有世界卡</span></div></div>`).join("")
-      : `<div class="empty">暂无带世界卡的书<br><span style="font-size:12px">管线执行 worldcard 阶段后自动出现</span></div>`);
+      : `<div class="empty">暂无带世界卡的书<br><span style="font-size:calc(12px * var(--fs))">管线执行 worldcard 阶段后自动出现</span></div>`);
   window.scrollTo(0,0);
 }
 function plotlinePickStage(runId){
@@ -7096,7 +7209,7 @@ function goldenPickBook(){
       <div class="row">${cover?`<img class="bookcover gbk" src="${esc(cover)}" alt="${esc(r.novel)}封面" loading="lazy" onerror="this.remove()">`:""}<div><div class="name">《${esc(r.novel)}》</div>
       <div class="meta">${esc(r.run_id)}${resumable[r.run_id]?' · <span class="badge">可继续</span>':""}</div>
       </div><div class="tm-go" style="margin-left:auto">›</div></div></div>`;}).join("")
-      : `<div class="empty">暂无带世界卡的书<br><span style="font-size:12px">管线执行 worldcard 阶段后自动出现</span></div>`);
+      : `<div class="empty">暂无带世界卡的书<br><span style="font-size:calc(12px * var(--fs))">管线执行 worldcard 阶段后自动出现</span></div>`);
   window._goldenRuns = runs;
   window.scrollTo(0,0);
 }
@@ -7505,8 +7618,8 @@ window.travEventSearch = (runId)=>{
     listEl.innerHTML = events.map((e,i)=>`
       <div class="kvline" style="display:block;cursor:pointer;padding:8px;border:1px solid var(--line-soft);border-radius:8px;margin-bottom:6px"
         onclick="travEventPick(${jq(i)})" data-idx="${i}">
-        <div style="font-size:13px">${esc(e.text.slice(0,80))}${e.text.length>80?"…":""}</div>
-        <div style="font-size:11px;color:var(--ink-faint)">${e.chapter?("第"+e.chapter+"回 · "):""}${esc(e.location||"")}</div>
+        <div style="font-size:calc(13px * var(--fs))">${esc(e.text.slice(0,80))}${e.text.length>80?"…":""}</div>
+        <div style="font-size:calc(11px * var(--fs));color:var(--ink-faint)">${e.chapter?("第"+e.chapter+"回 · "):""}${esc(e.location||"")}</div>
       </div>`).join("");
     window.__travEvents = events;
   };
@@ -7870,11 +7983,11 @@ window.travIdentityView = ()=>{
   document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   titleEl.innerHTML = icon("user")+" 我的身份"; subEl.textContent = RP_TRAVERSE.MODES[trav.mode]||"";
   const body = trav.mode==="soul"
-    ? `<div class="card"><div class="name" style="font-size:16px">${esc(trav.charName)}</div>
+    ? `<div class="card"><div class="name" style="font-size:calc(16px * var(--fs))">${esc(trav.charName)}</div>
        <div class="meta">${esc(trav.worldName)} · ${esc(trav.anchorTitle||"")}</div>
        <div class="kv" style="margin-top:8px">你是玩家本人，正在扮演 TA。能做的只有 TA 能做的，知道的只有 TA 知道的。</div></div>`
     : trav.mode==="isekai"
-    ? `<div class="card"><div class="name" style="font-size:16px">${esc(trav.charName)}</div>
+    ? `<div class="card"><div class="name" style="font-size:calc(16px * var(--fs))">${esc(trav.charName)}</div>
        <div class="meta">${esc(trav.srcName||"")} → ${esc(trav.worldName)}</div>
        <div class="kv" style="margin-top:8px">${esc(trav.fusion==="reborn"?"转生：AI 安排目标世界新身份，保留性格与记忆":"异乡人：完整保留原身份记忆，目标世界视你为异人")}</div></div>`
     : (()=>{

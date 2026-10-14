@@ -73,11 +73,11 @@ function renderUsage(pkgId){
   }).join(" · ");
 
   return `<div class="card" style="margin-bottom:12px">
-    <div style="font-size:13px;font-weight:600;margin-bottom:8px">🧠 记忆用量</div>
+    <div style="font-size:calc(13px * var(--fs));font-weight:600;margin-bottom:8px">🧠 记忆用量</div>
     <div style="height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin-bottom:6px">
       <div style="height:100%;width:${pct}%;background:${color};border-radius:4px"></div>
     </div>
-    <div style="font-size:12px;color:var(--ink-faint)">
+    <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint)">
       约 ${usage.total.toLocaleString()} tokens (${pct}%) · ${usage.cards} 个角色<br>
       ${detail}
     </div>

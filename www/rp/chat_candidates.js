@@ -43,7 +43,7 @@ function current(runId, name, msgIdx){
 function renderSwitcher(runId, name, msgIdx){
   var c = current(runId, name, msgIdx);
   if(!c || c.total < 2) return "";
-  return `<div style="font-size:11px;color:var(--ink-faint);margin-top:4px;display:flex;gap:8px;align-items:center" data-ccrun="${ccEsc(runId)}" data-ccname="${ccEsc(name)}" data-ccidx="${msgIdx}">
+  return `<div style="font-size:calc(11px * var(--fs));color:var(--ink-faint);margin-top:4px;display:flex;gap:8px;align-items:center" data-ccrun="${ccEsc(runId)}" data-ccname="${ccEsc(name)}" data-ccidx="${msgIdx}">
     <a href="javascript:void(0)" data-ccact="switch" data-ccdir="-1">◀</a>
     <span>${c.idx + 1}/${c.total}</span>
     <a href="javascript:void(0)" data-ccact="switch" data-ccdir="1">▶</a>

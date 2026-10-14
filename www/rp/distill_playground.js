@@ -37,7 +37,7 @@ if(!card) return;
 var v = document.getElementById("view");
 v.innerHTML = `
 <h2 class="sec">🎮 试玩 · ${esc(name)}</h2>
-<div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">试聊 ${S.maxTurns} 轮，检验人设。满意后确认，不满意可重新生成。</div>
+<div style="font-size:calc(12px * var(--fs));color:var(--ink-faint);margin-bottom:12px">试聊 ${S.maxTurns} 轮，检验人设。满意后确认，不满意可重新生成。</div>
 <div id="pgLog" style="min-height:200px;max-height:400px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:12px"></div>
 <div style="display:flex;gap:8px">
 <input id="pgInput" placeholder="说点什么..." style="flex:1;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg)">

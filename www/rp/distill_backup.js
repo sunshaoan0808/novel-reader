@@ -60,12 +60,12 @@ function checkNeeded(){
 function renderBanner(){
   var needed = checkNeeded();
   if(!needed.length) return "";
-  return `<div style="font-size:13px;color:#f0ad4e;background:rgba(240,173,78,.1);border:1px solid #f0ad4e;border-radius:8px;padding:10px;margin-bottom:12px">
+  return `<div style="font-size:calc(13px * var(--fs));color:#f0ad4e;background:rgba(240,173,78,.1);border:1px solid #f0ad4e;border-radius:8px;padding:10px;margin-bottom:12px">
     💾 以下剧本包超过 ${getDays()} 天未备份：
     ${needed.map(function(n){ return `<div>· ${esc(n.novel)} (${n.daysAgo} 天前)</div>`; }).join("")}
     <div style="margin-top:8px">
-      <button class="btn" style="font-size:12px" onclick="DISTILL_BACKUP.dismiss()">稍后提醒</button>
-      <button class="btn" style="font-size:12px" onclick="DISTILL_BACKUP.gotoSettings()">设置</button>
+      <button class="btn" style="font-size:calc(12px * var(--fs))" onclick="DISTILL_BACKUP.dismiss()">稍后提醒</button>
+      <button class="btn" style="font-size:calc(12px * var(--fs))" onclick="DISTILL_BACKUP.gotoSettings()">设置</button>
     </div>
   </div>`;
 }

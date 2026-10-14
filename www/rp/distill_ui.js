@@ -67,8 +67,8 @@ function renderTaskHistory(){
   return `<h2 class="sec">历史任务 (${ts.length})</h2>` +
     ts.map(function(t){
       return `<div class="card" style="padding:10px;margin-bottom:8px">
-        <div style="font-weight:600;font-size:13px">${esc(t.novel || t.id)}</div>
-        <div style="font-size:11px;color:var(--ink-faint)">${esc(t.created_at || "")} · ${esc(t.status || "排队中")}</div>
+        <div style="font-weight:600;font-size:calc(13px * var(--fs))">${esc(t.novel || t.id)}</div>
+        <div style="font-size:calc(11px * var(--fs));color:var(--ink-faint)">${esc(t.created_at || "")} · ${esc(t.status || "排队中")}</div>
       </div>`;
     }).join("");
 }
@@ -76,13 +76,21 @@ function renderTaskHistory(){
 function renderUpload(){
   var pkgs = DISTILL_PACKAGE.listPackages();
   return `<div class="card">
-    <div style="font-size:13px;color:var(--ink-dim);margin-bottom:12px">
+    <div style="font-size:calc(13px * var(--fs));color:var(--ink-dim);margin-bottom:12px">
       上传小说，自动发现角色，蒸馏成剧本包。LLM 走在线 API。
     </div>
     <div class="field">
       <label>小说文件 (.txt)</label>
-      <input type="file" id="d_file" accept=".txt" style="width:100%">
-      <div id="d_fileinfo" style="font-size:12px;color:var(--ink-faint);margin-top:4px"></div>
+      <!-- P0-22：原生 <input type=file> 在 WebView 里是浏览器默认外观 + 英文文案
+           （"Choose File / No file chosen"），与全站墨金调完全脱节。改成自绘上传区：
+           真 input 藏起来，label 当可点目标，未选文件时给中文空状态。 -->
+      <input type="file" id="d_file" accept=".txt" class="d_fileinput">
+      <label class="dropzone" for="d_file" id="d_dropzone">
+        <span class="dz-ico" id="d_dzico">${typeof icon === "function" ? icon("upload", 20) : ""}</span>
+        <span class="dz-main" id="d_dzmain">选择小说文件</span>
+        <span class="dz-sub" id="d_dzsub">点这里从手机里挑一个 .txt</span>
+      </label>
+      <div id="d_fileinfo" class="dz-info"></div>
     </div>
     <div class="btnrow">
       <button class="btn primary" id="d_next0" disabled>下一步 →</button>
@@ -93,7 +101,7 @@ function renderUpload(){
     pkgs.map(function(p){
       return `<div class="card" style="padding:12px" data-dact="openPackage" data-did="${p.id}">
         <div style="font-weight:600">${esc(p.novel)}</div>
-        <div style="font-size:12px;color:var(--ink-faint)">${p.charCount} 个角色 · ${new Date(p.created).toLocaleDateString()}</div>
+        <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint)">${p.charCount} 个角色 · ${new Date(p.created).toLocaleDateString()}</div>
       </div>`;
     }).join("") : ""}`;
 }
@@ -106,11 +114,11 @@ function renderDiscover(){
   }
   var warnHtml = "";
   if(S.discovered.warnings && S.discovered.warnings.length){
-    warnHtml = `<div style="font-size:12px;color:#f0ad4e;background:rgba(240,173,78,.1);border:1px solid #f0ad4e;border-radius:6px;padding:8px;margin-bottom:12px">⚠️ ${S.discovered.warnings.map(esc).join("<br>")}</div>`;
+    warnHtml = `<div style="font-size:calc(12px * var(--fs));color:#f0ad4e;background:rgba(240,173,78,.1);border:1px solid #f0ad4e;border-radius:6px;padding:8px;margin-bottom:12px">⚠️ ${S.discovered.warnings.map(esc).join("<br>")}</div>`;
   }
   return `<div class="card">
     ${warnHtml}
-    <div style="font-size:13px;margin-bottom:12px">发现 <b>${S.discovered.length}</b> 个角色，勾选要蒸馏的：</div>
+    <div style="font-size:calc(13px * var(--fs));margin-bottom:12px">发现 <b>${S.discovered.length}</b> 个角色，勾选要蒸馏的：</div>
     <div style="max-height:400px;overflow-y:auto">
     ${S.discovered.map(function(c, i){
       var checked = S.selected[c.name] !== false ? "checked" : "";
@@ -170,8 +178,8 @@ function renderConfig(){
       modelOpts = `<option value="${esc(curModel)}" selected>${esc(curModel)}</option>` + modelOpts;
     }
     llmBlock = `<div class="field">
-      <label>LLM <span style="font-size:11px;color:var(--gold)">✓ ${keySrc}的 Key，无需填写</span></label>
-      <div style="font-size:12px;color:var(--ink-faint)">Key: ${esc(llmCfg.key.slice(0,4))}****${esc(llmCfg.key.slice(-4))}</div>
+      <label>LLM <span style="font-size:calc(11px * var(--fs));color:var(--gold)">✓ ${keySrc}的 Key，无需填写</span></label>
+      <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint)">Key: ${esc(llmCfg.key.slice(0,4))}****${esc(llmCfg.key.slice(-4))}</div>
     </div>
     <div class="field">
       <label>模型</label>
@@ -180,13 +188,13 @@ function renderConfig(){
     </div>`;
   }else{
     llmBlock = `<div class="field">
-      <label>LLM API Key <span style="font-size:11px;color:var(--ink-faint)">（设置页也未配置，请填写）</span></label>
+      <label>LLM API Key <span style="font-size:calc(11px * var(--fs));color:var(--ink-faint)">（设置页也未配置，请填写）</span></label>
       <input type="password" id="d_key" value="" placeholder="OpenAI 兼容接口 Key" style="width:100%">
     </div>`;
   }
   return `<div class="card">
-    <div style="font-size:13px;margin-bottom:12px">先配置 LLM，再发现角色
-      <a href="javascript:void(0)" onclick="DISTILL_UI.qaMode(true)" style="font-size:12px;margin-left:8px">💬 换问答式</a></div>
+    <div style="font-size:calc(13px * var(--fs));margin-bottom:12px">先配置 LLM，再发现角色
+      <a href="javascript:void(0)" onclick="DISTILL_UI.qaMode(true)" style="font-size:calc(12px * var(--fs));margin-left:8px">💬 换问答式</a></div>
     ${llmBlock}
     <div class="field">
       <label>蒸馏深度</label>
@@ -206,12 +214,12 @@ function renderConfigQA(){
   var q = QA_QUESTIONS[QA_STATE.step];
   if(!q) return "";
   var html = `<div class="card">
-    <div style="font-size:13px;margin-bottom:12px">💬 ${esc(q.q)}
-      <a href="javascript:void(0)" onclick="DISTILL_UI.qaMode(false)" style="font-size:12px;margin-left:8px">切回表单</a></div>`;
+    <div style="font-size:calc(13px * var(--fs));margin-bottom:12px">💬 ${esc(q.q)}
+      <a href="javascript:void(0)" onclick="DISTILL_UI.qaMode(false)" style="font-size:calc(12px * var(--fs));margin-left:8px">切回表单</a></div>`;
   q.options.forEach(function(o){
     html += `<button class="btn" style="width:100%;margin-bottom:8px;text-align:left" data-dact="qaAnswer" data-dqid="${q.id}" data-dv="${o.v}">
-      <b>${esc(o.t)}</b>${o.rec ? ' <span style="color:var(--gold);font-size:11px">推荐</span>' : ""}
-      ${o.d ? `<div style="font-size:12px;color:var(--ink-faint)">${esc(o.d)}</div>` : ""}
+      <b>${esc(o.t)}</b>${o.rec ? ' <span style="color:var(--gold);font-size:calc(11px * var(--fs))">推荐</span>' : ""}
+      ${o.d ? `<div style="font-size:calc(12px * var(--fs));color:var(--ink-faint)">${esc(o.d)}</div>` : ""}
     </button>`;
   });
   html += `</div>`;
@@ -222,26 +230,26 @@ function renderPlan(){
   var p = S.plan;
   if(!p) return `<div class="card"><div>正在生成计划书...</div></div>`;
   return `<div class="card">
-    <div style="font-size:15px;font-weight:600;margin-bottom:12px">蒸馏计划书</div>
+    <div style="font-size:calc(15px * var(--fs));font-weight:600;margin-bottom:12px">蒸馏计划书</div>
 
-    <div style="font-size:13px;font-weight:600;margin:12px 0 6px">一、蒸馏角色 (${p.chars.length} 人)</div>
+    <div style="font-size:calc(13px * var(--fs));font-weight:600;margin:12px 0 6px">一、蒸馏角色 (${p.chars.length} 人)</div>
     ${p.chars.map(function(c){
-      return `<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--line)">
-        <b>${esc(c.name)}</b> <span style="font-size:11px;color:var(--gold)">★${c.importance}</span>
-        <div style="font-size:12px;color:var(--ink-dim);margin-top:2px">推荐理由: ${esc(c.reason)}</div>
+      return `<div style="font-size:calc(13px * var(--fs));padding:6px 0;border-bottom:1px solid var(--line)">
+        <b>${esc(c.name)}</b> <span style="font-size:calc(11px * var(--fs));color:var(--gold)">★${c.importance}</span>
+        <div style="font-size:calc(12px * var(--fs));color:var(--ink-dim);margin-top:2px">推荐理由: ${esc(c.reason)}</div>
       </div>`;
     }).join("")}
 
-    <div style="font-size:13px;font-weight:600;margin:12px 0 6px">二、蒸馏深度</div>
-    <div style="font-size:13px">${p.depth === "full" ? "完整 (画像+关系+剧情+世界书)" : "快速 (画像+关系)"}</div>
+    <div style="font-size:calc(13px * var(--fs));font-weight:600;margin:12px 0 6px">二、蒸馏深度</div>
+    <div style="font-size:calc(13px * var(--fs))">${p.depth === "full" ? "完整 (画像+关系+剧情+世界书)" : "快速 (画像+关系)"}</div>
 
-    <div style="font-size:13px;font-weight:600;margin:12px 0 6px">三、预估成本</div>
-    <div style="font-size:13px;color:var(--ink-dim)">
+    <div style="font-size:calc(13px * var(--fs));font-weight:600;margin:12px 0 6px">三、预估成本</div>
+    <div style="font-size:calc(13px * var(--fs));color:var(--ink-dim)">
       约 ${p.estCalls} 次 API 调用 · 预计 ${p.estTime} · ${p.estChunks} 个文本块
     </div>
 
-    <div style="font-size:13px;font-weight:600;margin:12px 0 6px">四、不做清单</div>
-    <div style="font-size:13px;color:var(--ink-dim)">${p.excludes.map(esc).join("<br>")}</div>
+    <div style="font-size:calc(13px * var(--fs));font-weight:600;margin:12px 0 6px">四、不做清单</div>
+    <div style="font-size:calc(13px * var(--fs));color:var(--ink-dim)">${p.excludes.map(esc).join("<br>")}</div>
 
     <div class="btnrow" style="margin-top:16px">
       <button class="btn" id="d_backplan">← 返回修改</button>
@@ -334,7 +342,7 @@ function renderDistill(){
     <div id="d_stages"></div>
     <div id="d_bar" style="height:8px;background:var(--line);border-radius:4px;margin-top:12px">
       <i style="display:block;height:100%;width:0;background:var(--gold);border-radius:4px"></i></div>
-    <div id="d_msg" style="font-size:12px;margin-top:8px">准备...</div>
+    <div id="d_msg" style="font-size:calc(12px * var(--fs));margin-top:8px">准备...</div>
     ${pauseBtn ? `<div class="btnrow" style="margin-top:12px">${pauseBtn}</div>` : ""}
   </div><div id="d_results"></div>`;
 }
@@ -356,11 +364,11 @@ function restoreStages(){
 function renderPackages(){
   var pkgs = DISTILL_PACKAGE.listPackages();
   if(!pkgs.length) return `<div class="empty">还没有剧本包</div>`;
-  var citeWarn = S.citationWarnings ? `<div style="font-size:12px;color:#f0ad4e;margin:8px 0">⚠️ ${esc(S.citationWarnings)}</div>` : "";
+  var citeWarn = S.citationWarnings ? `<div style="font-size:calc(12px * var(--fs));color:#f0ad4e;margin:8px 0">⚠️ ${esc(S.citationWarnings)}</div>` : "";
   return `<h2 class="sec">剧本包 (${pkgs.length})</h2>` + citeWarn + pkgs.map(function(p){
     return `<div class="card" style="padding:12px" data-dact="openPackage" data-did="${p.id}">
       <div style="font-weight:600">${esc(p.novel)}</div>
-      <div style="font-size:12px;color:var(--ink-faint)">${p.charCount} 个角色</div>
+      <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint)">${p.charCount} 个角色</div>
     </div>`;
   }).join("");
 }
@@ -424,6 +432,16 @@ function onFile(e){
     document.getElementById("d_fileinfo").textContent =
       file.name + " · " + S.text.length + " 字 · " + S.chunks.length + " 块";
     document.getElementById("d_next0").disabled = false;
+    /* P0-22：选好后把上传区切到"已选"态（换图标 + 主副文案），
+       状态写在用户看得到的地方，不是底部一行小字 */
+    var dz = document.getElementById("d_dropzone");
+    if(dz) dz.classList.add("has-file");
+    var ico = document.getElementById("d_dzico");
+    if(ico && typeof icon === "function") ico.innerHTML = icon("check", 20);
+    var dzm = document.getElementById("d_dzmain");
+    if(dzm) dzm.textContent = file.name.replace(/\.txt$/i, "");
+    var dzs = document.getElementById("d_dzsub");
+    if(dzs) dzs.textContent = "点这里换一个文件";
   };
   rd.readAsText(file, "utf-8");
 }
@@ -480,7 +498,7 @@ async function onStartDistill(){
 
   var stEl = document.getElementById("d_stages");
   stEl.innerHTML = stages.map(function(s){
-    return `<div id="d_stage_${s.id}" style="font-size:13px;padding:4px 0;color:var(--ink-faint)">○ ${s.label}</div>`;
+    return `<div id="d_stage_${s.id}" style="font-size:calc(13px * var(--fs));padding:4px 0;color:var(--ink-faint)">○ ${s.label}</div>`;
   }).join("");
 
   function setStage(id, st){
@@ -650,7 +668,7 @@ function openPackage(id){
     }
   }catch(e){}
   v.innerHTML = `<h2 class="sec">${esc(pkg.novel)}</h2>
-    <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">剧本包 · ${cards.length} 个角色${wbCount ? " · " + wbCount + " 条世界书" : ""}</div>
+    <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint);margin-bottom:12px">剧本包 · ${cards.length} 个角色${wbCount ? " · " + wbCount + " 条世界书" : ""}</div>
     ${qualityHtml}
     ${memHtml}
     ${wbCount ? `<button class="btn" style="margin-bottom:12px" data-dact="showWorldbook" data-did="${id}">📖 世界书 (${wbCount})</button>` : ""}
@@ -661,7 +679,7 @@ function openPackage(id){
     ${cards.map(function(c){
       return `<div class="card" style="padding:12px" data-dact="openCharacter" data-did="${id}" data-dname="${escA(c.name)}">
         <div style="font-weight:600">${esc(c.name)}</div>
-        <div style="font-size:11px;color:var(--ink-faint)">★${c.importance} ${c.hasCard ? "· 已蒸馏" : ""}</div>
+        <div style="font-size:calc(11px * var(--fs));color:var(--ink-faint)">★${c.importance} ${c.hasCard ? "· 已蒸馏" : ""}</div>
       </div>`;
     }).join("")}
     </div>
@@ -683,7 +701,7 @@ function renderAnnotated(text){
       var label = DISTILL_PROVENANCE.SOURCE_LABEL[s.toLowerCase()] || s;
       var color = DISTILL_PROVENANCE.SOURCE_COLOR[s.toLowerCase()] || "var(--ink-faint)";
       var title = c ? "来源: " + c : label;
-      return `<span style="font-size:10px;color:${color};border:1px solid ${color};border-radius:3px;padding:0 4px;margin-left:4px" title="${esc(title)}">${label}</span>`;
+      return `<span style="font-size:calc(10px * var(--fs));color:${color};border:1px solid ${color};border-radius:3px;padding:0 4px;margin-left:4px" title="${esc(title)}">${label}</span>`;
     });
 }
 
@@ -713,7 +731,7 @@ function openCharacter(pkgId, name, stage){
         return `<button class="btn" style="flex:1;border-color:${active}" data-dact="openCharacter" data-did="${pkgId}" data-dname="${escA(name)}" data-dstage="${s}">${label}</button>`;
       }).join("")}
     </div>
-    <div style="font-size:11px;color:var(--ink-faint);margin-bottom:8px">当前查看: ${stage === "early" ? "前期 (防剧透)" : stage === "mid" ? "中期" : "后期 (全量)"}</div>
+    <div style="font-size:calc(11px * var(--fs));color:var(--ink-faint);margin-bottom:8px">当前查看: ${stage === "early" ? "前期 (防剧透)" : stage === "mid" ? "中期" : "后期 (全量)"}</div>
     <div class="card">
       ${stageData.core_identity ? `<div class="kvline"><b>身份</b>：${renderAnnotated(stageData.core_identity)}</div>` : ""}
       ${stageData.brief_intro ? `<div class="kvline"><b>简介</b>：${renderAnnotated(stageData.brief_intro)}</div>` : ""}
@@ -727,8 +745,8 @@ function openCharacter(pkgId, name, stage){
       ${(stageData.interests || stageData.fears) ? `<div class="kvline"><b>心理</b>：${stageData.interests ? "趣 " + renderAnnotated(stageData.interests) : ""}${stageData.fears ? " / 惧 " + renderAnnotated(stageData.fears) : ""}</div>` : ""}
     </div>
     ${provStats ? `<div class="card" style="margin-top:12px">
-      <div style="font-size:13px;font-weight:600;margin-bottom:8px">出处统计</div>
-      <div style="font-size:12px">
+      <div style="font-size:calc(13px * var(--fs));font-weight:600;margin-bottom:8px">出处统计</div>
+      <div style="font-size:calc(12px * var(--fs))">
         <span style="color:${DISTILL_PROVENANCE.SOURCE_COLOR.canon}">●</span> 原文实证 ${provStats.canon || 0}
         <span style="color:${DISTILL_PROVENANCE.SOURCE_COLOR.ref};margin-left:8px">●</span> 间接旁证 ${provStats.ref || 0}
         <span style="color:${DISTILL_PROVENANCE.SOURCE_COLOR.inference};margin-left:8px">●</span> 合理推断 ${provStats.inference || 0}
@@ -743,10 +761,10 @@ function openCharacter(pkgId, name, stage){
       }catch(e){}
       if(!openings.length) return "";
       return `<div class="card" style="margin-top:12px">
-        <div style="font-size:13px;font-weight:600;margin-bottom:8px">💬 开场白 (${openings.length})</div>
+        <div style="font-size:calc(13px * var(--fs));font-weight:600;margin-bottom:8px">💬 开场白 (${openings.length})</div>
         ${openings.map(function(o, i){
-          return `<div style="font-size:12px;padding:6px 0;border-bottom:1px solid var(--line)">
-            <div style="color:var(--gold);font-size:11px">${esc(o.situation || ("开场" + (i+1)))}</div>
+          return `<div style="font-size:calc(12px * var(--fs));padding:6px 0;border-bottom:1px solid var(--line)">
+            <div style="color:var(--gold);font-size:calc(11px * var(--fs))">${esc(o.situation || ("开场" + (i+1)))}</div>
             <div style="margin-top:2px">${esc(o.text.slice(0, 120))}${o.text.length > 120 ? "..." : ""}</div>
           </div>`;
         }).join("")}
@@ -754,7 +772,7 @@ function openCharacter(pkgId, name, stage){
       </div>`;
     }()}
     <div class="card" style="margin-top:12px">
-      <div style="font-size:13px;font-weight:600;margin-bottom:8px">🎚️ 性格微调 (Tavo)</div>
+      <div style="font-size:calc(13px * var(--fs));font-weight:600;margin-bottom:8px">🎚️ 性格微调 (Tavo)</div>
       ${["rigor", "breadth", "style"].map(function(axis){
         var labels = {rigor: ["严谨", "想象"], breadth: ["单一", "多面"], style: ["固定", "多变"]};
         var val = 50;
@@ -763,7 +781,7 @@ function openCharacter(pkgId, name, stage){
           val = prefs[axis] != null ? prefs[axis] : 50;
         }catch(e){}
         return `<div style="margin-bottom:8px">
-          <div style="font-size:12px;display:flex;justify-content:space-between">
+          <div style="font-size:calc(12px * var(--fs));display:flex;justify-content:space-between">
             <span>${labels[axis][0]}</span><span>${labels[axis][1]}</span>
           </div>
           <input type="range" min="0" max="100" value="${val}" data-axis="${axis}" data-pkg="${pkgId}" data-name="${esc(name)}"
@@ -791,11 +809,11 @@ function showProvenance(pkgId, name){
   var facts = prov.facts.filter(function(f){ return !name || f.character === name; });
   var libStats = (typeof DISTILL_LIBRARY !== "undefined") ? DISTILL_LIBRARY.stats(pkgId) : null;
   v.innerHTML = `<h2 class="sec">📚 资料库 ${name ? "· " + esc(name) : ""}
-    ${name ? `<button class="btn" style="font-size:12px;margin-left:8px" data-dact="autoExtractFacts" data-did="${pkgId}" data-dname="${escA(name)}">⚡ 自动抽取</button>` : ""}</h2>
-    <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">
+    ${name ? `<button class="btn" style="font-size:calc(12px * var(--fs));margin-left:8px" data-dact="autoExtractFacts" data-did="${pkgId}" data-dname="${escA(name)}">⚡ 自动抽取</button>` : ""}</h2>
+    <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint);margin-bottom:12px">
       ${facts.length} 条事实${libStats && libStats.edited ? " · " + libStats.edited + " 条已编辑" : ""}
     </div>
-    <div style="font-size:11px;color:var(--ink-faint);background:var(--line);border-radius:6px;padding:8px;margin-bottom:12px">
+    <div style="font-size:calc(11px * var(--fs));color:var(--ink-faint);background:var(--line);border-radius:6px;padding:8px;margin-bottom:12px">
       ℹ️ 引用核验只能证明原句在原文存在，不能证明结论正确。请结合上下文判断。
     </div>
     ${facts.map(function(f, i){
@@ -805,14 +823,14 @@ function showProvenance(pkgId, name){
       var charFacts = prov.facts.filter(function(x){ return x.character === f.character; });
       var fidx = charFacts.indexOf(f);
       return `<div class="card" style="padding:10px;margin-bottom:8px">
-        <div style="font-size:12px"><b>${esc(f.field)}</b>:
-          <span style="color:${color};font-size:11px;margin-left:6px">${label}${f.chunk_id ? " · " + esc(f.chunk_id) : ""}${f.edited ? " · ✏️已编辑" : ""}</span>
+        <div style="font-size:calc(12px * var(--fs))"><b>${esc(f.field)}</b>:
+          <span style="color:${color};font-size:calc(11px * var(--fs));margin-left:6px">${label}${f.chunk_id ? " · " + esc(f.chunk_id) : ""}${f.edited ? " · ✏️已编辑" : ""}</span>
           ${name ? `<span style="float:right">
-            <a href="javascript:void(0)" data-dact="editFact" data-did="${pkgId}" data-dname="${escA(f.character)}" data-didx="${fidx}" style="font-size:11px;color:var(--gold)">编辑</a>
-            <a href="javascript:void(0)" data-dact="deleteFact" data-did="${pkgId}" data-dname="${escA(f.character)}" data-didx="${fidx}" style="font-size:11px;color:#e74c3c;margin-left:8px">删除</a>
+            <a href="javascript:void(0)" data-dact="editFact" data-did="${pkgId}" data-dname="${escA(f.character)}" data-didx="${fidx}" style="font-size:calc(11px * var(--fs));color:var(--gold)">编辑</a>
+            <a href="javascript:void(0)" data-dact="deleteFact" data-did="${pkgId}" data-dname="${escA(f.character)}" data-didx="${fidx}" style="font-size:calc(11px * var(--fs));color:#e74c3c;margin-left:8px">删除</a>
           </span>` : ""}
         </div>
-        <div style="font-size:13px;margin-top:4px">${esc(f.value)}</div>
+        <div style="font-size:calc(13px * var(--fs));margin-top:4px">${esc(f.value)}</div>
       </div>`;
     }).join("")}
     <div class="btnrow" style="margin-top:12px">
@@ -829,13 +847,13 @@ async function requestChange(pkgId, name){
   var v = document.getElementById("view");
   v.innerHTML = `<h2 class="sec">✏️ 申请改动 · ${esc(name)}</h2>
     <div class="card">
-      <div style="font-size:13px;margin-bottom:8px">一句话描述你想怎么改：</div>
-      <textarea id="d_change_req" rows="3" style="width:100%;font-size:14px;padding:8px;border:1px solid var(--line);border-radius:6px" placeholder="例如：把她改得更活泼一点，少一点忧郁"></textarea>
+      <div style="font-size:calc(13px * var(--fs));margin-bottom:8px">一句话描述你想怎么改：</div>
+      <textarea id="d_change_req" rows="3" style="width:100%;font-size:calc(14px * var(--fs));padding:8px;border:1px solid var(--line);border-radius:6px" placeholder="例如：把她改得更活泼一点，少一点忧郁"></textarea>
       <div class="btnrow" style="margin-top:12px">
         <button class="btn" data-dact="openCharacter" data-did="${pkgId}" data-dname="${escA(name)}">取消</button>
         <button class="btn primary" id="d_change_go">分析影响 →</button>
       </div>
-      <div id="d_change_msg" style="font-size:12px;margin-top:8px;color:var(--ink-faint)"></div>
+      <div id="d_change_msg" style="font-size:calc(12px * var(--fs));margin-top:8px;color:var(--ink-faint)"></div>
     </div>`;
   document.getElementById("d_change_go").onclick = async function(){
     var req = document.getElementById("d_change_req").value.trim();
@@ -859,17 +877,17 @@ function showChangeImpacts(){
   var r = p.result;
   v.innerHTML = `<h2 class="sec">改动影响清单 · ${esc(p.name)}</h2>
     <div class="card" style="margin-bottom:12px">
-      <div style="font-size:13px;margin-bottom:8px">${esc(r.summary)}</div>
-      <div style="font-size:12px;color:var(--ink-faint)">将修改 ${r.impacts.length} 个字段：</div>
+      <div style="font-size:calc(13px * var(--fs));margin-bottom:8px">${esc(r.summary)}</div>
+      <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint)">将修改 ${r.impacts.length} 个字段：</div>
     </div>
     ${r.impacts.map(function(im, i){
       return `<div class="card" style="margin-bottom:8px;padding:10px">
-        <div style="font-weight:600;font-size:13px;margin-bottom:4px">${esc(im.label)}</div>
-        <div style="font-size:11px;color:var(--ink-faint);margin-bottom:4px">💡 ${esc(im.reason)}</div>
-        <div style="font-size:12px;background:var(--line);border-radius:4px;padding:6px;margin-bottom:4px;max-height:80px;overflow-y:auto">
+        <div style="font-weight:600;font-size:calc(13px * var(--fs));margin-bottom:4px">${esc(im.label)}</div>
+        <div style="font-size:calc(11px * var(--fs));color:var(--ink-faint);margin-bottom:4px">💡 ${esc(im.reason)}</div>
+        <div style="font-size:calc(12px * var(--fs));background:var(--line);border-radius:4px;padding:6px;margin-bottom:4px;max-height:80px;overflow-y:auto">
           <span style="color:var(--ink-faint)">原:</span> ${esc(im.old_value.slice(0, 200))}${im.old_value.length > 200 ? "..." : ""}
         </div>
-        <div style="font-size:12px;background:rgba(240,173,78,.1);border-radius:4px;padding:6px;max-height:80px;overflow-y:auto">
+        <div style="font-size:calc(12px * var(--fs));background:rgba(240,173,78,.1);border-radius:4px;padding:6px;max-height:80px;overflow-y:auto">
           <span style="color:#f0ad4e">新:</span> ${esc(im.new_value.slice(0, 200))}${im.new_value.length > 200 ? "..." : ""}
         </div>
       </div>`;
@@ -878,7 +896,7 @@ function showChangeImpacts(){
       <button class="btn" data-dact="openCharacter" data-did="${p.pkgId}" data-dname="${escA(p.name)}">取消</button>
       <button class="btn primary" onclick="DISTILL_UI.confirmChange()">确认改动</button>
     </div>
-    <div style="font-size:11px;color:var(--ink-faint);margin-top:8px">改动将标记为 [inference] 来源</div>`;
+    <div style="font-size:calc(11px * var(--fs));color:var(--ink-faint);margin-top:8px">改动将标记为 [inference] 来源</div>`;
 }
 
 function confirmChange(){
@@ -951,27 +969,27 @@ function showWorldbook(pkgId){
   }
   function ruleCard(r){
     return `<div class="card" style="padding:10px;margin-bottom:8px">
-      <div style="font-weight:600;font-size:13px">📜 ${esc(r.name)}${r.source ? ` <span style="font-size:11px;color:var(--ink-faint)">[${esc(r.source)}]</span>` : ""}</div>
-      <div style="font-size:13px;margin-top:4px">${esc(r.rule)}</div>
-      ${r.cost ? `<div style="font-size:12px;margin-top:4px"><b>代价:</b> ${esc(r.cost)}</div>` : ""}
-      ${r.limit ? `<div style="font-size:12px"><b>限制:</b> ${esc(r.limit)}</div>` : ""}
-      ${r.exception ? `<div style="font-size:12px"><b>例外:</b> ${esc(r.exception)}</div>` : ""}
-      ${r.conflict_hook ? `<div style="font-size:12px;color:#f0ad4e"><b>⚔️ 冲突钩子:</b> ${esc(r.conflict_hook)}</div>` : ""}
+      <div style="font-weight:600;font-size:calc(13px * var(--fs))">📜 ${esc(r.name)}${r.source ? ` <span style="font-size:calc(11px * var(--fs));color:var(--ink-faint)">[${esc(r.source)}]</span>` : ""}</div>
+      <div style="font-size:calc(13px * var(--fs));margin-top:4px">${esc(r.rule)}</div>
+      ${r.cost ? `<div style="font-size:calc(12px * var(--fs));margin-top:4px"><b>代价:</b> ${esc(r.cost)}</div>` : ""}
+      ${r.limit ? `<div style="font-size:calc(12px * var(--fs))"><b>限制:</b> ${esc(r.limit)}</div>` : ""}
+      ${r.exception ? `<div style="font-size:calc(12px * var(--fs))"><b>例外:</b> ${esc(r.exception)}</div>` : ""}
+      ${r.conflict_hook ? `<div style="font-size:calc(12px * var(--fs));color:#f0ad4e"><b>⚔️ 冲突钩子:</b> ${esc(r.conflict_hook)}</div>` : ""}
     </div>`;
   }
   v.innerHTML = `<h2 class="sec">📖 世界书</h2>
     ${(wb.rules || []).length ? `<div style="font-weight:600;margin:12px 0 8px">世界规则 (${wb.rules.length})</div>` + wb.rules.map(ruleCard).join("") : ""}
     ${(wb.locations || []).length ? `<div style="font-weight:600;margin:12px 0 8px">重要场景 (${wb.locations.length})</div>` + wb.locations.map(function(l){
       return `<div class="card" style="padding:10px;margin-bottom:8px">
-        <div style="font-weight:600;font-size:13px">📍 ${esc(l.name)}</div>
-        <div style="font-size:13px;margin-top:4px">${esc(l.desc)}</div>
+        <div style="font-weight:600;font-size:calc(13px * var(--fs))">📍 ${esc(l.name)}</div>
+        <div style="font-size:calc(13px * var(--fs));margin-top:4px">${esc(l.desc)}</div>
       </div>`;
     }).join("") : ""}
     ${(wb.factions || []).length ? `<div style="font-weight:600;margin:12px 0 8px">势力组织 (${wb.factions.length})</div>` + wb.factions.map(function(f){
       return `<div class="card" style="padding:10px;margin-bottom:8px">
-        <div style="font-weight:600;font-size:13px">🏰 ${esc(f.name)}</div>
-        <div style="font-size:13px;margin-top:4px">${esc(f.desc)}</div>
-        ${(f.members || []).length ? `<div style="font-size:12px;color:var(--ink-faint)">成员: ${f.members.map(esc).join("、")}</div>` : ""}
+        <div style="font-weight:600;font-size:calc(13px * var(--fs))">🏰 ${esc(f.name)}</div>
+        <div style="font-size:calc(13px * var(--fs));margin-top:4px">${esc(f.desc)}</div>
+        ${(f.members || []).length ? `<div style="font-size:calc(12px * var(--fs));color:var(--ink-faint)">成员: ${f.members.map(esc).join("、")}</div>` : ""}
       </div>`;
     }).join("") : ""}
     <div class="btnrow" style="margin-top:12px">
@@ -987,8 +1005,8 @@ function editFact(pkgId, charName, factIndex){
   var v = document.getElementById("view");
   v.innerHTML = `<h2 class="sec">编辑事实 · ${esc(charName)}</h2>
     <div class="card">
-      <div style="font-size:12px;color:var(--ink-faint);margin-bottom:8px">${esc(f.field)} · ${esc(f.source)}${f.chunk_id ? " · " + esc(f.chunk_id) : ""}</div>
-      <textarea id="d_fact_val" rows="4" style="width:100%;font-size:14px;padding:8px;border:1px solid var(--line);border-radius:6px">${esc(f.value)}</textarea>
+      <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint);margin-bottom:8px">${esc(f.field)} · ${esc(f.source)}${f.chunk_id ? " · " + esc(f.chunk_id) : ""}</div>
+      <textarea id="d_fact_val" rows="4" style="width:100%;font-size:calc(14px * var(--fs));padding:8px;border:1px solid var(--line);border-radius:6px">${esc(f.value)}</textarea>
       <div class="btnrow" style="margin-top:12px">
         <button class="btn" data-dact="showProvenance" data-did="${pkgId}" data-dname="${escA(charName)}">取消</button>
         <button class="btn primary" data-dact="saveFact" data-did="${pkgId}" data-dname="${escA(charName)}" data-didx="${factIndex}">保存</button>
@@ -1013,14 +1031,14 @@ function addFact(pkgId, charName){
   var v = document.getElementById("view");
   v.innerHTML = `<h2 class="sec">新增事实 · ${esc(charName)}</h2>
     <div class="card">
-      <div style="font-size:13px;margin-bottom:8px">字段：</div>
-      <select id="d_fact_field" style="width:100%;font-size:14px;padding:8px;margin-bottom:12px;border:1px solid var(--line);border-radius:6px">
+      <div style="font-size:calc(13px * var(--fs));margin-bottom:8px">字段：</div>
+      <select id="d_fact_field" style="width:100%;font-size:calc(14px * var(--fs));padding:8px;margin-bottom:12px;border:1px solid var(--line);border-radius:6px">
         ${DISTILL_CHANGE.EDITABLE_FIELDS.map(function(f){
           return `<option value="${f}">${DISTILL_CHANGE.FIELD_LABEL[f] || f}</option>`;
         }).join("")}
       </select>
-      <div style="font-size:13px;margin-bottom:8px">内容：</div>
-      <textarea id="d_fact_val" rows="4" style="width:100%;font-size:14px;padding:8px;border:1px solid var(--line);border-radius:6px"></textarea>
+      <div style="font-size:calc(13px * var(--fs));margin-bottom:8px">内容：</div>
+      <textarea id="d_fact_val" rows="4" style="width:100%;font-size:calc(14px * var(--fs));padding:8px;border:1px solid var(--line);border-radius:6px"></textarea>
       <div class="btnrow" style="margin-top:12px">
         <button class="btn" data-dact="showProvenance" data-did="${pkgId}" data-dname="${escA(charName)}">取消</button>
         <button class="btn primary" id="d_fact_add_go">添加</button>
@@ -1073,15 +1091,15 @@ var api = {show: show, openPackage: openPackage, openCharacter: openCharacter, s
     var cards = DISTILL_STYLE.listCards();
     var v = document.getElementById("view");
     var html = `<h2 class="sec">✒️ 文风库 (${cards.length})</h2>
-      <div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px">调用文风 = 对应作家执笔，可续写/创作</div>`;
+      <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint);margin-bottom:12px">调用文风 = 对应作家执笔，可续写/创作</div>`;
     if(!cards.length){
-      html += `<div class="card"><div style="font-size:13px;color:var(--ink-faint)">暂无文风卡。蒸馏小说时会自动抽取。</div></div>`;
+      html += `<div class="card"><div style="font-size:calc(13px * var(--fs));color:var(--ink-faint)">暂无文风卡。蒸馏小说时会自动抽取。</div></div>`;
     }
     cards.forEach(function(c){
       var total = Object.keys(c.sheet || {}).reduce(function(n, k){ return n + (c.sheet[k] || []).length; }, 0);
       html += `<div class="card" style="margin-bottom:8px;padding:12px" data-dact="showStyleDetail" data-did="${c.id}">
         <div style="font-weight:600">${esc(c.name)}</div>
-        <div style="font-size:12px;color:var(--ink-faint)">${total} 条风格特征 · ${c.signature_lines.length} 句式</div>
+        <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint)">${total} 条风格特征 · ${c.signature_lines.length} 句式</div>
       </div>`;
     });
     html += `<button class="btn" onclick="DISTILL_UI.show()">返回</button>`;
@@ -1095,17 +1113,17 @@ var api = {show: show, openPackage: openPackage, openCharacter: openCharacter, s
     Object.keys(DISTILL_STYLE.CATEGORIES).forEach(function(cat){
       var items = (c.sheet[cat] || []);
       if(!items.length) return;
-      html += `<div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:13px;margin-bottom:6px">${DISTILL_STYLE.CATEGORIES[cat]}</div>`;
+      html += `<div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:calc(13px * var(--fs));margin-bottom:6px">${DISTILL_STYLE.CATEGORIES[cat]}</div>`;
       items.forEach(function(it){
-        html += `<div style="font-size:13px;margin-bottom:4px">• ${esc(it.claim)}</div>`;
-        if(it.evidence) html += `<div style="font-size:12px;color:var(--ink-faint);margin-left:12px;margin-bottom:6px">例：${esc(it.evidence.slice(0, 80))}</div>`;
+        html += `<div style="font-size:calc(13px * var(--fs));margin-bottom:4px">• ${esc(it.claim)}</div>`;
+        if(it.evidence) html += `<div style="font-size:calc(12px * var(--fs));color:var(--ink-faint);margin-left:12px;margin-bottom:6px">例：${esc(it.evidence.slice(0, 80))}</div>`;
       });
       html += `</div>`;
     });
     if(c.signature_lines.length){
-      html += `<div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:13px;margin-bottom:6px">标志性句式</div>`;
+      html += `<div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:calc(13px * var(--fs));margin-bottom:6px">标志性句式</div>`;
       c.signature_lines.forEach(function(l){
-        html += `<div style="font-size:13px;margin-bottom:4px">“${esc(l.slice(0, 100))}”</div>`;
+        html += `<div style="font-size:calc(13px * var(--fs));margin-bottom:4px">“${esc(l.slice(0, 100))}”</div>`;
       });
       html += `</div>`;
     }
@@ -1180,7 +1198,7 @@ var api = {show: show, openPackage: openPackage, openCharacter: openCharacter, s
     }
     if(!confirm("对 " + name + " 运行9道人格探针？(约18次LLM调用)")) return;
     var v = document.getElementById("view");
-    v.innerHTML = `<h2 class="sec">🎭 人格探针 · ${esc(name)}</h2><div id="probeProg" style="font-size:14px"></div><div id="probeLog"></div>`;
+    v.innerHTML = `<h2 class="sec">🎭 人格探针 · ${esc(name)}</h2><div id="probeProg" style="font-size:calc(14px * var(--fs))"></div><div id="probeLog"></div>`;
     var result = await DISTILL_PROBES.probe(id, name, {
       onProgress: function(i, n, msg){
         var el = document.getElementById("probeProg");
@@ -1188,13 +1206,13 @@ var api = {show: show, openPackage: openPackage, openCharacter: openCharacter, s
       }
     });
     var html = `<h2 class="sec">🎭 探针结果 · ${esc(name)}</h2>
-      <div style="font-size:13px;margin-bottom:12px">${result.pass ? "✅ 通过" : "⚠️ 存疑"} (${result.ooc_count}/9 题 OOC)</div>`;
+      <div style="font-size:calc(13px * var(--fs));margin-bottom:12px">${result.pass ? "✅ 通过" : "⚠️ 存疑"} (${result.ooc_count}/9 题 OOC)</div>`;
     result.results.forEach(function(r, i){
       var icon = r.ooc ? "🔴" : "🟢";
       html += `<div class="card" style="margin-bottom:8px">
-        <div style="font-size:13px;font-weight:600">${icon} Q${i+1}: ${esc(r.question)}</div>
-        <div style="font-size:13px;margin-top:4px">答：${esc(r.answer.slice(0, 100))}</div>
-        ${r.ooc ? `<div style="font-size:12px;color:#f0ad4e;margin-top:4px">OOC: ${esc(r.reason)}</div>` : ""}
+        <div style="font-size:calc(13px * var(--fs));font-weight:600">${icon} Q${i+1}: ${esc(r.question)}</div>
+        <div style="font-size:calc(13px * var(--fs));margin-top:4px">答：${esc(r.answer.slice(0, 100))}</div>
+        ${r.ooc ? `<div style="font-size:calc(12px * var(--fs));color:#f0ad4e;margin-top:4px">OOC: ${esc(r.reason)}</div>` : ""}
       </div>`;
     });
     html += `<button class="btn" data-dact="openPackage" data-did="${id}">返回</button>`;
@@ -1245,7 +1263,7 @@ var api = {show: show, openPackage: openPackage, openCharacter: openCharacter, s
     if(!cards.length){ alert("没有角色卡"); return; }
     if(!confirm("审计 " + cards.length + " 个角色? (每人1次LLM调用)")) return;
     var v = document.getElementById("view");
-    v.innerHTML = `<h2 class="sec">🔍 审计中...</h2><div id="auditProg" style="font-size:14px"></div>`;
+    v.innerHTML = `<h2 class="sec">🔍 审计中...</h2><div id="auditProg" style="font-size:calc(14px * var(--fs))"></div>`;
     var results = await DISTILL_AUDITOR.auditAll(id, cards.map(function(c){ return c.name; }), {
       onProgress: function(i, n, msg){
         var el = document.getElementById("auditProg");
@@ -1258,9 +1276,9 @@ var api = {show: show, openPackage: openPackage, openCharacter: openCharacter, s
       var badge = r.pass ? "✅" : "⚠️";
       html += `<div class="card" style="margin-bottom:8px"><div style="font-weight:600">${badge} ${esc(name)}</div>`;
       (r.issues || []).forEach(function(iss){
-        html += `<div style="font-size:13px;color:var(--ink-faint);margin-top:4px">• [${iss.severity}] ${esc(iss.desc)}</div>`;
+        html += `<div style="font-size:calc(13px * var(--fs));color:var(--ink-faint);margin-top:4px">• [${iss.severity}] ${esc(iss.desc)}</div>`;
       });
-      if(!(r.issues || []).length) html += `<div style="font-size:13px;color:var(--ink-faint)">无问题</div>`;
+      if(!(r.issues || []).length) html += `<div style="font-size:calc(13px * var(--fs));color:var(--ink-faint)">无问题</div>`;
       html += `</div>`;
     });
     html += `<button class="btn" data-dact="openPackage" data-did="${id}">返回</button>`;
