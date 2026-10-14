@@ -142,6 +142,14 @@ return (e.emotion || "") + ":" + (e.text || "");
 /* 共享场景 (不含其他 soul 秘密) */
 if(scene) parts.push("场景: " + String(scene).slice(0, 500));
 
+/* 去AI味指令 (RP_DETONE.promptBlock；开关关闭时返回空串；未加载模块时跳过) */
+try{
+  if(typeof RP_DETONE !== "undefined" && RP_DETONE){
+    var _dt = RP_DETONE.promptBlock();
+    if(_dt) parts.push(_dt);
+  }
+}catch(e){}
+
 /* 约束 */
 parts.push(
 "只以" + soulName + "的身份回应。用第一人称。\n" +
@@ -171,6 +179,17 @@ silence:!!d.silence
 /* 降级: 纯文本当台词 */
 return {ok: true, structured: false, dialogue: text.trim(),
 action: "", inner: "", silence:!text.trim()};
+}
+
+/* 去AI味后处理：对解析后的 dialogue/action/inner 做确定性清洗。
+ * RP_DETONE 未加载或开关关闭时原样返回 (零影响)。 */
+function __detoneReply(reply){
+  try{
+    if(typeof RP_DETONE !== "undefined" && RP_DETONE &&
+       typeof RP_DETONE.cleanReply === "function")
+      return RP_DETONE.cleanReply(reply);
+  }catch(e){}
+  return reply;
 }
 
 /* ============ Orchestrator ============ */
@@ -210,7 +229,7 @@ if(twoCfg && twoCfg.think && twoCfg.speak && typeof RP_SOUL_CFG !== "undefined")
     return twoStageCall(s.name, s.card, _soul, scene, userText, history,
       {think: _think, speak: _speak}, opts).then(function(r){
       if(!r.ok) return {name: s.name, ok: false, error: r.error};
-      return {name: s.name, ok: true, reply: parseSoulReply(r.text),
+      return {name: s.name, ok: true, reply: __detoneReply(parseSoulReply(r.text)),
         model: r.model, fallback: "twostage"};
     });
   }
@@ -228,7 +247,7 @@ contextToken: opts.contextToken,
 signal: opts.signal /* P1-2: 停止按钮可取消 soul 并行请求 */
 }).then(function(r){
 if(!r.ok) return {name: s.name, ok: false, error: r.error};
-return {name: s.name, ok: true, reply: parseSoulReply(r.text),
+return {name: s.name, ok: true, reply: __detoneReply(parseSoulReply(r.text)),
 model: r.model, fallback: r.fallback};
 });
 });
@@ -501,7 +520,7 @@ async function replaySoul(soulName, souls, opts){
     temperature: 0.8, maxTokens: 800
   });
   if(!r.ok) return r;
-  return {ok: true, reply: parseSoulReply(r.text), model: r.model};
+  return {ok: true, reply: __detoneReply(parseSoulReply(r.text)), model: r.model};
 }
 
 /* ============ 群聊摘要 & 大事件 ============ */

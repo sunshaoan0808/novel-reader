@@ -368,7 +368,19 @@ function soulViewHTML(card, runId, name){
   }).join("");
   var profile = "";
   try{ profile = (typeof RP_SOUL !== "undefined") ? RP_SOUL.getProfile(card) : ""; }catch(e){}
-  return "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">宪章</div>" +
+  /* 去AI味全局开关 (RP_DETONE, 默认开) */
+  var _dtOn = true;
+  try{ _dtOn = (typeof RP_DETONE === "undefined") ? true : RP_DETONE.isEnabled(); }catch(e){}
+  var _dtCard = "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">去AI味 (全局)</div>" +
+    "<div class=\"kv\">soul 输出自动规避典型 AI 腔 (翻案腔/起手式/提示语冒号等)，prompt 注入 + 确定性后处理两层。</div>" +
+    "<div class=\"btnrow\" style=\"margin-top:8px\">" +
+    "<button class=\"btn" + (_dtOn ? "" : " ghost") + "\" style=\"font-size:12px\" " +
+    "data-sact=\"setDetoneUI\" data-sid=\"" + escHtml(runId) + "\" data-sname=\"" + escHtml(name) + "\" data-slv=\"on\">开启</button>" +
+    "<button class=\"btn" + (_dtOn ? " ghost" : "") + "\" style=\"font-size:12px\" " +
+    "data-sact=\"setDetoneUI\" data-sid=\"" + escHtml(runId) + "\" data-sname=\"" + escHtml(name) + "\" data-slv=\"off\">关闭</button>" +
+    "</div></div>";
+  return _dtCard +
+    "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">宪章</div>" +
     "<div style=\"font-size:13px\">" + escHtml((soul.soul_md || "未填写").slice(0, 300)) + "</div></div>" +
     "<div class=\"card\"><div class=\"name\" style=\"font-size:14px\">性格特质</div>" +
     "<div>" + (traits || "<span class=\"dim\">无</span>") + "</div></div>" +
@@ -578,6 +590,14 @@ function setChattyUI(runId, name, level){
   if(typeof renderDetail === "function") renderDetail();
 }
 
+/* 去AI味全局开关 UI */
+function setDetoneUI(runId, name, lv){
+  try{
+    if(typeof RP_DETONE !== "undefined") RP_DETONE.setEnabled(lv === "on");
+  }catch(e){}
+  if(typeof renderDetail === "function") renderDetail();
+}
+
 function applyTemplateUI(runId, name){
   var card = null;
   try{ if(typeof RP !== "undefined" && RP.findCard) card = RP.findCard(runId, name); }catch(e){}
@@ -670,6 +690,7 @@ var api = {
   exportSoulUI: exportSoulUI, importSoulUI: importSoulUI,
   soulHealth: soulHealth, applyTemplateUI: applyTemplateUI,
   setChattyUI: setChattyUI, maybeShowGuide: maybeShowGuide,
+  setDetoneUI: setDetoneUI,
   compareSoulsUI: compareSoulsUI,
   costHTML: costHTML, clearCost: clearCost,
   perfHTML: perfHTML, setPerf: setPerf, refreshPerf: refreshPerf,
@@ -695,6 +716,7 @@ function onSoulCfgClick(e){
       case "genSoulUI": api.genSoulUI(d.sid, d.sname); break;
       case "editMemoryUI": api.editMemoryUI(d.sid, d.sname); break;
       case "setChattyUI": api.setChattyUI(d.sid, d.sname, d.slv); break;
+      case "setDetoneUI": api.setDetoneUI(d.sid, d.sname, d.slv); break;
       case "exportSoulUI": api.exportSoulUI(d.sid, d.sname); break;
       case "importSoulUI": api.importSoulUI(d.sid, d.sname); break;
       case "applyTemplateUI": api.applyTemplateUI(d.sid, d.sname); break;
