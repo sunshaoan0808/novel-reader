@@ -40,5 +40,22 @@
   "has_plot": true,
   "scope": null,
   "has_worldcard": true
+ },
+ {
+  "run_id": "qinganlu",
+  "novel": "清安录",
+  "characters": [
+   "凌安",
+   "凌清寒",
+   "墨屠",
+   "楚灵均",
+   "苏清婉",
+   "苏清鸢"
+  ],
+  "n_chunks": 53,
+  "n_profiles": 6,
+  "has_plot": false,
+  "has_worldcard": false,
+  "scope": null
  }
 ]
