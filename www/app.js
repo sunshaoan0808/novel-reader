@@ -1531,6 +1531,31 @@ global:{ title:"🖼️ 全局壁纸", sub:"所有聊天的默认背景，存在
 };
 let _wallStore = "chat";
 window.globalWallpaperEditor = ()=>wallpaperEditor("global");
+/* 浮生暖系 (2026-10-15): soul 卡单聊时注入暖系角色头卡 + 快捷 chips */
+function applySoulWarm(){
+  try{
+    var v = document.getElementById("view");
+    var isSoul = (typeof RP_SOUL_WARM !== "undefined") &&
+      CHAT && CHAT.name && RP_SOUL_WARM.hasSoul(CHAT.runId, CHAT.name);
+    if(v) v.classList.toggle("soulwarm", !!isSoul);
+    if(!isSoul) return;
+    var run = ((window.__DATA__ || {}).runs || {})[CHAT.runId] || {};
+    var head = document.getElementById("chathead");
+    if(head && !document.getElementById("sw_chead")){
+      var d = document.createElement("div");
+      d.id = "sw_chead";
+      d.innerHTML = RP_SOUL_WARM.cheadHTML(CHAT.runId, CHAT.name, run.novel);
+      head.parentNode.insertBefore(d, head.nextSibling);
+    }
+    var bar = document.querySelector(".chatbar");
+    if(bar && !document.getElementById("sw_quick")){
+      var q = document.createElement("div");
+      q.id = "sw_quick";
+      q.innerHTML = RP_SOUL_WARM.quickChipsHTML(CHAT.runId, CHAT.name);
+      bar.parentNode.insertBefore(q, bar);
+    }
+  }catch(e){}
+}
 async function showChat(){
 __backAction = ()=>exitChat();
 document.body.classList.add("chatmode");
@@ -1616,6 +1641,7 @@ renderScenChips();
 paintChatBg();
 attachHeadHide();
 updateChapterBadge();
+applySoulWarm(); /* 浮生暖系: soul 卡时注入角色头卡 + 快捷 chips */
 const k = chatKey(CHAT.runId, CHAT.name);
 /* P0-2/P0-3: 读失败≠空历史。读失败时显示错误态并直接返回，绝不写打招呼语覆盖。 */
 let __h0 = null, __h0ok = true;
@@ -1714,6 +1740,13 @@ renderGRelBox();
 paintChatBg();
 attachHeadHide();
 updateChapterBadge();
+/* 浮生暖系: soul 多智能体群聊时用暖系底 */
+try{
+  var _soulOn = (typeof RP_SOUL_ORCH !== "undefined") &&
+    RP_SOUL_ORCH.shouldUseSoulMode(CHAT.runId, CHAT.members, soulChatId());
+  var _v = document.getElementById("view");
+  if(_v) _v.classList.toggle("soulwarm", !!_soulOn);
+}catch(e){}
 /* P0-2/P0-3: 读失败≠空历史，失败时直接返回，绝不写打招呼语覆盖。 */
 let __gh0 = null;
 try{ __gh0 = getHist(k); }catch(e){

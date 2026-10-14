@@ -1,0 +1,125 @@
+/* 浮生暖系主题 (2026-10-15): 参考「故事馆」类 RP 应用的暖奶油设计语言
+ * 奶油底 + 橙主色 + 圆角卡片 + 柔和投影, 仅作用于 soul 相关界面 (.soulwarm 作用域) */
+
+.soulwarm{
+  --sw-cream:#FFF9F1; --sw-cream2:#FFF4E4; --sw-card:#FFFFFF;
+  --sw-orange:#F59A23; --sw-orange-d:#DD7F0A; --sw-orange-soft:#FEF0DC;
+  --sw-ink:#3A2C1C; --sw-muted:#A68E6E; --sw-line:#F1E5D0;
+  --sw-purple:#8B5CF6; --sw-green:#3BA55D;
+  --sw-r:18px; --sw-shadow:0 6px 20px rgba(180,130,60,.10);
+}
+
+/* 聊天区奶油底 */
+.soulwarm .chatwrap{ background:var(--sw-cream); }
+.soulwarm #chatlog{ background:transparent; }
+
+/* 角色头卡 */
+.sw-chead{
+  margin:10px 14px 4px; background:var(--sw-card); border-radius:var(--sw-r);
+  box-shadow:var(--sw-shadow); padding:14px 14px 12px;
+  display:flex; gap:12px; align-items:flex-start;
+  border:1px solid var(--sw-line);
+}
+.sw-avatar{
+  width:56px; height:56px; border-radius:50%; flex:none;
+  background:var(--sw-orange-soft); color:var(--sw-orange-d);
+  display:flex; align-items:center; justify-content:center;
+  font-size:26px; font-weight:700; overflow:hidden;
+}
+.sw-avatar img{ width:100%; height:100%; object-fit:cover; }
+.sw-chead-main{ flex:1; min-width:0; }
+.sw-chead-top{ display:flex; align-items:center; gap:8px; }
+.sw-name{ font-size:19px; font-weight:800; color:var(--sw-ink); }
+.sw-tag{
+  font-size:11px; color:var(--sw-purple); background:#F1EAFE;
+  border-radius:999px; padding:2px 9px; white-space:nowrap;
+}
+.sw-profile-btn{
+  margin-left:auto; flex:none; font-size:12px; color:var(--sw-orange-d);
+  background:var(--sw-orange-soft); border:none; border-radius:999px;
+  padding:6px 12px; min-height:40px;
+}
+.sw-trust{ display:flex; align-items:center; gap:8px; margin-top:8px; }
+.sw-trust-label{ font-size:12px; color:var(--sw-orange-d); white-space:nowrap; }
+.sw-meter{ flex:1; height:6px; border-radius:999px; background:#F3E8D4; overflow:hidden; }
+.sw-meter > i{ display:block; height:100%; border-radius:999px;
+  background:linear-gradient(90deg,var(--sw-orange),#FFC65C); }
+.sw-status{ margin-top:6px; font-size:12px; color:var(--sw-muted); }
+
+/* 快捷 chips */
+.sw-quick{ display:flex; gap:8px; padding:8px 14px; overflow-x:auto; flex:none; }
+.sw-quick::-webkit-scrollbar{ display:none; }
+.sw-chip{
+  flex:none; font-size:13px; color:var(--sw-ink); background:var(--sw-card);
+  border:1px solid var(--sw-line); border-radius:999px; padding:8px 14px;
+  min-height:40px; box-shadow:0 2px 8px rgba(180,130,60,.08);
+}
+
+/* 气泡暖化 */
+.soulwarm .msg.ai .bubble{ background:var(--sw-card); border:1px solid var(--sw-line); }
+.soulwarm .msg.user .bubble{ background:#FFE9C7; }
+
+/* 角色档案底 sheet */
+.sw-scrim{
+  position:fixed; inset:0; background:rgba(60,40,20,.45); z-index:90;
+  opacity:0; pointer-events:none; transition:opacity .25s ease;
+}
+.sw-scrim.on{ opacity:1; pointer-events:auto; }
+.sw-sheet{
+  position:fixed; left:0; right:0; bottom:0; z-index:91;
+  background:var(--sw-cream); border-radius:22px 22px 0 0;
+  max-height:86vh; display:flex; flex-direction:column;
+  transform:translateY(105%); transition:transform .3s ease;
+  box-shadow:0 -8px 32px rgba(120,80,30,.18);
+}
+.sw-sheet.on{ transform:translateY(0); }
+.sw-sheet-head{
+  display:flex; align-items:center; gap:8px; padding:14px 18px 6px;
+  font-size:16px; font-weight:800; color:var(--sw-ink);
+}
+.sw-sheet-head .x{ margin-left:auto; border:none; background:none;
+  font-size:20px; color:var(--sw-muted); min-width:40px; min-height:40px; }
+.sw-sheet-body{ overflow-y:auto; padding:6px 18px 12px; }
+.sw-sheet-hero{ display:flex; gap:14px; align-items:center; padding:8px 0 4px; }
+.sw-sheet-hero .sw-avatar{ width:72px; height:72px; font-size:32px; }
+.sw-hero-tags{ display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+.sw-hero-tag{
+  font-size:12px; border-radius:999px; padding:4px 12px; background:var(--sw-orange-soft);
+  color:var(--sw-orange-d);
+}
+.sw-hero-tag.ghost{ background:#F4EFE6; color:var(--sw-muted); }
+.sw-sec{ margin-top:16px; }
+.sw-sec-t{ font-size:14px; font-weight:800; color:var(--sw-ink); margin-bottom:8px;
+  display:flex; align-items:center; gap:6px; }
+.sw-kv{ display:grid; grid-template-columns:1fr 1fr; gap:6px 12px; font-size:13px; }
+.sw-kv div{ color:var(--sw-ink); }
+.sw-kv span{ color:var(--sw-muted); }
+.sw-traits{ display:flex; gap:8px; flex-wrap:wrap; }
+.sw-trait{
+  font-size:13px; background:#F6F1E7; color:var(--sw-ink);
+  border-radius:999px; padding:7px 14px;
+}
+.sw-para{ font-size:13px; color:var(--sw-ink); line-height:1.7; }
+.sw-clues{ margin:0; padding:0; list-style:none; }
+.sw-clues li{ font-size:13px; color:var(--sw-ink); padding:5px 0 5px 16px; position:relative; }
+.sw-clues li::before{ content:""; position:absolute; left:2px; top:12px;
+  width:6px; height:6px; border-radius:50%; background:var(--sw-orange); }
+.sw-sheet-foot{ display:flex; gap:12px; padding:12px 18px calc(16px + env(safe-area-inset-bottom)); }
+.sw-btn{
+  flex:1; min-height:48px; border-radius:999px; font-size:15px; font-weight:700; border:none;
+}
+.sw-btn.ghost{ background:var(--sw-card); color:var(--sw-orange-d); border:1px solid var(--sw-line); }
+.sw-btn.primary{ background:var(--sw-orange); color:#fff;
+  box-shadow:0 6px 16px rgba(245,154,35,.35); }
+
+/* 群聊暖头 */
+.sw-ghead{ padding:12px 14px 6px; }
+.sw-ghead .stack{ display:flex; }
+.sw-ghead .stacka{ margin-left:-8px; border:2px solid var(--sw-cream); }
+.sw-ghead .stacka:first-child{ margin-left:0; }
+
+/* soul 设置页暖卡 */
+.sw-setcard{
+  background:var(--sw-card); border:1px solid var(--sw-line); border-radius:var(--sw-r);
+  box-shadow:var(--sw-shadow); padding:14px; margin:10px 14px;
+}
