@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>故事馆 · UI 原型</title>
+<style>
+/* ============ 故事馆 UI 原型 · 设计系统 ============ */
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#F6F4EE; --card:#FFFFFF; --ink:#2E2318; --muted:#A08D76; --line:#EFE7D6;
+  --orange:#F6A01B; --orange-d:#DE8800; --orange-soft:#FDF0D8; --orange-line:#F5DFAE;
+  --purple:#8B5CF6; --purple-soft:#F0E9FF; --green:#3BA55D; --red:#E05252;
+  --r:18px; --shadow:0 6px 20px rgba(150,110,60,.10);
+}
+html,body{height:100%}
+body{background:#E8E2D4;font-family:-apple-system,"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei",sans-serif;color:var(--ink);display:flex;justify-content:center}
+.phone{width:360px;height:800px;max-height:100vh;background:var(--bg);position:relative;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 0 40px rgba(0,0,0,.25)}
+.screen{position:absolute;inset:0;display:none;flex-direction:column;background:var(--bg)}
+.screen.on{display:flex}
+.scr-head{flex:none;display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--bg);z-index:5}
+.scr-head .tt{font-size:17px;font-weight:800}
+.scr-head .sub{font-size:11px;color:var(--muted)}
+.backbtn{width:32px;height:32px;border:none;background:none;font-size:22px;color:var(--ink)}
+.iconbtn{margin-left:auto;width:32px;height:32px;border:none;background:none;font-size:16px;color:var(--muted)}
+.scr-body{flex:1;overflow-y:auto;padding:0 14px 14px}
+.scr-body::-webkit-scrollbar{display:none}
+.card{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);padding:14px}
+.sec-t{font-size:14px;font-weight:800;margin:18px 2px 10px;display:flex;align-items:center;gap:6px}
+.sec-t .more{margin-left:auto;font-size:12px;color:var(--muted);font-weight:400}
+.chip{flex:none;font-size:13px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:8px 14px;color:var(--ink)}
+.chip.on{background:var(--orange-soft);border-color:var(--orange-line);color:var(--orange-d);font-weight:700}
+.tag{font-size:11px;border-radius:999px;padding:3px 10px;background:var(--purple-soft);color:var(--purple)}
+.tag.orange{background:var(--orange-soft);color:var(--orange-d)}
+.tag.gray{background:#F1EDE3;color:var(--muted)}
+.btn{border:none;border-radius:999px;font-size:15px;font-weight:700;min-height:48px;padding:0 22px}
+.btn.primary{background:var(--orange);color:#fff;box-shadow:0 6px 16px rgba(246,160,27,.35)}
+.btn.ghost{background:var(--card);color:var(--orange-d);border:1px solid var(--line)}
+.btn.purple{background:var(--purple);color:#fff}
+.btn.block{width:100%}
+.avatar{width:52px;height:52px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:26px;background:var(--orange-soft);overflow:hidden}
+.meter{height:6px;border-radius:999px;background:#F0E6D2;overflow:hidden;flex:1}
+.meter>i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--orange),#FFC65C)}
+/* 图片占位 */
+.ph{border-radius:14px;background:linear-gradient(135deg,#3B3F6B,#7A5C9E 55%,#E8935A);color:#fff;display:flex;align-items:center;justify-content:center;font-size:40px;position:relative;overflow:hidden}
+.ph::after{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 30% 20%,rgba(255,255,255,.25),transparent 60%)}
+/* 底部导航 */
+.tabbar{flex:none;display:flex;background:var(--card);border-top:1px solid var(--line);padding:8px 4px calc(10px + env(safe-area-inset-bottom))}
+.tabbar button{flex:1;border:none;background:none;font-size:11px;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px;min-height:52px}
+.tabbar button i{font-style:normal;font-size:21px}
+.tabbar button.on{color:var(--orange-d)}
+/* 顶部 tabs */
+.tabs{flex:none;display:flex;gap:8px;padding:4px 14px 10px;overflow-x:auto;background:var(--bg)}
+.tabs::-webkit-scrollbar{display:none}
+/* modal */
+.scrim{position:absolute;inset:0;background:rgba(50,35,18,.5);z-index:40;opacity:0;pointer-events:none;transition:opacity .25s}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:41;background:#FBF8F1;border-radius:22px 22px 0 0;max-height:88%;display:flex;flex-direction:column;transform:translateY(105%);transition:transform .32s ease;box-shadow:0 -8px 32px rgba(120,80,30,.2)}
+.sheet.on{transform:translateY(0)}
+.sheet-h{display:flex;align-items:center;gap:8px;padding:16px 18px 4px;font-size:16px;font-weight:800}
+.sheet-h .x{margin-left:auto;border:none;background:none;font-size:20px;color:var(--muted);width:40px;height:40px}
+.sheet-b{overflow-y:auto;padding:8px 18px 10px}
+.sheet-b::-webkit-scrollbar{display:none}
+.sheet-f{display:flex;gap:12px;padding:12px 18px calc(16px + env(safe-area-inset-bottom))}
+/* 输入条 */
+.inputbar{flex:none;display:flex;align-items:center;gap:8px;padding:10px 14px calc(12px + env(safe-area-inset-bottom));background:var(--bg)}
+.inputbar .field{flex:1;display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:10px 14px;color:var(--muted);font-size:14px}
+.inputbar .send{width:44px;height:44px;border-radius:50%;border:none;background:var(--purple);color:#fff;font-size:18px;flex:none}
+.disclaimer{flex:none;text-align:center;font-size:10px;color:#C4B59C;padding:6px;background:var(--bg)}
+</style>
+</head>
+<body>
+<div class="phone" id="phone">
+
+<!-- ================= 故事馆首页 ================= -->
+<section class="screen on" id="s-home">
+  <div class="scr-head">
+    <span style="font-size:20px">📚</span><span class="tt">故事馆</span>
+    <span class="tag orange" style="margin-left:6px">⏱ 今日还可体验 30 分钟</span>
+    <button class="iconbtn">•••</button><button class="iconbtn">◎</button>
+  </div>
+  <div class="tabs">
+    <button class="chip on">全部</button><button class="chip">正在同行</button>
+    <button class="chip">可聊天</button><button class="chip">已完成</button>
+  </div>
+  <div class="scr-body">
+    <div class="ph" style="height:150px;flex-direction:column;gap:8px" onclick="go('s-story')">
+      <div style="font-size:20px;font-weight:800;z-index:1">名侦探世界：重获新生</div>
+      <div style="font-size:12px;opacity:.85;z-index:1">和喜欢的角色聊天，一起进入故事</div>
+      <button class="btn primary" style="min-height:38px;font-size:14px;z-index:1">📖 进入故事</button>
+    </div>
+    <div class="sec-t">🟠 正在同行 <span class="more">查看全部 ›</span></div>
+    <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:4px" id="home-going"></div>
+    <div class="sec-t">💬 可聊天角色 <span class="more">全部角色 ›</span></div>
+    <div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:4px" id="home-chars"></div>
+    <div class="sec-t">✨ 推荐故事 <span class="more">换一批 ⟳</span></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px" id="home-rec"></div>
+    <div style="height:10px"></div>
+  </div>
+  <nav class="tabbar">
+    <button><i>🏠</i>首页</button><button><i>📝</i>作业</button>
+    <button class="on"><i>📖</i>精选</button><button><i>🛍️</i>商城</button><button><i>👤</i>我的</button>
+  </nav>
+</section>
+
+<!-- ================= 故事详情 ================= -->
+<section class="screen" id="s-story">
+  <div class="scr-head">
+    <button class="backbtn" onclick="go('s-home')">‹</button>
+    <span class="sub">返回</span><span class="tt" style="margin:0 auto">故事详情</span>
+    <button class="iconbtn">•••</button><button class="iconbtn">◎</button>
+  </div>
+  <div class="scr-body">
+    <div class="ph" style="height:170px"></div>
+    <div style="padding:14px 4px 0">
+      <div style="font-size:20px;font-weight:800">名侦探世界：重获新生</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">冒险 · 推理</div>
+      <div style="font-size:13px;margin-top:6px">和喜欢的角色聊天，一起进入故事，<br>你的每个选择都影响故事走向。</div>
+      <div style="text-align:right;margin-top:6px"><span class="tag orange">⭐ 收藏</span></div>
+    </div>
+    <div class="card" style="margin-top:10px;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)">
+      ⏱ 今日还可体验 30 分钟
+    </div>
+    <div class="sec-t">📊 当前进度</div>
+    <div class="card">
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <b style="font-size:17px">第 3/12 章</b>
+        <span style="font-size:12px;color:var(--orange-d);font-weight:700;margin-left:auto">25% ›</span>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin:4px 0 8px">第三章 · 街头相遇</div>
+      <div class="meter"><i style="width:25%"></i></div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:12px">
+      <button class="btn primary" style="flex:1" onclick="go('s-chapter')">▶ 继续同行<br><small style="font-weight:400;font-size:11px">从上次位置继续体验</small></button>
+      <button class="btn purple" style="flex:1" onclick="go('s-chat')">💬 找角色聊聊<br><small style="font-weight:400;font-size:11px">和角色单独互动</small></button>
+    </div>
+    <div class="sec-t">📰 最近剧情 <span class="more" onclick="openSheet('sh-rewind')">🔄 回顾剧情</span></div>
+    <div class="card" style="font-size:13px;line-height:1.7;color:var(--ink)">
+      你和小伙伴们在繁华的都市中遭遇一起离奇事件，线索指向一位神秘人物。在追踪过程中，你们发现案件背后似乎隐藏着更大的阴谋……<br>新的谜团正在展开，而你们离真相又近了一步。
+    </div>
+    <div class="sec-t">👥 已解锁角色 <span class="more">全部角色 ›</span></div>
+    <div style="display:flex;gap:12px" id="story-chars"></div>
+    <div class="sec-t">📑 章节目录 <span class="more">全部章节 ›</span></div>
+    <div class="card" style="padding:6px 14px" id="story-chapters"></div>
+    <div style="height:10px"></div>
+  </div>
+  <nav class="tabbar">
+    <button><i>🏠</i>首页</button><button><i>📝</i>作业</button>
+    <button class="on"><i>📖</i>精选</button><button><i>🛍️</i>商城</button><button><i>👤</i>我的</button>
+  </nav>
+</section>
+
+<!-- ================= 聊天页 ================= -->
+<section class="screen" id="s-chat">
+  <div class="scr-head" style="padding-bottom:4px">
+    <button class="backbtn" onclick="go('s-story')">‹</button>
+    <div><div class="tt">夜</div><div class="sub">来自《重获新生》</div></div>
+    <button class="iconbtn">•••</button><button class="iconbtn">◎</button>
+  </div>
+  <div class="scr-body" style="padding-top:6px">
+    <div class="card" style="display:flex;gap:12px;align-items:flex-start">
+      <div class="avatar" style="width:56px;height:56px;font-size:30px">🌙</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px">
+          <b style="font-size:19px">夜</b><span class="tag">故事角色</span>
+          <button class="chip on" style="margin-left:auto;font-size:12px" onclick="openSheet('sh-profile')">🗂 角色档案</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--orange-d)">
+          ♡ 开始信任 <div class="meter"><i style="width:18%"></i></div>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:6px">今天看起来安静一些。</div>
+      </div>
+    </div>
+    <div style="text-align:center;font-size:11px;color:var(--muted);margin:14px 0 6px">今天 10:01</div>
+    <div id="chat-msgs"></div>
+    <div style="display:flex;gap:8px;overflow-x:auto;margin:10px 0 4px;padding-bottom:2px" id="chat-chips"></div>
+  </div>
+  <div class="inputbar">
+    <button class="iconbtn" style="margin:0">🎙</button>
+    <div class="field" onclick="toast('输入中…')">发消息给 夜…</div>
+    <button class="iconbtn" style="margin:0">😊</button>
+    <button class="send">➤</button>
+  </div>
+  <div class="disclaimer">聊天内容由 AI 生成，请注意甄别信息</div>
+</section>
+
+<!-- ================= 章节页 ================= -->
+<section class="screen" id="s-chapter">
+  <div class="scr-head">
+    <button class="backbtn" onclick="go('s-story')">‹</button>
+    <span class="tt" style="margin:0 auto">第三章 · 街头相遇</span>
+    <button class="iconbtn">•••</button><button class="iconbtn">◎</button>
+  </div>
+  <div class="scr-body">
+    <div class="ph" style="height:150px">
+      <span style="position:absolute;left:12px;bottom:10px;font-size:12px;z-index:1;background:rgba(0,0,0,.4);padding:4px 10px;border-radius:999px">📍 医院附近 · 傍晚</span>
+    </div>
+    <div style="display:flex;gap:8px;margin:10px 0;flex-wrap:wrap">
+      <span class="tag" style="background:#F0E9FF">✦ 夜开始信任你</span>
+      <span class="tag orange">📋 已发现病房编号</span>
+      <span class="tag gray">🔍 线索 +1</span>
+    </div>
+    <div class="card">
+      <div style="font-weight:800;margin-bottom:8px">✨ 故事馆</div>
+      <div style="font-size:14px;line-height:1.8">
+        夕阳的光洒在医院的围墙上，晚风带着消毒水的味道。前方，一个黑衣少年正背对着你望向急诊楼……
+      </div>
+    </div>
+    <div id="chapter-dialog"></div>
+    <div class="sec-t">✨ 推荐行动 <span class="more" style="font-weight:400">选择你的下一步</span></div>
+    <div style="display:flex;gap:10px" id="chapter-actions"></div>
+    <div style="height:8px"></div>
+  </div>
+  <div class="inputbar">
+    <div class="field" onclick="toast('输入中…')">输入你的话…</div>
+    <button class="send" style="background:var(--orange)">🎙</button>
+    <button class="send" style="background:#E8E2D4;color:var(--muted)">➤</button>
+  </div>
+  <div class="disclaimer">故事内容由 AI 生成，请注意分辨</div>
+</section>
+
+<!-- ================= 角色档案 ================= -->
+<div class="scrim" id="scrim" onclick="closeSheet()"></div>
+<div class="sheet" id="sh-profile">
+  <div class="sheet-h">🗂 角色档案 <button class="x" onclick="closeSheet()">✕</button></div>
+  <div class="sheet-b">
+    <div style="display:flex;gap:14px;align-items:center;padding:6px 0">
+      <div class="avatar" style="width:72px;height:72px;font-size:38px">🌙</div>
+      <div>
+        <div style="font-size:22px;font-weight:800">夜 <span class="tag">故事角色</span></div>
+        <div class="sub" style="font-size:12px;color:var(--muted);margin-top:2px">来自《重获新生》</div>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          <span class="tag orange">♡ 开始信任</span><span class="tag gray">✒ 安静</span><span class="tag gray">👁 观察力强</span>
+        </div>
+      </div>
+    </div>
+    <div class="sec-t">📋 基础信息</div>
+    <div class="card" style="box-shadow:none;border:1px solid var(--line)">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
+        <div><span style="color:var(--muted)">姓名：</span>夜</div>
+        <div><span style="color:var(--muted)">年龄：</span>14岁左右</div>
+        <div><span style="color:var(--muted)">身份：</span>故事角色</div>
+        <div><span style="color:var(--muted)">首次登场：</span>第三章 · 街头相遇</div>
+      </div>
+    </div>
+    <div class="sec-t">🧬 性格特点</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <span class="chip">冷静</span><span class="chip">警惕</span><span class="chip">不太爱表达</span><span class="chip">内心善良</span>
+    </div>
+    <div class="sec-t">💬 说话风格</div>
+    <div style="font-size:13px;line-height:1.7">说话简短，语气平静，通常只在必要时回应。不主动表达情绪，但会在关键时刻给出重要线索。</div>
+    <div class="sec-t">♡ 和我的关系</div>
+    <div style="display:flex;align-items:center;gap:10px;font-size:13px">
+      <span style="color:var(--orange-d)">目前：开始信任</span><div class="meter"><i style="width:18%"></i></div>
+    </div>
+    <div class="sec-t">🔍 已知线索</div>
+    <ul style="list-style:none;font-size:13px;display:flex;flex-direction:column;gap:8px">
+      <li>• 与医院事件有关</li><li>• 似乎在回避某段过去</li><li>• 对某个编号很在意</li>
+    </ul>
+  </div>
+  <div class="sheet-f">
+    <button class="btn ghost" style="flex:1" onclick="closeSheet()">关闭</button>
+    <button class="btn primary" style="flex:1" onclick="closeSheet();go('s-chat')">开始聊天</button>
+  </div>
+</div>
+
+<!-- ================= 剧情回溯 ================= -->
+<div class="sheet" id="sh-rewind">
+  <div class="sheet-h">🕐 剧情回溯 <button class="x" onclick="closeSheet()">✕</button></div>
+  <div class="sheet-b">
+    <div class="sub" style="font-size:12px;color:var(--muted);margin-bottom:10px">回到之前的剧情节点，重温你的故事旅程</div>
+    <div class="tabs" style="padding:0 0 10px">
+      <button class="chip">第一章</button><button class="chip on">第二章</button><button class="chip">第三章</button>
+    </div>
+    <div id="rewind-list"></div>
+  </div>
+  <div class="sheet-f">
+    <button class="btn ghost" style="flex:1" onclick="toast('查看当时对话')">💬 查看当时对话</button>
+    <button class="btn primary" style="flex:1" onclick="closeSheet();go('s-chapter')">▶ 从这里重新同行</button>
+  </div>
+</div>
+
+<!-- ================= 新建作品 1 选来源 ================= -->
+<section class="screen" id="s-create1">
+  <div class="scr-head">
+    <button class="backbtn" onclick="go('s-home')">‹</button>
+    <span class="sub">返回</span><span class="tt" style="margin:0 auto">新建作品</span>
+    <button class="iconbtn">•••</button><button class="iconbtn">◎</button>
+  </div>
+  <div class="scr-body">
+    <div style="display:flex;align-items:center;margin:8px 2px 16px" id="steps1"></div>
+    <div class="sec-t" style="margin-top:0">● 作品背景</div>
+    <div class="card" style="border:2px solid var(--orange);margin-bottom:12px;display:flex;gap:12px;align-items:center" onclick="go('s-create2')">
+      <div style="font-size:28px">✨</div>
+      <div style="flex:1"><b>不用背景，我自己想</b><div class="sub" style="font-size:12px;color:var(--muted)">从零开始的原创故事</div></div>
+      <div style="color:var(--orange);font-size:20px">✓</div>
+    </div>
+    <div class="card" style="margin-bottom:12px;display:flex;gap:12px;align-items:center">
+      <div class="ph" style="width:56px;height:56px;border-radius:12px;font-size:24px">🕵️</div>
+      <div><b>名侦探柯南：漆黑的追踪者</b><div class="sub" style="font-size:12px;color:var(--muted)">揭开神秘游戏的真相，守护最珍贵的伙伴</div></div>
+    </div>
+    <div class="card" style="display:flex;gap:12px;align-items:center">
+      <div class="ph" style="width:56px;height:56px;border-radius:12px;font-size:24px;background:linear-gradient(135deg,#5B3A8E,#2E6B4F)">⚡</div>
+      <div><b>哈利·波特与魔法石</b><div class="sub" style="font-size:12px;color:var(--muted)">关于勇气、友谊与魔法的传奇冒险</div></div>
+    </div>
+  </div>
+  <div style="flex:none;padding:12px 14px calc(14px + env(safe-area-inset-bottom))">
+    <button class="btn primary block" onclick="go('s-create2')">下一步</button>
+  </div>
+</section>
+
+<!-- ================= 新建作品 2 选人物 ================= -->
+<section class="screen" id="s-create2">
+  <div class="scr-head">
+    <button class="backbtn" onclick="go('s-create1')">‹</button>
+    <span class="sub">返回</span><span class="tt" style="margin:0 auto">新建作品</span>
+    <button class="iconbtn">•••</button><button class="iconbtn">◎</button>
+  </div>
+  <div class="scr-body">
+    <div style="display:flex;align-items:center;margin:8px 2px 16px" id="steps2"></div>
+    <div class="sec-t" style="margin-top:0">● 主要人物 <span class="more">已选 30 / 30 位</span></div>
+    <div class="sub" style="font-size:12px;color:var(--muted);margin:-4px 2px 12px">点一下可以去掉不想的人物，剩下的就是这部作品的主角们</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px" id="cast-grid"></div>
+  </div>
+  <div style="flex:none;display:flex;gap:10px;padding:12px 14px calc(14px + env(safe-area-inset-bottom))">
+    <button class="btn ghost" style="flex:1" onclick="go('s-create1')">上一步</button>
+    <button class="btn primary" style="flex:1" onclick="go('s-create4')">下一步</button>
+  </div>
+</section>
+
+<!-- ================= 新建作品 4 定要素 ================= -->
+<section class="screen" id="s-create4">
+  <div class="scr-head">
+    <button class="backbtn" onclick="go('s-create2')">‹</button>
+    <span class="sub">返回</span><span class="tt" style="margin:0 auto">新建作品</span>
+    <button class="iconbtn">•••</button><button class="iconbtn">◎</button>
+  </div>
+  <div class="scr-body">
+    <div style="display:flex;align-items:center;margin:8px 2px 16px" id="steps4"></div>
+    <div class="sec-t" style="margin-top:0">● 作品要素 <span class="more" style="color:var(--orange-d)">重新生成</span></div>
+    <div class="sub" style="font-size:12px;color:var(--muted);margin:-4px 2px 12px">执笔人按梗概安排好了，每一项都可以改</div>
+    <div class="card" style="margin-bottom:12px">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:8px">这个故事讲的是</div>
+      <div style="font-size:14px;line-height:1.8">毛利兰带着柯南和园子来到即将拆除的旧天文台，想找到老天文学家留下的"星光日记"，证明老建筑的温暖价值以阻止拆迁。最大阻碍是暗中潜伏的神秘捣蛋鬼不断破坏线索并设下机关，小兰和柯南必须在流星雨降临前解开星图密码，守护大家珍贵的回忆。</div>
+    </div>
+    <div class="sec-t">题材</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap" id="chips-genre"></div>
+    <div class="sec-t">基调</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap" id="chips-mood"></div>
+    <div class="sec-t">出场的人</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap" id="chips-cast"></div>
+    <div class="sec-t">故事发生在</div>
+    <div class="card" style="font-size:14px">现代 · 米花旧天文台 · 毛利侦探事务所 · 阿笠博士家 · 星光穹顶放映厅</div>
+    <div class="sec-t">结局会是</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap" id="chips-end"></div>
+    <div style="height:10px"></div>
+  </div>
+  <div style="flex:none;display:flex;gap:10px;padding:12px 14px calc(14px + env(safe-area-inset-bottom))">
+    <button class="btn ghost" style="flex:1" onclick="go('s-create2')">上一步</button>
+    <button class="btn primary" style="flex:1" onclick="go('s-cmode')">下一步</button>
+  </div>
+</section>
+
+<!-- ================= 创作模式 ================= -->
+<section class="screen" id="s-cmode">
+  <div class="scr-head">
+    <button class="backbtn" onclick="go('s-create4')">‹</button>
+    <span class="sub">返回</span><span class="tt" style="margin:0 auto">创作模式</span>
+    <span class="tag orange">剩余 300 分钟</span>
+    <button class="iconbtn">•••</button><button class="iconbtn">◎</button>
+  </div>
+  <div class="scr-body">
+    <div class="ph" style="height:130px"></div>
+    <div style="display:flex;justify-content:flex-end;margin:8px 0">
+      <button class="chip on" id="director-toggle" onclick="toggleDirector()">🎬 导演台 ▲</button>
+    </div>
+    <div id="director" style="display:none">
+      <div class="sub" style="font-size:12px;color:var(--muted);margin:4px 2px 10px">点一个，指令会填进入框，改一改再发给执笔人</div>
+      <div class="sec-t" style="margin-top:6px">人物</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <span class="chip on">毛利小五郎</span><span class="chip on">毛利兰</span><span class="chip on">江户川柯南</span><span class="chip">吉田步美</span><span class="chip">圆谷⋯</span>
+      </div>
+      <div class="sec-t">场景</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <span class="chip">换个地方</span><span class="chip">时间往后跳</span><span class="chip">换个氛围</span>
+      </div>
+      <div class="sec-t">节奏</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <span class="chip">加快</span><span class="chip">放慢</span><span class="chip">来个转折</span><span class="chip">轻松一点</span><span class="chip">紧张一点</span>
+      </div>
+      <div class="sec-t">结构</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <span class="chip">收个尾</span><span class="chip">写结局</span><span class="chip">扩写上一段</span><span class="chip">精简上一段</span>
+      </div>
+      <div class="sec-t">篇幅</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <span class="chip on">短</span><span class="chip">中</span><span class="chip">长</span>
+        <span class="sub" style="font-size:12px;color:var(--muted)">每段短一些，故事推进慢一点</span>
+      </div>
+      <div class="sec-t">分支与出版</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <span class="chip">🔀 主线</span><span class="chip">📕 出版</span><span class="chip">⚙️ 作品设定</span>
+      </div>
+    </div>
+    <div style="padding:6px 2px">
+      <div style="font-size:19px;font-weight:800">柯南同人篇：黑夜中的微光</div>
+      <div class="sub" style="font-size:12px;color:var(--muted);margin-top:4px">第 11 段 · 2.0万 字 · 主线 <span style="float:right">篇幅 · 短</span></div>
+    </div>
+    <div style="font-size:15px;line-height:2;padding:6px 2px">
+      <p style="margin-bottom:12px">浓密的树林。</p>
+      <p style="margin-bottom:12px">在冰冷的夜风中，那片树林的阴影里，一辆通体漆黑的保时捷古董车正静静地停在断崖边。车窗缓缓摇上，一条缝隙，两道冰冷如霜的目光在夜色中短暂停留了片刻，随即伴随着低沉的引擎轰鸣，悄无声息地滑入了无边的黑暗深处。</p>
+      <p style="margin-bottom:12px">柯南推了推眼镜，镜片后的一双眼睛深邃而明亮。</p>
+      <p>他知道，这场由复仇与执念引发的闹剧虽然落下了帷幕，但潜伏在城市阴影中的那片巨大黑暗，才刚刚向他们露出了冰山一角。</p>
+    </div>
+    <div style="display:flex;gap:8px;margin:10px 0">
+      <button class="chip" style="flex:1">🔀 从这里分支</button>
+      <button class="chip" style="flex:1">🔄 重写这段</button>
+      <button class="chip" style="flex:1">📝 从这里起新章</button>
+    </div>
+    <div class="sec-t">✨ 推荐走向 <span class="more" style="font-weight:400">选一个，或者自己说</span></div>
+    <div style="display:flex;gap:10px">
+      <div class="card" style="flex:1;text-align:center;padding:12px 6px" onclick="toast('继续写下去')">
+        <div style="font-size:24px">💬</div><b style="font-size:13px">继续写下去</b><div class="sub" style="font-size:11px;color:var(--muted)">看看接下来会发生什么</div>
+      </div>
+      <div class="card" style="flex:1;text-align:center;padding:12px 6px" onclick="toast('来一场转折')">
+        <div style="font-size:24px">❓</div><b style="font-size:13px">来一场转折</b><div class="sub" style="font-size:11px;color:var(--muted)">让剧情出点意外</div>
+      </div>
+      <div class="card" style="flex:1;text-align:center;padding:12px 6px" onclick="toast('细写这一幕')">
+        <div style="font-size:24px">🎯</div><b style="font-size:13px">细写这一幕</b><div class="sub" style="font-size:11px;color:var(--muted)">放慢节奏描写细节</div>
+      </div>
+    </div>
+    <div style="height:8px"></div>
+  </div>
+  <div class="inputbar">
+    <button class="iconbtn" style="margin:0">🎙</button>
+    <div class="field" onclick="toast('输入中…')">告诉执笔人接下来写什么…</div>
+    <button class="iconbtn" style="margin:0">😊</button>
+    <button class="send">➤</button>
+  </div>
+  <div class="disclaimer">故事内容由 AI 生成，请注意分辨</div>
+</section>
+
+<!-- ================= 阅读模式 ================= -->
+<section class="screen" id="s-read">
+  <div class="scr-head">
+    <button class="backbtn" onclick="go('s-home')">‹</button>
+    <span class="sub">返回</span><span class="tt" style="margin:0 auto">阅读模式</span>
+    <button class="chip" style="font-size:12px">目录</button>
+    <button class="chip" style="font-size:12px">设置</button>
+    <button class="iconbtn">︾</button>
+  </div>
+  <div class="scr-body">
+    <div class="ph" style="height:140px"></div>
+    <div style="text-align:center;padding:14px 0 4px">
+      <div style="font-size:12px;color:var(--muted)">第一章 · 动物园里的面具谜影</div>
+      <div style="font-size:21px;font-weight:800;margin-top:6px">动物园里的面具谜影</div>
+    </div>
+    <div style="font-size:15px;line-height:2;padding:8px 2px">
+      <p style="margin-bottom:12px">少年侦探团与阿笠博士驱车前往神奈川动物园，会同三浦刑警展开调查。柯南询问园区员工，得知案发当晚曾有一名戴着面具的神秘人抱走发光设备。</p>
+    </div>
+    <div class="ph" style="height:150px;font-size:30px">🦁🌴</div>
+    <div style="font-size:15px;line-height:2;padding:12px 2px">
+      <p>阿笠博士那辆标志性的黄色甲壳虫汽车正平稳地行驶在前往神奈川的公路旁，车窗外是冬日里略显萧瑟的树影。车厢内，暖风轻拂，孩子们叽叽喳喳地讨论着今天的计划。</p>
+    </div>
+  </div>
+  <div style="flex:none;display:flex;align-items:center;justify-content:space-between;padding:10px 18px;background:var(--card);border-top:1px solid var(--line)">
+    <button class="iconbtn" style="margin:0">‹</button>
+    <span style="font-size:13px">第一章 · 1 / 11 页 <span class="tag orange">0%</span></span>
+    <button class="iconbtn" style="margin:0">›</button>
+  </div>
+</section>
+
+<script>
+/* ============ 路由 ============ */
+function go(id){
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("on"));
+  document.getElementById(id).classList.add("on");
+  document.getElementById(id).querySelector(".scr-body").scrollTop = 0;
+}
+function openSheet(id){
+  document.getElementById("scrim").classList.add("on");
+  document.getElementById(id).classList.add("on");
+}
+function closeSheet(){
+  document.getElementById("scrim").classList.remove("on");
+  document.querySelectorAll(".sheet").forEach(s => s.classList.remove("on"));
+}
+function toggleDirector(){
+  var d = document.getElementById("director");
+  var t = document.getElementById("director-toggle");
+  var show = d.style.display === "none";
+  d.style.display = show ? "block" : "none";
+  t.innerHTML = show ? "🎬 导演台 ▼" : "🎬 导演台 ▲";
+}
+function toast(m){
+  var el = document.createElement("div");
+  el.textContent = m;
+  el.style.cssText = "position:absolute;left:50%;bottom:120px;transform:translateX(-50%);background:rgba(46,35,24,.92);color:#fff;font-size:13px;padding:10px 18px;border-radius:999px;z-index:99";
+  document.getElementById("phone").appendChild(el);
+  setTimeout(() => el.remove(), 1400);
+}
+
+/* ============ 数据渲染 ============ */
+var AV = {"夜":"🌙","柯南":"🕵️","步美":"👧","安室透":"👨","雷娜":"👩","哈利·波特":"⚡","罗恩":"👦","赫敏":"👩‍🦰","达力":"👦","弗农":"👨‍🦱","佩妮":"👩‍🦳","邓布利多":"🧙","海格":"🧔","麦格":"👩‍🏫","纳威":"👦","马尔福":"👦","斯内普":"🧛","伏地魔":"💀","费伦泽":"🐴","莫丽":"👵","弗雷德":"👬","乔治":""};
+function ava(n, s){ return '<div class="avatar" style="'+(s||"")+'">'+(AV[n]||"🙂")+"</div>"; }
+
+(function(){
+  /* 首页: 正在同行 */
+  var going = [["魔法学院的秘密","第 3/12 章","🌙"],["小红帽的奇遇","第 5/15 章","🍎"],["星际小队出发!","第 2/10 章","🚀"]];
+  document.getElementById("home-going").innerHTML = going.map(g =>
+    '<div class="card" style="min-width:132px;padding:10px" onclick="go(\'s-story\')">' +
+    '<div class="ph" style="height:74px;font-size:28px">'+g[2]+'</div>' +
+    '<div style="font-size:13px;font-weight:700;margin-top:8px">'+g[0]+'</div>' +
+    '<div style="font-size:11px;color:var(--muted)">'+g[1]+' ›</div></div>').join("");
+  /* 首页: 可聊天角色 */
+  var chars = [["夜","开始信任"],["柯南","友好"],["步美","友好"],["安室透","熟悉"],["雷娜","开始信任"]];
+  document.getElementById("home-chars").innerHTML = chars.map(c =>
+    '<div style="text-align:center;min-width:64px" onclick="go(\'s-chat\')">' + ava(c[0]) +
+    '<div style="font-size:13px;font-weight:700;margin-top:6px">'+c[0]+'</div>' +
+    '<div style="font-size:11px;color:var(--orange-d)">'+c[1]+'</div></div>').join("");
+  /* 首页: 推荐故事 */
+  var rec = [["风之谷的守护者","9.6 · 3.2万人体验","🌿"],["时间旅行者日记","9.4 · 2.1万人体验","⏳"],["深海音乐会","9.3 · 1.8万人体验","🐋"],["机器人的小秘密","9.5 · 2.6万人体验","🤖"]];
+  document.getElementById("home-rec").innerHTML = rec.map(r =>
+    '<div class="card" style="padding:10px" onclick="go(\'s-story\')">' +
+    '<div class="ph" style="height:80px;font-size:30px">'+r[2]+'</div>' +
+    '<div style="font-size:13px;font-weight:700;margin-top:8px">'+r[0]+'</div>' +
+    '<div style="font-size:11px;color:var(--muted)">⭐ '+r[1]+'</div></div>').join("");
+
+  /* 故事详情: 角色 & 章节 */
+  document.getElementById("story-chars").innerHTML =
+    [["夜","开始信任"],["柯南","友好"],["步美","友好"]].map(c =>
+      '<div style="text-align:center;min-width:64px" onclick="go(\'s-chat\')">' + ava(c[0]) +
+      '<div style="font-size:12px;font-weight:700;margin-top:6px">'+c[0]+'</div>' +
+      '<div style="font-size:11px;color:var(--orange-d)">'+c[1]+'</div></div>').join("") +
+    '<div style="text-align:center;min-width:64px"><div class="avatar" style="background:#F1EDE3">?</div>' +
+    '<div style="font-size:12px;color:var(--muted);margin-top:6px">未解锁</div></div>' +
+    '<div style="text-align:center;min-width:64px"><div class="avatar" style="background:#F1EDE3">?</div>' +
+    '<div style="font-size:12px;color:var(--muted);margin-top:6px">未解锁</div></div>';
+  var chs = [["第一章 · 新生活的开始","已完成",1],["第二章 · 神秘的信件","已完成",1],["第三章 · 街头相遇","进行中",0],["第四章 · 隐藏的线索","未解锁",-1]];
+  document.getElementById("story-chapters").innerHTML = chs.map(c =>
+    '<div style="display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)" onclick="go(\'s-chapter\')">' +
+    '<span style="font-size:16px">'+(c[2]===1?"🟠":c[2]===0?"🔶":"🔒")+'</span>' +
+    '<span style="font-size:14px;flex:1">'+c[0]+'</span>' +
+    '<span style="font-size:12px;color:var(--muted)">'+c[1]+'</span></div>').join("");
+
+  /* 聊天消息 */
+  var msgs = [
+    ["ai","🌙","你来了。","10:01"],
+    ["user","","夜，你今天怎么样？","10:01"],
+    ["ai","🌙","还行吧，就是有点累。","10:02"],
+    ["user","","看起来是没睡好？","10:02"],
+    ["ai","🌙","嗯…不太想闭上眼睛，一闭上眼就会想起些画面。","10:02"],
+    ["user","","没关系，你可以慢慢说，我在听。","10:02"],
+    ["ai","🌙","谢谢你…很少有人愿意听我说这些。","10:02"],
+  ];
+  document.getElementById("chat-msgs").innerHTML = msgs.map(m =>
+    '<div style="display:flex;gap:8px;margin:10px 0;'+(m[0]==="user"?"flex-direction:row-reverse":"")+'">' +
+    (m[0]==="ai"?'<div class="avatar" style="width:36px;height:36px;font-size:20px">'+m[1]+'</div>':"") +
+    '<div style="max-width:78%;background:'+(m[0]==="user"?"#FFE9C7":"#fff")+';border:1px solid var(--line);border-radius:16px;padding:10px 14px;font-size:14px;line-height:1.6;box-shadow:var(--shadow)">' +
+    m[2]+'<span style="font-size:10px;color:var(--muted);margin-left:8px">'+m[3]+'</span></div></div>').join("");
+  document.getElementById("chat-chips").innerHTML =
+    ["💬 问他今天怎么样","🏥 聊聊医院的事","♡ 安慰他"].map(c =>
+      '<button class="chip" onclick="toast(\'已发送：'+c.slice(2)+'\')">'+c+'</button>').join("");
+
+  /* 章节对话 */
+  var dlg = [
+    ["🌙","夜","“你跟着我做什么？”他的声音很冷，但没有回头。"],
+    ["🕵️","柯南","夜君，你误会了！我们是来调查那起案件的。"],
+    ["👧","步美","对呀，大家都是为了找出真相才在一起的！"],
+  ];
+  document.getElementById("chapter-dialog").innerHTML = dlg.map(d =>
+    '<div style="display:flex;gap:10px;margin:12px 0">' +
+    '<div class="avatar" style="width:40px;height:40px;font-size:22px">'+d[0]+'</div>' +
+    '<div><div style="font-size:12px;color:var(--muted);margin-bottom:4px">'+d[1]+'</div>' +
+    '<div class="card" style="font-size:14px;line-height:1.7;padding:10px 14px">'+d[2]+'</div></div></div>').join("") +
+    '<div style="display:flex;gap:8px;justify-content:flex-end;margin:12px 0">' +
+    '<div class="card" style="font-size:14px;background:#FFE9C7;border:1px solid var(--orange-line);max-width:80%">夜，我们没有恶意，只是想帮你。<div style="font-size:11px;color:var(--muted);text-align:right">我</div></div>' +
+    '<div class="avatar" style="width:40px;height:40px;font-size:22px">🧑</div></div>';
+  document.getElementById("chapter-actions").innerHTML =
+    [["💬","替夜解释","缓和气氛，消除误会"],["❓","询问柯南","了解案件更多线索"],["🎯","观察周围","留意医院附近环境"]].map(a =>
+    '<div class="card" style="flex:1;text-align:center;padding:14px 6px" onclick="toast(\''+a[1]+'\')">' +
+    '<div style="font-size:26px">'+a[0]+'</div><b style="font-size:13px">'+a[1]+'</b>' +
+    '<div style="font-size:11px;color:var(--muted);margin-top:4px">'+a[2]+'</div></div>').join("");
+
+  /* 剧情回溯 */
+  var rw = [["✓","医院醒来","夜在医院中醒来，回忆起模糊的过去","08:15",1],["✓","离开医院","离开医院，踏上寻找真相的旅程","12:40",1],["▶","街头相遇","在雨夜的街头，遇见了神秘少年柯南","18:32",0],["🔒","决定帮助夜","决定加入柯南，一起调查神秘组织","22:10",-1]];
+  document.getElementById("rewind-list").innerHTML = rw.map(r =>
+    '<div style="display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);'+(r[4]===0?"background:var(--orange-soft);border-radius:12px;padding:12px":"")+'">' +
+    '<span style="font-size:18px">'+r[0]+'</span>' +
+    '<div style="flex:1"><b style="font-size:14px">'+r[1]+'</b>' +
+    '<div style="font-size:12px;color:var(--muted);margin-top:2px">'+r[2]+'</div></div>' +
+    '<span style="font-size:12px;color:var(--muted)">'+r[3]+'</span></div>').join("");
+
+  /* 新建作品步骤条 */
+  function steps(el, n, labels){
+    document.getElementById(el).innerHTML = labels.map((l,i) =>
+      '<div style="flex:1;text-align:center">' +
+      '<div style="width:30px;height:30px;border-radius:50%;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;' +
+      (i+1===n?"background:var(--orange);color:#fff":i+1<n?"background:var(--orange-soft);color:var(--orange-d)":"background:#EFEAE0;color:var(--muted)")+'">'+(i+1)+'</div>' +
+      '<div style="font-size:11px;margin-top:4px;'+(i+1===n?"color:var(--orange-d);font-weight:700":"color:var(--muted)")+'">'+l+'</div></div>' +
+      (i<labels.length-1?'<div style="flex:1;height:2px;background:#EFEAE0;margin:0 4px 20px"></div>':"")).join("");
+  }
+  steps("steps1", 1, ["选来源","写梗概","定要素","写开头"]);
+  steps("steps2", 2, ["选来源","选人物","写梗概","定要素","写开头"]);
+  steps("steps4", 4, ["选来源","选人物","写梗概","定要素","写开头"]);
+
+  /* 选人物网格 */
+  var cast = ["哈利·波特","罗恩","赫敏","达力","弗农","佩妮","邓布利多","海格","麦格","纳威","马尔福","斯内普","伏地魔","费伦泽","莫丽","弗雷德"];
+  document.getElementById("cast-grid").innerHTML = cast.map(n =>
+    '<div style="text-align:center;position:relative" onclick="this.querySelector(\'.pick\').style.display=this.querySelector(\'.pick\').style.display===\'none\'?\'flex\':\'none\'">' +
+    '<div style="position:relative;display:inline-block">'+ava(n,'width:60px;height:60px;font-size:32px') +
+    '<div class="pick" style="position:absolute;right:-2px;bottom:-2px;width:22px;height:22px;border-radius:50%;background:var(--orange);color:#fff;font-size:13px;display:flex;align-items:center;justify-content:center">✓</div></div>' +
+    '<div style="font-size:12px;margin-top:6px">'+n+'</div></div>').join("");
+
+  /* 要素 chips */
+  function chipset(el, arr, onIdx){
+    document.getElementById(el).innerHTML = arr.map((c,i) =>
+      '<button class="chip'+(onIdx.indexOf(i)>=0?" on":"")+'">'+c+'</button>').join("");
+  }
+  chipset("chips-genre", ["少年冒险推理","冒险","侦探","奇幻","科幻","校园"], [0]);
+  chipset("chips-mood", ["温暖励志","轻松幽默","热血","温馨","紧张刺激"], [0]);
+  chipset("chips-cast", ["毛利小五郎·配角","毛利兰·主角","江户川柯南·主角","吉田步美·配角"], [1,2]);
+  chipset("chips-end", ["圆满","开放","有点遗憾","先不定"], [0]);
+})();
+</script>
+</div>
+</body></html>
