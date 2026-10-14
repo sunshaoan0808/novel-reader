@@ -99,7 +99,7 @@ function renderUpload(){
   ${renderTaskHistory()}
   ${pkgs.length ? `<h2 class="sec">已有剧本包 (${pkgs.length})</h2>` +
     pkgs.map(function(p){
-      return `<div class="card" style="padding:12px" data-dact="openPackage" data-did="${p.id}">
+      return `<div class="card card--tap" style="padding:12px" data-dact="openPackage" data-did="${p.id}">
         <div style="font-weight:600">${esc(p.novel)}</div>
         <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint)">${p.charCount} 个角色 · ${new Date(p.created).toLocaleDateString()}</div>
       </div>`;
@@ -366,7 +366,7 @@ function renderPackages(){
   if(!pkgs.length) return `<div class="empty">还没有剧本包</div>`;
   var citeWarn = S.citationWarnings ? `<div style="font-size:calc(12px * var(--fs));color:#f0ad4e;margin:8px 0">⚠️ ${esc(S.citationWarnings)}</div>` : "";
   return `<h2 class="sec">剧本包 (${pkgs.length})</h2>` + citeWarn + pkgs.map(function(p){
-    return `<div class="card" style="padding:12px" data-dact="openPackage" data-did="${p.id}">
+    return `<div class="card card--tap" style="padding:12px" data-dact="openPackage" data-did="${p.id}">
       <div style="font-weight:600">${esc(p.novel)}</div>
       <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint)">${p.charCount} 个角色</div>
     </div>`;
@@ -677,7 +677,7 @@ function openPackage(id){
     <button class="btn" style="margin-bottom:12px;margin-left:8px" onclick="DISTILL_UI.showStyles()">✒️ 文风库</button>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
     ${cards.map(function(c){
-      return `<div class="card" style="padding:12px" data-dact="openCharacter" data-did="${id}" data-dname="${escA(c.name)}">
+      return `<div class="card card--tap" style="padding:12px" data-dact="openCharacter" data-did="${id}" data-dname="${escA(c.name)}">
         <div style="font-weight:600">${esc(c.name)}</div>
         <div style="font-size:calc(11px * var(--fs));color:var(--ink-faint)">★${c.importance} ${c.hasCard ? "· 已蒸馏" : ""}</div>
       </div>`;
@@ -1097,7 +1097,7 @@ var api = {show: show, openPackage: openPackage, openCharacter: openCharacter, s
     }
     cards.forEach(function(c){
       var total = Object.keys(c.sheet || {}).reduce(function(n, k){ return n + (c.sheet[k] || []).length; }, 0);
-      html += `<div class="card" style="margin-bottom:8px;padding:12px" data-dact="showStyleDetail" data-did="${c.id}">
+      html += `<div class="card card--tap" style="margin-bottom:8px;padding:12px" data-dact="showStyleDetail" data-did="${c.id}">
         <div style="font-weight:600">${esc(c.name)}</div>
         <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint)">${total} 条风格特征 · ${c.signature_lines.length} 句式</div>
       </div>`;

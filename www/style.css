@@ -5,6 +5,13 @@
   --ink:#ece4d3; --ink-dim:#b3a88f; --ink-faint:#9a917e; /* faint 提亮：WCAG 4.5:1 底线 */
   --gold:#d4a24e; --gold-deep:#a97c2e; --gold-soft:#f2ddab;
   --red:#d07864; --green:#8fb573;
+  /* 语义别名（P0-29/P0-39/P0-3）：这三个变量被引用了十几次却从未定义。
+     未定义变量在 computed-value 阶段整体失效 —— color:var(--muted) 不是"透明"，
+     是整条声明作废，元素退回继承父色。这几个界面（穿越首页说明、世界 HUD、
+     确认框正文、Soul 健康度）因此一直在显示正文色而不是次级灰。 */
+  --muted:var(--ink-dim);      /* 次要文字：穿越模式说明 / 世界条 / 确认框正文 */
+  --danger:var(--red);         /* 错误态：与 --red 同源，红色只用于错误语义 */
+  --accent:var(--gold);        /* 强调：等同主色，避免再冒出第二个高饱和色 */
   /* 字号倍率（P0-28）：只缩文字，不缩布局盒子。曾经的根元素 zoom 会把布局视口
      等比缩小（360→277 @1.3），底栏"蒸馏"折行 —— 见 DESIGN.md 字体章节 */
   --fs:1;
@@ -80,13 +87,22 @@ body{
 #tabs button.active{background:rgba(212,162,78,.14); border-color:var(--gold-deep); color:var(--gold-soft);}
 .hidden{display:none !important;}
 
-/* 卡片 */
+/* 卡片
+   P0-16：`.card` 原本无条件带 cursor:pointer + :active 缩放/金边，但全项目 ~130 处
+   发出 .card 里只有 ~15 处真有 onclick/data-dact，剩下全是纯展示容器（灵魂包 9 张
+   卡、设置分组、长文说明）。手指按下就有"响应"，松开无事发生 = 假交互态。
+   反转默认：.card 一律静态（无指针、无按压），真有行为的卡显式加 .card--tap。
+   子元素可点、卡本身不可点的行（表单/按钮行）保持静态 —— 它们的可点区域是子控件，
+   整卡缩放反而让用户以为卡片别处也能点。 */
 .card{
   background:linear-gradient(180deg,var(--card2),var(--card));
   border:1px solid var(--line); border-radius:var(--r); padding:18px; margin-bottom:14px;
-  box-shadow:var(--shadow); cursor:pointer; transition:transform .12s ease, border-color .12s;
+  box-shadow:var(--shadow);
 }
-.card:active{transform:scale(.985); border-color:var(--gold-deep);}
+.card--tap{cursor:pointer;}
+.card--tap:active{transform:scale(.985); border-color:var(--gold-deep); box-shadow:var(--shadow-s);}
+/* <details class="card"> 的真实目标是 <summary>，不是整张卡 */
+.card summary{cursor:pointer;}
 .card .t{font-family:var(--serif); font-size:calc(16px * var(--fs)); color:var(--ink); font-weight:600;}
 .card .meta{font-size:calc(12px * var(--fs)); color:var(--ink-faint); margin-top:4px;}
 .card .sum{font-size:calc(13px * var(--fs)); color:var(--ink-dim); margin-top:8px;
@@ -833,8 +849,7 @@ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow
 .spec{background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 4px; text-align:center;}
 .spec .v{font-size:calc(14px * var(--fs)); font-weight:700; color:var(--gold-soft);}
 .spec .k{font-size:calc(11px * var(--fs)); color:var(--ink-faint); margin-top:3px;}
-.opencard{cursor:pointer;}
-.opencard:active{transform:scale(.985); border-color:var(--gold-deep);}
+/* P0-16：交互态已统一到 .card--tap（见文件头 .card 定义），此处不再重复。 */
 .btn.landcta{display:block; width:100%; padding:13px 0; font-size:calc(15px * var(--fs)); font-weight:700;
   background:linear-gradient(180deg,#e0b45e,#c9973f); color:#1c1407; border:1px solid var(--gold-deep);
   border-radius:12px; margin:6px 0 4px;}
@@ -884,10 +899,12 @@ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow
   border-color:var(--gold-deep); font-weight:700;}
 .charbody .ops button:active{transform:scale(.94);}
 .charbody .ops button.danger{color:var(--red); border-color:#5a2f28; background:transparent;}
-.cc0{background:linear-gradient(135deg,#4a3a22,#2a2013);}
-.cc1{background:linear-gradient(135deg,#3a2e4a,#211a2e);}
-.cc2{background:linear-gradient(135deg,#2e4a3a,#1a2e20);}
-.cc3{background:linear-gradient(135deg,#4a2e33,#2e1a1e);}
+/* P0-13：角色卡封底原本按名字哈希在 4 个色相里选（.cc1 紫蓝 .cc2 绿 .cc3 酒红），
+   约 1/4 的角色拿到紫蓝渐变封底，且四个色相在一屏内混用 = 一屏多个强调色 +
+   DESIGN.md 明令禁止的紫/蓝渐变。名字决定配色对用户没有意义（用户认的是人名
+   与立绘，不认色块）。统一收敛到 --card2 单色，靠 .charcover:after 的底部渐隐
+   和 2px 边框区分层次，色相留给"身份"这个唯一的主信息。 */
+.cc0,.cc1,.cc2,.cc3{background:var(--card2);}
 
 /* --- Talkie Memory Album 式时间线 (记忆事件簿 / 平行存档复用) --- */
 .timeline{position:relative; margin:6px 0 0; padding-left:22px;}
@@ -1071,9 +1088,6 @@ input[type=checkbox]{accent-color:var(--gold);}
 input::placeholder, textarea::placeholder{color:#9a917e; opacity:1;}
 input::-webkit-input-placeholder, textarea::-webkit-input-placeholder{color:#9a917e; opacity:1;}
 
-/* --- 卡片按压时阴影收敛, 更有"按下"感 --- */
-.card{transition:transform .12s ease, border-color .12s, box-shadow .12s;}
-.card:active{box-shadow:var(--shadow-s);}
 
 /* ============ SVG 图标体系 ============ */
 .ic{display:inline-block; vertical-align:-3px; flex:none;}
@@ -1134,11 +1148,15 @@ input::-webkit-input-placeholder, textarea::-webkit-input-placeholder{color:#9a9
 .travmode .tm-name{font-family:var(--serif);font-size:calc(16px * var(--fs));font-weight:600;color:var(--ink);}
 .travmode .tm-desc{font-size:calc(12px * var(--fs));color:var(--ink-dim);margin-top:2px;line-height:1.5;}
 /* 模式印章：一字 seal，选身份的仪式感 */
+/* 模式印章：一字 seal，选身份的仪式感。
+   P0-45：原为朱红渐变 #b54634/#8e2f1e + 自创第三档阴影 0 2px 8px，
+   五张模式卡红金同屏 = 一屏第二个主色，且三色都不在 DESIGN.md 色板内。
+   印章的仪式感靠形状和 -5° 倾角，不靠第二个色相。 */
 .tm-seal{position:absolute;top:10px;right:40px;width:26px;height:26px;border-radius:7px;
-  background:linear-gradient(160deg,#b54634,#8e2f1e);color:#fdf3e7;
+  background:var(--gold-deep);color:#1c1407;
   font-family:var(--serif);font-size:calc(15px * var(--fs));font-weight:700;line-height:1;
   display:flex;align-items:center;justify-content:center;transform:rotate(-5deg);
-  box-shadow:0 2px 8px rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.14);
+  border:1px solid rgba(255,255,255,.14);
   opacity:.94;pointer-events:none}
 .travmode .tm-body{padding-right:32px} /* 给右上角印章让位 */
 .travmode:active{transform:scale(.97)}

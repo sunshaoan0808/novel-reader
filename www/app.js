@@ -252,7 +252,7 @@ loadPov();
 setNav("chat");
 };
 function charList(ps){
-if(!ps.length) return `<div class="empty"><span class="big">🎭</span>暂无人物卡</div>`;
+if(!ps.length) return `<div class="empty"><span class="big">${icon("masks",44)}</span>暂无人物卡</div>`;
 return `<div class="chargrid">` + ps.map(p=>{let _st2="";
 try{
 if(typeof RP_STATS !== "undefined"){
@@ -1779,7 +1779,7 @@ const cs = allChars();
 let keyBanner = "";
 try{ if(!(getCfg().key)) keyBanner = `<div class="apibanner" onclick="setNav('settings')"><span>⚠️ 还没配置 API Key，配好才能开始聊天</span><span class="ab-go">去设置 ›</span></div>`; }catch(e){}
 if(!cs.length){
-view.innerHTML = `<div class="empty"><span class="big">🎭</span>还没有角色<br><span style="font-size:calc(12px * var(--fs))">去「写卡」创建你的第一个角色</span><br><button class="btn" style="margin-top:10px" onclick="setNav('writer')">去写卡</button></div>`;
+view.innerHTML = `<div class="empty"><span class="big">${icon("masks",44)}</span>还没有角色<br><span style="font-size:calc(12px * var(--fs))">去「写卡」创建你的第一个角色</span><br><button class="btn" style="margin-top:10px" onclick="setNav('writer')">去写卡</button></div>`;
 return;
 }
 /* P1 多轨道发现：最近玩过 / 我的收藏 / 换一批看看（横滑轨道，本地计算） */
@@ -2154,7 +2154,7 @@ const CAP = 200;
 const cards = list.slice(0, CAP).map(x=>{
 const e = x.e;
 const resolved = RP_FORE.isResolved(e);
-return `<div class="card" onclick="foreshadowChapter(${jq(e.ch)})" style="cursor:pointer">
+return `<div class="card card--tap" onclick="foreshadowChapter(${jq(e.ch)})" style="cursor:pointer">
 <div style="font-size:calc(13px * var(--fs));margin-bottom:6px">${esc(e.s || "")}</div>
 <div class="row"><span class="badge" style="${resolved?"":"background:#f5e6c8;color:#8a6d2f"}">${esc(RP_FORE.statusText(e))}</span>
 <span class="kv">第 ${e.ch} 回</span>
@@ -2831,7 +2831,7 @@ if(d == null) return `<div class="calcell pad"></div>`;
 const cls = "calcell" + (signed[d] ? " signed" : "") + (off === 0 && d === now.getDate() ? " today" : "");
 return `<div class="${cls}">${d}</div>`;
 }).join("") + `</div>`;
-return `<div class="setcard"><h3>📅 每日签到</h3>`
+return `<div class="setcard"><h3>${icon("calendar",15)} 每日签到</h3>`
 + `<div class="kv">连续签到 <b style="color:var(--gold)">${st}</b> 天 · 累计 ${tot} 天${done ? " · 今日已签到" : ""}</div>`
 + `<div class="btnrow" style="margin-top:8px"><button class="btn"${done ? " disabled" : ""} onclick="checkinUI()">${done ? "今日已签到 ✓" : "签到"}</button></div>`
 + cal + `<div class="hint">纯本地纪念，无货币无奖励。</div></div>`;
@@ -3090,7 +3090,7 @@ const rateBtns = m.role==="assistant"
 + `<button class="${m.rating===-1?"on":""}" onclick="event.stopPropagation();rateMsg(${jq(idx)},-1)">${icon("thumb-down",15)}</button>` : "";
 /* S-4 召回指示器：本条 AI 回复注入了记忆/世界书时，气泡工具条出现 🧠 角标 */
 const memBtn = (m.role==="assistant" && ((m.memHits&&m.memHits.length)||(m.loreHits&&m.loreHits.length)))
-? `<button onclick="event.stopPropagation();toggleMemHits(${jq(idx)})" title="这次想起了什么">🧠</button>` : "";
+? `<button onclick="event.stopPropagation();toggleMemHits(${jq(idx)})" title="这次想起了什么" aria-label="这次想起了什么">${icon("brain",15)}</button>` : "";
 /* 🧠 命中透明度：第一次出现时解释一次含义 */
 if(memBtn){ try{
   if(!localStorage.getItem("nd_memhit_tip")){
@@ -3573,12 +3573,12 @@ const spk = CHAT.mode==="group"
 const atb = CHAT.mode==="group"
 ? `<button id="atbtn" class="cb-tool" onclick="toggleAtMenu(event)" title="＠ 指定角色：本轮点名 TA 先回"><span class="cb-ico">＠</span><span class="cb-tx">点名</span></button>` : "";
 return `<div class="cb-tools">`
-+ `<button id="pushbtn" class="cb-tool${CHAT.pushStory?" on":""}" onclick="togglePushStory(event)" title="推剧情：下一条回复自动推进"><span class="cb-ico">🚀</span><span class="cb-tx">推剧情</span></button>`
-+ `<button id="narrbtn" class="cb-tool${CHAT.narrMode?" on":""}" onclick="toggleNarr()" title="旁白模式：发送场景/动作描写"><span class="cb-ico">📜</span><span class="cb-tx">旁白</span></button>`
++ `<button id="pushbtn" class="cb-tool${CHAT.pushStory?" on":""}" onclick="togglePushStory(event)" title="推剧情：下一条回复自动推进"><span class="cb-ico">${icon("clapperboard",15)}</span><span class="cb-tx">推剧情</span></button>`
++ `<button id="narrbtn" class="cb-tool${CHAT.narrMode?" on":""}" onclick="toggleNarr()" title="旁白模式：发送场景/动作描写"><span class="cb-ico">${icon("scroll",15)}</span><span class="cb-tx">旁白</span></button>`
 + `${atb}${spk}`
-+ `<button class="cb-tool" onclick="RP_AIFILL.fillChat(this)" title="AI 帮我说一句（只填入，不发送）"><span class="cb-ico">✨</span><span class="cb-tx">帮我说</span></button>`
++ `<button class="cb-tool" onclick="RP_AIFILL.fillChat(this)" title="AI 帮我说一句（只填入，不发送）"><span class="cb-ico">${icon("sparkles",15)}</span><span class="cb-tx">帮我说</span></button>`
 + `</div>`
-+ `<div class="cb-inputrow"><input id="chat_in" placeholder="${CHAT.narrMode?"📜 旁白：写场景/动作/心理描写…":ph}" onkeydown="if(event.key==='Enter')sendChat()">`
++ `<div class="cb-inputrow"><input id="chat_in" placeholder="${CHAT.narrMode?"写场景/动作/心理描写…":ph}" onkeydown="if(event.key==='Enter')sendChat()">`
 + `<button class="cbsend" onclick="sendChat()" title="发送">发送</button></div>`;
 }
 window.toggleAtMenu = (ev)=>{
@@ -3852,7 +3852,7 @@ window.chapterPicker = ()=>{
     <div style="display:grid;gap:8px;margin-top:8px">` +
     secs.map(function(s, i){
       var active = i === cur;
-      return `<div class="card${active?"":""}" onclick="setChapterIdx(${jq(i)});chapterPicker()"
+      return `<div class="card card--tap${active?"":""}" onclick="setChapterIdx(${jq(i)});chapterPicker()"
         style="cursor:pointer;${active?"border-color:var(--gold-deep);background:rgba(212,162,78,.08)":""}">
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:calc(12px * var(--fs));color:var(--gold);white-space:nowrap">第${i+1}章</span>
@@ -5079,7 +5079,7 @@ function cardLandingHTML(runId, nm, card, run){
     h += `<h2 class="sec">开场 · ${openings.length} 个</h2>`;
     h += openings.map((g, i)=>{
       const prev = g.length > 72 ? g.slice(0, 72) + "…" : g;
-      return `<div class="card opencard" onclick="chatWithOpening('${jq(runId)}','${jq(nm)}',${jq(i)})">`
+      return `<div class="card card--tap" onclick="chatWithOpening('${jq(runId)}','${jq(nm)}',${jq(i)})">`
         + `<div class="kv">开场${["一","二","三","四","五","六","七","八"][i] || (i+1)}</div>`
         + `<div style="font-size:calc(13px * var(--fs));margin-top:5px;line-height:1.6">${esc(prev)}</div>`
         + `<div style="margin-top:8px;font-size:calc(12px * var(--fs));color:var(--gold)">用这个开场开聊 ›</div></div>`;
@@ -5880,12 +5880,12 @@ const c = getCfg();
 view.innerHTML = `<div class="searchwrap"><input id="set_q" placeholder="搜索设置…" oninput="filterSettings(this.value)"></div>`
 + `<h2 class="sec setsec">本机</h2>` + renderStorageCard()
 + `<h2 class="sec setsec">外观</h2>` + `
-<div class="setcard"><h3>🎨 命名主题</h3>
+<div class="setcard"><h3>${icon("palette",15)} 命名主题</h3>
 <div class="kv">三套中式意象色板，纯本地，切换即时生效。</div>
 ${themeCardsHTML()}</div>` + `
-<div class="setcard"><h3>🔠 字号</h3>
+<div class="setcard"><h3>${icon("type",15)} 字号</h3>
 <div class="kv">整体缩放界面，聊天泡泡也会变大，即时生效。</div>
-${fontScaleCardsHTML()}</div>` + `\n<div class="setcard"><h3>🖼️ 全局壁纸</h3>
+${fontScaleCardsHTML()}</div>` + `\n<div class="setcard"><h3>${icon("image",15)} 全局壁纸</h3>
 <div class="kv">所有聊天的默认背景，存在本机；某个聊天单独设过壁纸的不受影响。</div>
 <div class="btnrow" style="margin-top:8px"><button class="btn ghost" onclick="globalWallpaperEditor()">设置全局壁纸</button></div></div>` + `<h2 class="sec setsec">游玩</h2>` + checkinCardHTML() + `
 <div class="setcard"><h3>${icon("check",15)} 成就</h3>
@@ -6392,7 +6392,7 @@ if(g && g !== lastGroup){ html += `<div class="spgrp">${esc(g)}</div>`; }
 lastGroup = g;
 const en = e.enabled !== false;
 const preview = String(e.content || "").replace(/\s+/g, " ").slice(0, 60);
-html += `<div class="card" style="padding:12px 14px" onclick="stPresetEntryDetail('${jq(pid)}',${jq(i)})"><div class="row"><div style="flex:1;min-width:0">`
+html += `<div class="card card--tap" style="padding:12px 14px" onclick="stPresetEntryDetail('${jq(pid)}',${jq(i)})"><div class="row"><div style="flex:1;min-width:0">`
 + `<div class="spname">${esc(e.name)}${stPresetEntryBadges(e)}</div>`
 + (preview ? `<div class="meta">${esc(preview)}…</div>` : `<div class="meta">（空内容）</div>`)
 + `</div><div class="sbtncol">`
@@ -6673,7 +6673,7 @@ ops:`<button class="go" onclick="event.stopPropagation();chatWith('custom','${jq
 +`<button onclick="event.stopPropagation();editCard('custom','${jq(c.id)}')">编辑</button>`
 +`<button onclick="event.stopPropagation();exportCard('${jq(c.id)}')">导出</button>`
 +`<button class="danger" onclick="event.stopPropagation();if(confirm('删除这张角色卡?')){RP_WRITER.delCustom('${jq(c.id)}');showWriter();}">删</button>`
-})).join("")+`</div>`:`<div class="empty"><span class="big">🎭</span>还没有自创角色<br><span style="font-size:calc(12px * var(--fs))">点下面「新建写卡」，和 Ruby 一起创作</span></div>`}
+})).join("")+`</div>`:`<div class="empty"><span class="big">${icon("masks",44)}</span>还没有自创角色<br><span style="font-size:calc(12px * var(--fs))">点下面「新建写卡」，和 Ruby 一起创作</span></div>`}
 <div class="btnrow"><button class="btn" onclick="newWriter()">${icon("plus")} 新建写卡</button></div>
 <div class="hint">写卡全程走你在设置里配的大模型接口, 每步约 1-3 次调用。写完的角色可直接开聊, 也能配分析任务。</div>`;
 };
@@ -7145,7 +7145,7 @@ function importedListHTML(){
 function travRecentHTML(t){
   const who = t.mode==="plotline" ? "旅人" : t.mode==="soul" ? t.charName : ((RP_TRAVERSE.getIdentity(t.identityId)||{}).name || "无名氏");
   const d = new Date(t.updatedAt).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
-  return `<div class="card" onclick="travResume('${jq(t.id)}')">
+  return `<div class="card card--tap" onclick="travResume('${jq(t.id)}')">
   <div class="row"><div class="avatar">${esc(who[0]||"穿")}</div>
   <div><div class="name">${esc(who)} <span class="badge">${RP_TRAVERSE.MODES[t.mode]||""}</span></div>
   <div class="meta">${esc(t.worldName)} · ${esc(t.anchorTitle||"")} · ${d}</div></div></div></div>`;
@@ -7163,7 +7163,7 @@ function plotlinePickBook(){
   const runs = idx.filter(r => r.has_worldcard);
   titleEl.innerHTML = icon("clapperboard")+" 走原著线"; subEl.textContent = "选一本书，沿原著因果线推进";
   view.innerHTML = `<button class="back" onclick="showTraverse()">‹ 返回穿越</button>`
-    + (runs.length ? runs.map(r=>`<div class="card" onclick="plotlinePickStage('${jq(r.run_id)}')">
+    + (runs.length ? runs.map(r=>`<div class="card card--tap" onclick="plotlinePickStage('${jq(r.run_id)}')">
       <div class="name">${esc(r.novel)}</div><div class="meta">${esc(r.run_id)} · <span class="badge">有世界卡</span></div></div>`).join("")
       : `<div class="empty">暂无带世界卡的书<br><span style="font-size:calc(12px * var(--fs))">管线执行 worldcard 阶段后自动出现</span></div>`);
   window.scrollTo(0,0);
@@ -7175,7 +7175,7 @@ function plotlinePickStage(runId){
     const stages = (typeof RP_PLOTRUN!=="undefined") ? RP_PLOTRUN.listStages(runId) : [];
     view.innerHTML = `<button class="back" onclick="plotlinePickBook()">‹ 返回选书</button>`
       + `<h2 class="sec">选一幕 · ${stages.length} 幕</h2>`
-      + (stages.length ? stages.map(s=>`<div class="card" onclick="plotlineStart('${jq(runId)}','${jq(s.id)}','${jq(s.plotrunId||"")}')">
+      + (stages.length ? stages.map(s=>`<div class="card card--tap" onclick="plotlineStart('${jq(runId)}','${jq(s.id)}','${jq(s.plotrunId||"")}')">
         <div class="row"><div><div class="name">${esc(s.title)}</div>
         <div class="meta">${s.done}/${s.total} 节点（${s.pct}%）${s.finished?' · <span class="badge">已走完</span>':(s.resumable?' · <span class="badge">继续</span>':"")}</div>
         ${s.description?`<div class="st">${esc(s.description)}</div>`:""}</div><div class="tm-go">›</div></div></div>`).join("")
@@ -7205,7 +7205,7 @@ function goldenPickBook(){
   <div class="hint" style="margin:8px 2px">选一本书 → 选魂穿人物与导演风格 → 选开场，直入原著剧情线</div>`
     + (runs.length ? runs.map((r,i)=>{
       const cover = (window.BOOKCOVER||{})[r.novel];
-      return `<div class="card" onclick="goldenPickChar(${jq(i)})">
+      return `<div class="card card--tap" onclick="goldenPickChar(${jq(i)})">
       <div class="row">${cover?`<img class="bookcover gbk" src="${esc(cover)}" alt="${esc(r.novel)}封面" loading="lazy" onerror="this.remove()">`:""}<div><div class="name">《${esc(r.novel)}》</div>
       <div class="meta">${esc(r.run_id)}${resumable[r.run_id]?' · <span class="badge">可继续</span>':""}</div>
       </div><div class="tm-go" style="margin-left:auto">›</div></div></div>`;}).join("")
@@ -7693,7 +7693,7 @@ function bodyPickWorld(){
   const ws = travWorlds();
   view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
   ${ws.length ? ws.map(w=>`
-    <div class="card" onclick="bodyIdentity('${jq(w.kind)}','${jq(w.id)}')">
+    <div class="card card--tap" onclick="bodyIdentity('${jq(w.kind)}','${jq(w.id)}')">
       <div class="name">${esc(w.name)}</div><div class="meta">${esc(w.sub)}</div>
       ${w.kind==="card"?`<button class="linkbtn" style="margin-top:4px" onclick="event.stopPropagation();travWorldComplete('${jq(w.kind)}','${jq(w.id)}')">${icon("scroll",12)} AI 补完这个世界</button>`:""}
     </div>`).join("") : `<div class="empty">还没有可用世界：先导入角色卡，或等蒸馏任务产出</div>`}
@@ -8162,7 +8162,7 @@ window.isekaiPickDst = (srcRunId, srcName)=>{
   view.innerHTML = `<button class="back" onclick="isekaiPickSrc()">${icon("back")} 返回</button>
   <div class="hint">穿越者：${esc(srcName)}</div>
   ${worlds.map(w=>`
-  <div class="card" onclick="isekaiFusion('${jq(srcRunId)}','${jq(srcName)}','${jq(w.key)}')">
+  <div class="card card--tap" onclick="isekaiFusion('${jq(srcRunId)}','${jq(srcName)}','${jq(w.key)}')">
     <div class="name">《${esc(w.title)}》 ${w.status==="pending"?'<span class="badge">数据待接入</span>':'<span class="badge">已接入</span>'}</div>
     <div class="meta">${esc(w.note||"")}</div>
   </div>`).join("")}
@@ -8214,7 +8214,7 @@ window.partySetup = ()=>{
   view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
   <div class="hint">2–4 人小队：你 + 最多 3 名队友。AI 按 talkativeness 调度发言，被你点名的队友一定发言。</div>
   ${ws.map(w=>`
-    <div class="card" onclick="partyPickMain('${jq(w.kind)}','${jq(w.id)}')">
+    <div class="card card--tap" onclick="partyPickMain('${jq(w.kind)}','${jq(w.id)}')">
       <div class="name">${esc(w.name)}</div><div class="meta">${esc(w.sub)}</div>
     </div>`).join("")}<div style="height:40px"></div>`;
   window.scrollTo(0,0);

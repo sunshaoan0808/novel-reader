@@ -426,7 +426,9 @@ function soulViewHTML(card, runId, name){
       var q = escHtml(runId), n = escHtml(name);
       return "<div class=\"card\"><div class=\"name\" style=\"font-size:calc(14px * var(--fs))\">健康度 " + h.score + "分</div>" +
         (h.issues.length ? "<div class=\"kv\" style=\"color:var(--danger)\">" + escHtml(h.issues.join("、")) + "</div>"
-          : "<div class=\"kv\" style=\"color:green\">完整</div>") +
+          /* P0-39：字面量 green = #008000 高饱和冷绿，与金色主色并排刺眼；
+             成功语义统一走 --green(#8fb573) */
+          : "<div class=\"kv\" style=\"color:var(--green)\">完整</div>") +
         "<div class=\"btnrow\" style=\"margin-top:8px;flex-wrap:wrap\">" +
         "<button class=\"btn ghost\" style=\"font-size:calc(12px * var(--fs))\" data-sact=\"exportSoulUI\" data-sid=\"" + q + "\" data-sname=\"" + n + "\">导出</button>" +
         "<button class=\"btn ghost\" style=\"font-size:calc(12px * var(--fs))\" data-sact=\"importSoulUI\" data-sid=\"" + q + "\" data-sname=\"" + n + "\">导入</button>" +

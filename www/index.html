@@ -30,7 +30,7 @@ try{ var _fsv = parseFloat(localStorage.getItem("nd_font_scale"));
   <nav id="mainnav">
     <button data-nav="product" class="active">产物</button>
     <button data-nav="chat">聊天</button>
-    <button data-nav="distill" class="create-tab">✨ 蒸馏</button>
+    <button data-nav="distill" class="create-tab">蒸馏</button>
     <button data-nav="traverse">穿越</button>
     <button data-nav="writer">写卡</button>
     <button data-nav="settings">设置</button>
@@ -160,7 +160,8 @@ try{ var _fsv = parseFloat(localStorage.getItem("nd_font_scale"));
 <script src="rp/checkin.js"></script>
 <script src="rp/album.js"></script>
 <script src="app.js"></script>
-<button id="asst_fab" type="button" title="浮生小助手" aria-label="浮生小助手">💡</button>
+<button id="asst_fab" type="button" title="浮生小助手" aria-label="浮生小助手"></button>
+<script>document.getElementById("asst_fab").innerHTML = icon("lightbulb",22);</script>
 <script>
 /* 小助手悬浮球：可拖动，点按打开；位置记忆 */
 (function(){

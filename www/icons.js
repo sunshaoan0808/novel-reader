@@ -47,7 +47,14 @@ var P = {
 "check": '<path d="M20 6L9 17l-5-5"/>',
 "search": '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
 "play": '<polygon points="7 4 20 12 7 20 7 4"/>',
-"pause": '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>'
+"pause": '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
+/* P1-6/P1-30/P2-25：emoji 当图标时补的字形。同一套手绘路径、同一 1.8 描边，
+   与既有图标同源，不再出现"这一枚是系统 emoji、旁边那枚是 SVG"的混排。 */
+"type": '<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/>',
+"image": '<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',
+"lightbulb": '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/>',
+"sparkles": '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/><path d="M5 3v4"/><path d="M3 5h4"/><path d="M19 17v4"/><path d="M17 19h4"/>',
+"masks": '<path d="M3 4h5a3 3 0 0 1 3 3v6a4 4 0 0 1-4 4H5a2 2 0 0 1-2-2z"/><path d="M21 4h-5a3 3 0 0 0-3 3v6a4 4 0 0 0 4 4h2a2 2 0 0 0 2-2z"/><path d="M6.5 9.5h.01"/><path d="M17.5 9.5h.01"/>'
 };
 /* 实心图标: stop(方块)、menu(省略号圆点)、play/pause */
 var FILLED = {stop:1, menu:1, play:1, pause:1};
