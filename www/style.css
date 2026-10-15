@@ -1302,12 +1302,30 @@ border-radius:10px;padding:10px 12px;margin:6px 12px;cursor:pointer}
 padding:6px 10px;margin:6px 12px;line-height:1.6}
 /* #9 带复选框确认弹窗（C.AI "Copy facts and Story Memory to new chat" 风格） */
 .cfcheck{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:var(--z-modal);display:flex;align-items:center;justify-content:center;padding:20px}
-.cfbox{background:#1c1712;border:1px solid var(--line);border-radius:12px;max-width:420px;width:100%;padding:16px}
+.cfbox{background:#1c1712;border:1px solid var(--line);border-radius:12px;max-width:420px;width:100%;padding:16px;box-shadow:var(--shadow);}
 .cfttl{font-size:calc(15px * var(--fs));font-weight:700;margin-bottom:8px;color:var(--ink)}
 .cfbody{font-size:calc(13px * var(--fs));color:var(--muted);line-height:1.7;margin-bottom:12px}
+/* P2-43：App 内统一弹窗组件的正文/输入。scroll 给 uiMessage 与长 Prompt、
+   对比表用，不加的话超长内容会把弹窗顶出屏幕；input 沿用 .field input 的约定。 */
+.cfbody.scroll{max-height:58vh; overflow-y:auto; overscroll-behavior:contain; overflow-wrap:anywhere;}
 .cfrow{display:flex;align-items:center;gap:8px;font-size:calc(14px * var(--fs));color:var(--ink);margin-bottom:14px;cursor:pointer}
 .cfrow input{width:auto;accent-color:var(--gold)}
 .cfbtns{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.cfinput{width:100%;background:#100e0b;border:1px solid var(--line);color:var(--ink);
+  border-radius:var(--r-s);padding:12px 14px;font-size:calc(16px * var(--fs));line-height:1.7;
+  outline:none;resize:vertical;margin-bottom:12px;
+  transition:border-color .15s, box-shadow .15s;}
+.cfinput:focus{border-color:var(--gold-deep);outline:2px solid var(--gold-deep);outline-offset:1px;}
+.cfbody .cfopts{margin:0 0 10px; padding-left:20px;}
+.cfbody .cfopts li{margin-bottom:8px;}
+.cfbody .cfopts li:last-child{margin-bottom:0;}
+.cfbody .cfopts .dim{font-size:calc(12px * var(--fs)); color:var(--ink-faint);}
+.cfbody .cftable{width:100%; border-collapse:collapse; font-size:calc(12px * var(--fs));}
+.cfbody .cftable th{ text-align:left; color:var(--gold-soft); font-weight:600; padding:0 6px 6px 0; }
+.cfbody .cftable td{ vertical-align:top; padding:7px 6px 7px 0; }
+.cfbody .cftable tr + tr td{ border-top:1px solid var(--line); }
+.cfbody .cftable td.k{ white-space:nowrap; color:var(--ink-faint); }
+.cfbody .cfpre{white-space:pre-wrap; overflow-wrap:anywhere; color:var(--ink-dim);}
 /* #10/#14 事件库：永久 badge + 分型 chips */
 .kindchips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
 .kindchip{background:#241d12;border:1px solid var(--line);color:var(--muted);font-size:calc(12px * var(--fs));
@@ -1446,6 +1464,21 @@ body.chatmode.immersive #scenbar{ min-height:0; }
 .char-hero-name{position:relative;z-index:var(--z-base);font-family:var(--serif);font-size:calc(22px * var(--fs));font-weight:700;
   color:var(--ink);margin-top:12px;letter-spacing:.08em;}
 .char-hero .kv{position:relative;z-index:var(--z-base);}
+/* P2-28：cardLandingHTML 原先在 JS 里内联 12+ 处声明，全部搬到这里。
+   类名按区块语义给，不用尺寸命名 —— 改版式时只动这一处。 */
+.char-hero-novel{margin-top:3px;}
+.char-hero-badges{margin-top:10px; position:relative; z-index:var(--z-base);}
+/* 数据条：数字行居中，副行（token 消耗）下沉一档，括注再弱一档 */
+.stat-line{text-align:center;}
+.stat-line-sub{margin-top:4px;}
+.stat-faint{opacity:.7;}
+.stat-acts{margin:10px 0 2px;}
+.card-brief{font-size:calc(13.5px * var(--fs)); line-height:1.7; color:var(--ink-dim);}
+.opn-text{font-size:calc(13px * var(--fs)); margin-top:5px; line-height:1.6; color:var(--ink-dim);}
+.opn-go{margin-top:8px; font-size:calc(12px * var(--fs)); color:var(--gold);}
+.hint-tight{margin:6px 2px;}
+.tagrow{margin:2px 0 10px;}
+.srcbtn{width:100%; margin:4px 0;}
 /* ===== 蒸馏角色选择卡 ===== */
 .dchar{display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid var(--line-soft);cursor:pointer;}
 .dchar input[type="checkbox"]{width:20px;height:20px;flex:none;accent-color:var(--gold);}

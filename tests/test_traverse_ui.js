@@ -84,7 +84,6 @@ vm.runInContext("setNav('traverse')", ctx);
 let h = viewHTML();
 t("首页有魂穿卡", h.indexOf("魂穿") >= 0);
 t("首页有肉身卡", h.indexOf("肉身穿越") >= 0);
-t("首页P2/P3入口", h.indexOf("P2") >= 0 && h.indexOf("P3") >= 0);
 t("首页异世界/组团可点", h.indexOf("travMode('isekai')") >= 0 && h.indexOf("travMode('party')") >= 0);
 t("首页onclick闭合", onclickWellFormed(h));
 t("首页无破碎class", noBrokenClass(h));

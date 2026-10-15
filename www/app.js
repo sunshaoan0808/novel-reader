@@ -183,12 +183,16 @@ return pm ? pm[0] : cut;
 }
 /* Janitor 式角色卡片网格 (v24) */
 function charCoverCls(name){ let h=0; const s2=String(name||"?"); for(let i=0;i<s2.length;i++) h=(h*31+s2.charCodeAt(i))>>>0; return "cc"+(h%4); }
+/* P2-26：alt 原本一律空串，读屏只会念一串"图片"。有真画像就给名字；
+   默认剪影（avatar_default.jpg）是纯装饰 —— 名字就在下方正文里，标 aria-hidden 不重复朗读。
+   注：这段注释不能塞进下面 return 的 `+` 链中间 —— 注释两侧的 `+` 会被解析成一元正号。 */
 function charCardHTML(o){
 return `<div class="charcard">`
 + (o.oncard?`<button type="button" class="charcard-hit" aria-label="${esc(o.name)}" onclick="${o.oncard}"></button>`:"")
 + `<div class="charcover ${charCoverCls(o.name)}">`
 + (o.tag?`<div class="tag">${esc(o.tag)}</div>`:"")
-+ (o.img?`<img class="charimg" src="${esc(o.img)}" alt="" loading="lazy" onerror="this.src='bg/avatar_default.jpg'">`:`<img class="charimg" src="bg/avatar_default.jpg" alt="">`)
+ + (o.img?`<img class="charimg" src="${esc(o.img)}" alt="${esc(o.name)}的画像" loading="lazy" onerror="this.src='bg/avatar_default.jpg'">`
+        :`<img class="charimg" src="bg/avatar_default.jpg" alt="" aria-hidden="true">`)
 + `</div>`
 + `<div class="charbody"><div class="n">${esc(o.name)}</div>`
 + (o.stat?`<div class="statline">${esc(o.stat)}</div>`:"")
@@ -4656,6 +4660,78 @@ done(Array.prototype.map.call(boxes, b=>!!b.checked));
 });
 };
 
+/* P2-43：App 内统一弹窗组件。
+ * 不用原生 alert()/confirm()/prompt()：系统弹窗样式不可控、和深墨鎏金语言割裂、
+ * 在 Android WebView 里还会被系统主题染成浅色。这里复用已有的 .cfcheck/.cfbox
+ * 遮罩弹窗（confirmCheck 同一套 DOM 与 CSS），只补三种调用形态。
+ *   uiMessage(title, html)          -> Promise<void>          只读说明（长文自动滚动）
+ *   uiConfirm(title, html, okLabel) -> Promise<boolean|null>  取消/遮罩/Esc = null
+ *   uiPrompt(title, html, value, o) -> Promise<string|null>   取消 = null（空串是合法输入）
+ * bodyHtml 走 HTML（要支持 <br> 与链接），调用方自己 esc。 */
+function cfDialog(title, bodyHtml, footHtml, opts){
+  opts = opts || {};
+  /* 同一时刻只允许一个弹窗：并发调用（连点两个按钮、脚本批量触发）会把弹窗叠成三层，
+     Esc 却只关最上面那层。屏幕上看到的是最新那个意图，所以先强制关掉旧的（按取消结算），
+     再开新的 —— 保住最新意图，也保证 DOM 里永远只有一个 .cfcheck。 */
+  const prev = document.querySelector(".cfcheck");
+  if(prev && typeof prev.__forceClose === "function") prev.__forceClose();
+  const ov = document.createElement("div");
+  ov.className = "cfcheck";
+  ov.setAttribute("role", "dialog");
+  ov.setAttribute("aria-modal", "true");
+  ov.innerHTML = `<div class="cfbox"><div class="cfttl">${esc(title)}</div>`
+    + `<div class="cfbody${opts.scroll ? " scroll" : ""}">${bodyHtml}</div>`
+    + `<div class="cfbtns">${footHtml}</div></div>`;
+  document.body.appendChild(ov);
+  const done = (v)=>{
+    if(ov.__closed) return;          /* 遮罩与 Esc 可能同时触发，只结算一次 */
+    ov.__closed = true;
+    ov.remove();
+    try{ document.removeEventListener("keydown", onKey, true); }catch(e){}
+    if(opts.onClose) opts.onClose(v);
+  };
+  ov.__forceClose = ()=>done();
+  const onKey = (e)=>{ if(e.key === "Escape") done(); };
+  try{ document.addEventListener("keydown", onKey, true); }catch(e){}
+  ov.onclick = (e)=>{ if(e.target === ov) done(); };
+  return { ov: ov, done: done };
+}
+window.uiMessage = (title, bodyHtml)=> new Promise((resolve)=>{
+  const d = cfDialog(title, bodyHtml,
+    `<button class="btn" id="cfmsg_ok">知道了</button>`,
+    { scroll:true, onClose: ()=>resolve() });
+  d.ov.querySelector("#cfmsg_ok").onclick = ()=>d.done();
+});
+window.uiConfirm = (title, bodyHtml, okLabel)=> new Promise((resolve)=>{
+  const d = cfDialog(title, bodyHtml,
+    `<button class="btn ghost" id="cfy_no">取消</button>`
+    + `<button class="btn" id="cfy_yes">${esc(okLabel||"确定")}</button>`,
+    /* 结算值一律走 done(v)：取消/Esc/遮罩/被后来的弹窗顶掉都是无参 done() → null，
+       确认走 done(true)。不要在 onclick 里再补一次 resolve —— done() 内部的
+       onClose 已经先结算，后面那次会被静默丢弃，确认键就变成了"取消"。 */
+    { scroll:true, onClose: (v)=>resolve(v === undefined ? null : v) });
+  d.ov.querySelector("#cfy_no").onclick = ()=>d.done();
+  d.ov.querySelector("#cfy_yes").onclick = ()=>d.done(true);
+});
+window.uiPrompt = (title, bodyHtml, value, opts)=> new Promise((resolve)=>{
+  opts = opts || {};
+  const ph = opts.placeholder ? ` placeholder="${esc(opts.placeholder)}"` : "";
+  const ml = !!opts.multiline;
+  const d = cfDialog(title, bodyHtml
+    + `<${ml ? "textarea" : "input"} class="cfinput" id="cfp_in"${ph}${ml ? ` rows="${opts.rows||5}"` : ""}>`
+    + `${ml ? esc(value == null ? "" : String(value)) : ""}</${ml ? "textarea" : "input"}>`,
+    `<button class="btn ghost" id="cfp_no">取消</button>`
+    + `<button class="btn" id="cfp_yes">${esc(opts.okLabel||"确定")}</button>`,
+    { scroll:true, onClose: (v)=>resolve(v === undefined ? null : v) });
+  const inp = d.ov.querySelector("#cfp_in");
+  if(!ml) inp.value = value == null ? "" : String(value);
+  const ok = ()=>d.done(inp.value);      /* 空串是合法输入，照原样回传 */
+  d.ov.querySelector("#cfp_no").onclick = ()=>d.done();
+  d.ov.querySelector("#cfp_yes").onclick = ok;
+  /* 单行输入走回车提交，多行输入留给换行 —— 和聊天输入框的直觉一致 */
+  if(!ml) inp.addEventListener("keydown", (e)=>{ if(e.key === "Enter"){ e.preventDefault(); ok(); } });
+  try{ inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }catch(e){}
+});
 /* Tier2 #9: 开新聊天 — 同一角色开新会话, 可选带走 Pin 与记忆。
  * 先自动备份当前聊天为存档, 再清空历史+记忆(可选恢复记忆快照), 空历史触发开场白。 */
 window.newChatSameRole = async ()=>{
@@ -5082,24 +5158,24 @@ function cardLandingHTML(runId, nm, card, run){
   const _cimg = card.img || card.avatar || "";
   h += `<div class="card char-hero">`
     + (_cimg
-      ? `<img class="char-hero-avatar" src="${esc(_cimg)}" alt="" loading="lazy" onerror="this.src='bg/avatar_default.jpg'">`
-      : `<img class="char-hero-avatar" src="bg/avatar_default.jpg" alt="">`)
+      ? `<img class="char-hero-avatar" src="${esc(_cimg)}" alt="${esc(nm)}的画像" loading="lazy" onerror="this.src='bg/avatar_default.jpg'">`
+      : `<img class="char-hero-avatar" src="bg/avatar_default.jpg" alt="" aria-hidden="true">`)
     + `<div class="char-hero-name">${esc(nm)}</div>`
-    + (novel ? `<div class="kv" style="margin-top:3px">${esc(novel)}</div>` : "")
-    + (badges.length ? `<div style="margin-top:10px">` + badges.map(b=>`<span class="tagchip clickable" onclick="badgeTip('${b}')">${esc(badgeLabel(b))}</span>`).join("") + `</div>` : "")
+    + (novel ? `<div class="kv char-hero-novel">${esc(novel)}</div>` : "")
+    + (badges.length ? `<div class="char-hero-badges">` + badges.map(b=>`<span class="tagchip clickable" onclick="badgeTip('${b}')">${esc(badgeLabel(b))}</span>`).join("") + `</div>` : "")
     + `</div>`;
   /* 2. 数据条（有数据才显示） */
   if(st && (st.s || st.t || st.fav || st.like)){
     const avg = avgOf(st), tot = st.pi + st.po;
-    h += `<div class="card"><div class="kv" style="text-align:center">开局 ${st.s} 次 · 共 ${st.t} 轮 · 平均 ${avg.toFixed(1)} 轮/局</div>`
-      + `<div class="kv" style="text-align:center;margin-top:4px">累计消耗约 ${SF(tot)} tokens <span style="opacity:.7">(输入约${SF(st.pi)} / 输出约${SF(st.po)})</span></div>`
-      + `<div class="btnrow" style="margin:10px 0 2px">`
+    h += `<div class="card"><div class="kv stat-line">开局 ${st.s} 次 · 共 ${st.t} 轮 · 平均 ${avg.toFixed(1)} 轮/局</div>`
+      + `<div class="kv stat-line stat-line-sub">累计消耗约 ${SF(tot)} tokens <span class="stat-faint">(输入约${SF(st.pi)} / 输出约${SF(st.po)})</span></div>`
+      + `<div class="btnrow stat-acts">`
       + `<button class="btn" onclick="toggleFavUI()">${st.fav ? "⭐ 已收藏" : "☆ 收藏"}</button>`
       + `<button class="btn" onclick="toggleLikeUI()">${st.like ? "👍 已点赞" : "👍 点赞"}</button>`
       + `</div></div>`;
   }
   /* 3. 简介 */
-  if(brief) h += `<h2 class="sec">简介</h2><div class="card"><div style="font-size:calc(13.5px * var(--fs));line-height:1.7">${esc(brief)}</div></div>`;
+  if(brief) h += `<h2 class="sec">简介</h2><div class="card"><div class="card-brief">${esc(brief)}</div></div>`;
   /* 4. 规格网格 */
   const avgW = (st && st.s) ? (st.t / st.s).toFixed(0) + "轮/局" : "—";
   h += `<h2 class="sec">规格</h2><div class="specgrid">`
@@ -5115,11 +5191,11 @@ function cardLandingHTML(runId, nm, card, run){
       const prev = g.length > 72 ? g.slice(0, 72) + "…" : g;
       return `<div class="card card--tap" onclick="chatWithOpening('${jq(runId)}','${jq(nm)}',${jq(i)})">`
         + `<div class="kv">开场${["一","二","三","四","五","六","七","八"][i] || (i+1)}</div>`
-        + `<div style="font-size:calc(13px * var(--fs));margin-top:5px;line-height:1.6">${esc(prev)}</div>`
-        + `<div style="margin-top:8px;font-size:calc(12px * var(--fs));color:var(--gold)">用这个开场开聊 ›</div></div>`;
+        + `<div class="opn-text">${esc(prev)}</div>`
+        + `<div class="opn-go">用这个开场开聊 ›</div></div>`;
     }).join("");
   } else {
-    h += `<div class="hint" style="margin:6px 2px">这张卡没有固定开场白，开聊后 AI 会根据人设现场生成开场。</div>`;
+    h += `<div class="hint hint-tight">这张卡没有固定开场白，开聊后 AI 会根据人设现场生成开场。</div>`;
   }
   /* 6. 玩法说明（由本地数据自动生成，不编造）。P1-19：说明性文字默认折起来，
      详情页首屏要留给「这人是谁 / 怎么开聊」，不是三段使用手册。 */
@@ -5129,9 +5205,9 @@ function cardLandingHTML(runId, nm, card, run){
     + `<div class="kvline"><b>小贴士</b>：想换走向直接说；某句不满意可以重抽；重要的设定可以写进世界书长期生效。</div>`
     + `</details>`;
   /* 7. 标签 */
-  if(tags.length) h += `<h2 class="sec">标签</h2><div style="margin:2px 0 10px">` + tags.map(t=>`<span class="tagchip">${esc(t)}</span>`).join("") + `</div>`;
+  if(tags.length) h += `<h2 class="sec">标签</h2><div class="tagrow">` + tags.map(t=>`<span class="tagchip">${esc(t)}</span>`).join("") + `</div>`;
   /* P2 开源卡入口 */
-  h += `<button class="btn ghost" style="width:100%;margin:4px 0" onclick="viewCardSource('${jq(runId)}','${jq(nm)}')">📖 查看设定源码（只读学习）</button>`;
+  h += `<button class="btn ghost srcbtn" onclick="viewCardSource('${jq(runId)}','${jq(nm)}')">📖 查看设定源码（只读学习）</button>`;
   /* 8. 档案（原有字段分组） */
   const groups = [["identity","身份"],["core","内核"],["speech","说话方式"],["background","背景"]];
   const arch = groups.map(g=>{
@@ -7138,8 +7214,8 @@ function showTraverse(){
     {id:"plotline", ic:"clapperboard", name:"走原著线", desc:"沿导演因果蓝图推进剧情，在决策点做选择", ok:true, seal:"迹"},
     {id:"soul", ic:"user", name:"魂穿", desc:"成为TA：扮演原著角色，走进TA的人生", ok:true, seal:"魂"},
     {id:"body", ic:"users", name:"肉身穿越", desc:"成为自己：现代人直穿，或捏一个古代身份", ok:true, seal:"身"},
-    {id:"isekai", ic:"repeat", name:"异世界穿越", desc:"把角色送进另一部作品（林黛玉去水浒）", ok:true, badge:"P2", seal:"异"},
-    {id:"party", ic:"chat", name:"组团穿越", desc:"和多名角色组队一起穿", ok:true, badge:"P3", seal:"众"},
+    {id:"isekai", ic:"repeat", name:"异世界穿越", desc:"把角色送进另一部作品（林黛玉去水浒）", ok:true, seal:"异"},
+    {id:"party", ic:"chat", name:"组团穿越", desc:"和多名角色组队一起穿", ok:true, seal:"众"},
   ];
   const recents = RP_TRAVERSE.recent();
   view.innerHTML = `
@@ -7153,7 +7229,7 @@ function showTraverse(){
     <div class="travmode${m.ok?"":" locked"}" ${m.ok?`onclick="travMode('${jq(m.id)}')"`:""}>
       ${m.seal?`<div class="tm-seal" aria-hidden="true">${m.seal}</div>`:""}
       <div class="tm-icon">${icon(m.ic,26)}</div>
-      <div class="tm-body"><div class="tm-name">${m.name}${m.badge?` <span class="badge warn">${m.badge}</span>`:""}</div>
+      <div class="tm-body"><div class="tm-name">${m.name}</div>
       <div class="tm-desc">${m.desc}</div></div>
       ${m.ok?`<div class="tm-go">›</div>`:`<div class="tm-desc">即将到来</div>`}
     </div>`).join("")}</div>

@@ -10,6 +10,18 @@ var RP_SOUL_CFG = (function(){
 var PROFILES_KEY = "nd_api_profiles";
 var CHAT_OVERRIDE_PREFIX = "nd_soul_profile_"; /* + chatId */
 
+/* P2-43：App 内弹窗组件。uiMessage / uiConfirm / uiPrompt / rpToast 都定义在 app.js，
+   而本文件先于 app.js 加载，所以在调用时才去 window 上取。
+   组件缺失说明脚本顺序坏了 —— 直接抛，不静默退回原生 alert/confirm/prompt。
+   say     轻提示，2.6s 自动消失（完成 / 失败 / 一句提醒）
+   show    只读弹窗，正文可滚动（长 Prompt、对比表、报错详情）
+   ask     二选一确认，返回 Promise<boolean|null>（取消/遮罩/Esc = null）
+   askText 带输入框，返回 Promise<string|null>（取消 = null，空串是合法输入） */
+function say(msg){ return window.rpToast(msg); }
+function show(title, html){ return window.uiMessage(title, html); }
+function ask(title, html, okLabel){ return window.uiConfirm(title, html, okLabel); }
+function askText(title, html, value, opts){ return window.uiPrompt(title, html, value, opts); }
+
 /* ============ Profile CRUD ============ */
 
 function list(){
@@ -133,7 +145,7 @@ function addProfileUI(){
     key: document.getElementById("sp_key").value,
     model: document.getElementById("sp_model").value
   });
-  if(!r.ok){ alert(r.reason === "dup_name" ? "名称已存在" : "名称不能为空"); return; }
+  if(!r.ok){ say(r.reason === "dup_name" ? "这个名称已经有配置了" : "名称不能为空"); return; }
   refreshProfilesList();
   document.getElementById("sp_name").value = "";
   document.getElementById("sp_base").value = "";
@@ -141,22 +153,24 @@ function addProfileUI(){
   document.getElementById("sp_model").value = "";
 }
 
-function delProfile(name){
-  if(!confirm("删除配置「" + name + "」?")) return;
+async function delProfile(name){
+  if(!await ask("删除多模型配置", "删除「" + escHtml(name) + "」？用它的角色会回退到降级链的下一级。", "删除")) return;
   del(name);
   refreshProfilesList();
+  say("已删除「" + name + "」");
 }
 
 async function testProfile(name){
   var p = get(name);
-  if(!p){ alert("找不到"); return; }
+  if(!p){ say("找不到这个配置"); return; }
   /* 用主配置补空字段 */
   var main = {};
   try{ main = JSON.parse(localStorage.getItem("nd_api_cfg_v1") || "{}"); }catch(e){}
   var cfg = {
     base: p.base || main.base, key: p.key || main.key, model: p.model || main.model
   };
-  if(!cfg.base || !cfg.key){ alert("地址或 Key 为空 (主配置也没填)"); return; }
+  if(!cfg.base || !cfg.key){ say("地址或 Key 为空（主配置也没填）"); return; }
+  say("正在测试 " + (p.name || "") + " …");
   try{
     var r = await fetch(cfg.base.replace(/\/+$/, "") + "/chat/completions", {
       method: "POST",
@@ -164,9 +178,12 @@ async function testProfile(name){
       body: JSON.stringify({model: cfg.model, messages: [{role: "user", content: "hi"}],
         max_tokens: 5})
     });
-    alert(r.ok ? "连接正常 (" + cfg.model + ")" : "失败: HTTP " + r.status);
+    show("连接测试 · " + escHtml(name),
+      r.ok ? "连接正常（" + escHtml(cfg.model || "未设模型") + "）"
+           : "失败：HTTP " + r.status + "<br><span class=\"dim\">检查地址、Key 与模型名是否匹配。</span>");
   }catch(e){
-    alert("失败: " + (e.message || e));
+    show("连接测试 · " + escHtml(name),
+      "失败：" + escHtml(String(e.message || e)) + "<br><span class=\"dim\">多半是地址不可达或没开网络权限。</span>");
   }
 }
 
@@ -262,10 +279,11 @@ function showPrompt(name){
   var prompts = {};
   try{ prompts = RP_SOUL_ORCH.getLastPrompts(); }catch(e){}
   var p = prompts[name] || "无";
-  alert("【" + name + "】的 Prompt:\n\n" + p.slice(0, 2000));
+  /* 原生 alert 会把换行压平还带系统滚动条；这里保格式 + 可滚动 */
+  show("Prompt · " + escHtml(name), "<div class=\"cfpre\">" + escHtml(p.slice(0, 2000)) + "</div>");
 }
 function replaySoulUI(name){
-  alert("重跑功能需要群聊上下文，请在群聊里使用");
+  say("重跑功能需要群聊上下文，请在群聊里使用");
 }
 
 /* 成本统计面板 */
@@ -438,22 +456,24 @@ function soulViewHTML(card, runId, name){
 }
 
 async function genSoulUI(runId, name){
-  if(!confirm("为「" + name + "」生成 Soul 包?")) return;
   var card = null;
   try{ if(typeof RP !== "undefined" && RP.findCard) card = RP.findCard(runId, name); }catch(e){}
-  if(!card){ alert("找不到卡片"); return; }
+  if(!card){ say("找不到角色卡"); return; }
   var cfg = {};
   try{ cfg = JSON.parse(localStorage.getItem("nd_api_cfg_v1") || "{}"); }catch(e){}
-  if(!cfg.key){ alert("先去设置配好 API"); return; }
-  alert("生成中，请稍候...");
+  if(!cfg.key){ say("先去设置页配好 API 再生成"); return; }
+  if(!await ask("生成 Soul 包",
+    "为「" + escHtml(name) + "」生成 Soul 包？会调用模型把角色卡拆成多层内心设定，耗时可能一两分钟，请留在本页。",
+    "生成")) return;
+  say("正在生成 Soul 包，请稍候…");
   try{
     var r = await RP_SOUL_GEN.generate(card, cfg, function(c, ms, t){ return RP_NET.complete(c, ms, t); });
     if(r.ok){
       try{ if(typeof RP_CARDIMPORT !== "undefined" && card.id) RP_CARDIMPORT.update(card); }catch(e){}
-      alert("Soul 包已生成");
+      say("Soul 包已生成");
       if(typeof renderDetail === "function") renderDetail();
-    }else{ alert("生成失败: " + (r.reason || "")); }
-  }catch(e){ alert("生成失败: " + (e.message || e)); }
+    }else{ show("生成失败", escHtml(String(r.reason || "模型没有返回可用的 Soul 数据"))); }
+  }catch(e){ show("生成失败", escHtml(String(e.message || e))); }
 }
 
 /* 冲突仲裁 UI: 返回冲突徽章 HTML, 点击后弹窗选择 */
@@ -470,11 +490,12 @@ function maybeShowGuide(chatId){
     localStorage.setItem("nd_soul_guide_seen", "1");
   }catch(e){ return; }
   setTimeout(function(){
-    alert("👥 Soul 多智能体模式已开启!\n\n" +
-      "• 每个角色独立思考，用自己的模型\n" +
-      "• @名字 可指定只叫 TA 回应\n" +
-      "• 角色详情页「灵魂包」可看 TA 的内心\n" +
-      "• 聊天设置里有调用追踪和成本统计");
+    show("Soul 多智能体模式已开启", "<ul class=\"cfopts\">"
+      + "<li>每个角色独立思考，用各自绑定的模型</li>"
+      + "<li>@名字 可以指定只叫 TA 回应</li>"
+      + "<li>角色详情页的「灵魂包」能看到 TA 的内心</li>"
+      + "<li>聊天设置里有调用追踪和成本统计</li>"
+      + "</ul>");
   }, 800);
 }
 
@@ -487,27 +508,26 @@ function compareSoulsUI(runId, nameA, nameB){
       cardB = RP.findCard(runId, nameB);
     }
   }catch(e){}
-  if(!cardA || !cardB){ alert("找不到卡片"); return; }
+  if(!cardA || !cardB){ say("找不到角色卡"); return; }
   var sA = null, sB = null;
   try{ sA = RP_SOUL.getSoul(cardA); sB = RP_SOUL.getSoul(cardB); }catch(e){}
-  if(!sA || !sB){ alert("双方都需要有 Soul 包"); return; }
+  if(!sA || !sB){ say("双方都需要先有 Soul 包"); return; }
   var rows = [
     ["宪章", (sA.soul_md || "").slice(0, 80), (sB.soul_md || "").slice(0, 80)],
     ["特质", ((sA.persona || {}).core_traits || []).map(function(t){ return typeof t === "string" ? t : t.trait; }).join("、"),
-           ((sB.persona || {}).core_traits || []).map(function(t){ return typeof t === "string" ? t : t.trait; }).join("、")],
+     ((sB.persona || {}).core_traits || []).map(function(t){ return typeof t === "string" ? t : t.trait; }).join("、")],
     ["价值观", ((sA.persona || {}).values || []).join(" > "), ((sB.persona || {}).values || []).join(" > ")],
     ["记忆", (((sA.memory || {}).long_term || {}).facts || []).length + "条", (((sB.memory || {}).long_term || {}).facts || []).length + "条"],
     ["健康度", soulHealth(cardA).score + "分", soulHealth(cardB).score + "分"]
   ];
-  var html = "<table style=\"width:100%;font-size:calc(12px * var(--fs));border-collapse:collapse\">" +
-    "<tr><th></th><th>" + escHtml(nameA) + "</th><th>" + escHtml(nameB) + "</th></tr>" +
-    rows.map(function(r){
-      return "<tr style=\"border-top:1px solid var(--line)\"><td><b>" + r[0] + "</b></td>" +
-        "<td>" + escHtml(String(r[1]).slice(0, 100)) + "</td><td>" + escHtml(String(r[2]).slice(0, 100)) + "</td></tr>";
+  var html = "<table class=\"cftable\"><tr><th></th><th>" + escHtml(nameA) + "</th><th>" + escHtml(nameB) + "</th></tr>"
+    + rows.map(function(r){
+      return "<tr><td class=\"k\">" + r[0] + "</td>"
+        + "<td>" + escHtml(String(r[1]).slice(0, 100)) + "</td><td>" + escHtml(String(r[2]).slice(0, 100)) + "</td></tr>";
     }).join("") + "</table>";
-  var w = window.open("", "_blank", "width=600,height=400");
-  if(w){ w.document.write("<html><body>" + html + "</body></html>"); }
-  else { alert("弹窗被拦截，对比数据:\n" + rows.map(function(r){ return r[0] + ": " + r[1] + " vs " + r[2]; }).join("\n")); }
+  /* P2-43：原先 window.open + document.write 另开一页，WebView 里常被拦、拦了就退化成
+     alert 糊一整段。改成 App 内可滚动弹窗，对比表照样整屏可读。 */
+  show("Soul 对比 · " + escHtml(nameA) + " / " + escHtml(nameB), html);
 }
 
 /* 附体: 从群聊切换到与指定 soul 的单聊 (保留群聊上下文) */
@@ -515,22 +535,23 @@ function compareSoulsUI(runId, nameA, nameB){
 function exportSoulUI(runId, name){
   var card = null;
   try{ if(typeof RP !== "undefined" && RP.findCard) card = RP.findCard(runId, name); }catch(e){}
-  if(!card){ alert("找不到卡片"); return; }
+  if(!card){ say("找不到角色卡"); return; }
   var soul = null;
   try{ soul = RP_SOUL.getSoul(card); }catch(e){}
-  if(!soul){ alert("还没有 Soul 包"); return; }
+  if(!soul){ say("这个角色还没有 Soul 包"); return; }
   var blob = new Blob([JSON.stringify(soul, null, 2)], {type: "application/json"});
   var a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = name + "_soul.json";
   a.click();
   setTimeout(function(){ URL.revokeObjectURL(a.href); }, 5000);
+  say("已导出 " + name + "_soul.json");
 }
 
 function importSoulUI(runId, name){
   var card = null;
   try{ if(typeof RP !== "undefined" && RP.findCard) card = RP.findCard(runId, name); }catch(e){}
-  if(!card){ alert("找不到卡片"); return; }
+  if(!card){ say("找不到角色卡"); return; }
   var inp = document.createElement("input");
   inp.type = "file"; inp.accept = ".json";
   inp.onchange = function(){
@@ -540,13 +561,13 @@ function importSoulUI(runId, name){
     rd.onload = function(){
       try{
         var d = JSON.parse(rd.result);
-        if(!d.persona && !d.soul_md){ alert("不是有效的 Soul 包"); return; }
+        if(!d.persona && !d.soul_md){ show("导入失败", "这个文件不是 Soul 包。导出文件里应当有 persona 或 soul_md 字段。"); return; }
         card.extensions = card.extensions || {};
         card.extensions.soul = d;
         try{ if(typeof RP_CARDIMPORT !== "undefined" && card.id) RP_CARDIMPORT.update(card); }catch(e){}
-        alert("Soul 包已导入");
+        say("Soul 包已导入");
         if(typeof renderDetail === "function") renderDetail();
-      }catch(e){ alert("解析失败: " + (e.message || e)); }
+      }catch(e){ show("解析失败", escHtml(String(e.message || e))); }
     };
     rd.readAsText(f);
   };
@@ -598,37 +619,43 @@ function setDetoneUI(runId, name, lv){
   if(typeof renderDetail === "function") renderDetail();
 }
 
-function applyTemplateUI(runId, name){
+async function applyTemplateUI(runId, name){
   var card = null;
   try{ if(typeof RP !== "undefined" && RP.findCard) card = RP.findCard(runId, name); }catch(e){}
-  if(!card){ alert("找不到卡片"); return; }
-  var names = SOUL_TEMPLATES.map(function(t, i){ return (i+1) + ". " + t.name; }).join("\n");
-  var pick = prompt("选择人格模板:\n\n" + names + "\n\n输入编号 (会覆盖现有 persona):");
+  if(!card){ say("找不到角色卡"); return; }
+  var opts = SOUL_TEMPLATES.map(function(t, i){
+    return "<li>" + (i+1) + ". <b>" + escHtml(t.name) + "</b>"
+      + "<br><span class=\"dim\">" + escHtml((t.traits || []).slice(0, 4).join("、")) + "</span></li>";
+  }).join("");
+  var pick = await askText("套用人格模板",
+    "<ul class=\"cfopts\">" + opts + "</ul>"
+    + "<div class=\"dim\">会覆盖现有的性格特质与价值观，宪章、记忆、行动日志不受影响。</div>",
+    "", {placeholder:"编号"});
   if(pick == null) return;
-  var idx = parseInt(pick) - 1;
-  if(isNaN(idx) || idx < 0 || idx >= SOUL_TEMPLATES.length){ alert("无效"); return; }
+  var idx = parseInt(String(pick).trim()) - 1;
+  if(isNaN(idx) || idx < 0 || idx >= SOUL_TEMPLATES.length){ say("编号超出范围，模板没有套用"); return; }
   var tpl = SOUL_TEMPLATES[idx];
   var soul = RP_SOUL.ensureSoul(card);
   soul.persona.core_traits = tpl.traits.map(function(t){ return {trait: t, intensity: 75, description: ""}; });
   soul.persona.values = tpl.values.slice();
   soul.rules.decision = tpl.decision;
   try{ if(typeof RP_CARDIMPORT !== "undefined" && card.id) RP_CARDIMPORT.update(card); }catch(e){}
-  alert("已套用「" + tpl.name + "」模板");
+  say("已套用「" + tpl.name + "」模板");
   if(typeof renderDetail === "function") renderDetail();
 }
 
-function possessSoul(runId, soulName){
-  if(!confirm("附体「" + soulName + "」? 将切换到与 TA 的单聊。")) return;
+async function possessSoul(runId, soulName){
+  if(!await ask("附体", "切换到与「" + escHtml(soulName) + "」的单聊？群聊上下文会保留，随时可以切回来。", "附体")) return;
   try{
     if(typeof showChat === "function"){
       /* 保存群聊位置以便返回 */
       try{ localStorage.setItem("nd_possess_return", JSON.stringify({runId: runId})); }catch(e){}
       showChat(runId, soulName);
     }
-  }catch(e){ alert("切换失败: " + (e.message || e)); }
+  }catch(e){ show("切换失败", escHtml(String(e.message || e))); }
 }
 
-function arbitrateUI(msgIdx){
+async function arbitrateUI(msgIdx){
   var h = [];
   try{
     if(typeof getHist === "function" && typeof CHAT !== "undefined"){
@@ -636,14 +663,18 @@ function arbitrateUI(msgIdx){
     }
   }catch(e){}
   var m = h[msgIdx];
-  if(!m || !m._conflicts || !m._conflicts.length){ alert("没有冲突数据"); return; }
+  if(!m || !m._conflicts || !m._conflicts.length){ say("没有待裁决的动作冲突"); return; }
   var opts = m._conflicts.map(function(c, i){
-    return (i+1) + ". " + c.a + "「" + (c.actionA||"") + "」 vs " + c.b + "「" + (c.actionB||"") + "」";
-  }).join("\n");
-  var pick = prompt("动作冲突，请裁决 (输入编号，选胜者):\n\n" + opts + "\n\n输入 0 表示都不采用");
+    return "<li>" + (i+1) + ". " + escHtml(c.a) + " 「" + escHtml(c.actionA || "") + "」"
+      + " <span class=\"dim\">vs</span> " + escHtml(c.b) + " 「" + escHtml(c.actionB || "") + "」</li>";
+  }).join("");
+  var pick = await askText("动作冲突，请裁决",
+    "<ul class=\"cfopts\">" + opts + "</ul>"
+    + "<div class=\"dim\">输入编号选胜者，输入 0 表示两个都不采用。</div>",
+    "", {placeholder:"编号"});
   if(pick == null) return;
-  var idx = parseInt(pick) - 1;
-  if(isNaN(idx) || idx < -1 || idx >= m._conflicts.length){ alert("无效选择"); return; }
+  var idx = parseInt(String(pick).trim()) - 1;
+  if(isNaN(idx) || idx < -1 || idx >= m._conflicts.length){ say("编号超出范围，未做裁决"); return; }
   m._conflictResolved = true;
   m._conflictWinner = idx >= 0 ? m._conflicts[idx] : null;
   try{
@@ -651,27 +682,29 @@ function arbitrateUI(msgIdx){
       saveHist("nd_chat_" + CHAT.runId + "_" + CHAT.name, h);
     }
   }catch(e){}
-  alert(idx >= 0 ? "已裁决: " + m._conflicts[idx].a + " 获胜" : "已裁决: 双方动作都不采用");
+  say(idx >= 0 ? "已裁决：" + m._conflicts[idx].a + " 获胜" : "已裁决：双方动作都不采用");
   if(typeof renderChat === "function") renderChat();
 }
 
-function editMemoryUI(runId, name){
+async function editMemoryUI(runId, name){
   var card = null;
   try{ if(typeof RP !== "undefined" && RP.findCard) card = RP.findCard(runId, name); }catch(e){}
-  if(!card){ alert("找不到卡片"); return; }
+  if(!card){ say("找不到角色卡"); return; }
   var soul = null;
   try{ soul = RP_SOUL.getSoul(card); }catch(e){}
-  if(!soul){ alert("还没有 Soul 包"); return; }
+  if(!soul){ say("这个角色还没有 Soul 包"); return; }
   var mem = soul.memory.long_term || {};
-  var facts = (mem.facts || []).map(function(f, i){
-    return i + ": " + (typeof f === "string" ? f : (f.text || ""));
+  var facts = (mem.facts || []).map(function(f){
+    return typeof f === "string" ? f : (f.text || "");
   }).join("\n");
-  var input = prompt("编辑共享记忆 (每行一条):\n\n" + facts);
+  var input = await askText("编辑共享记忆",
+    "每行一条。删掉的行会一并移除，这里只影响 Soul 的长期记忆，不动聊天记录。",
+    facts, {multiline:true, rows:8, okLabel:"保存"});
   if(input == null) return;
   var lines = input.split("\n").map(function(l){ return l.trim(); }).filter(Boolean);
   soul.memory.long_term.facts = lines.map(function(l){ return {t: new Date().toISOString(), text: l}; });
   try{ if(typeof RP_CARDIMPORT !== "undefined" && card.id) RP_CARDIMPORT.update(card); }catch(e){}
-  alert("已保存 " + lines.length + " 条");
+  say(lines.length ? "已保存 " + lines.length + " 条记忆" : "记忆已清空");
   if(typeof renderDetail === "function") renderDetail();
 }
 
