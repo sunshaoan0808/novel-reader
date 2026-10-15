@@ -5188,7 +5188,10 @@ function cardLandingHTML(runId, nm, card, run){
   if(openings.length){
     h += `<h2 class="sec">开场 · ${openings.length} 个</h2>`;
     h += openings.map((g, i)=>{
-      const prev = g.length > 72 ? g.slice(0, 72) + "…" : g;
+      /* cardOpenings() 返回 {text,label} 对象(P1 开场标签), 不是字符串。
+         原来这里当字符串用 g.length/g.slice, 结果整页渲染成 [object Object]。 */
+      const txt = String((g && g.text) || "");
+      const prev = txt.length > 72 ? txt.slice(0, 72) + "…" : txt;
       return `<div class="card card--tap" onclick="chatWithOpening('${jq(runId)}','${jq(nm)}',${jq(i)})">`
         + `<div class="kv">开场${["一","二","三","四","五","六","七","八"][i] || (i+1)}</div>`
         + `<div class="opn-text">${esc(prev)}</div>`
