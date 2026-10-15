@@ -2232,9 +2232,14 @@ const FORE_NOVEL = "红楼梦";
 function foreRunFor(runId, name){
   return relRunFor(runId, name);
 }
-function foreAvailable(){
-  var run = foreRunFor(CHAT.runId, CHAT.name);
+/* B20: 门禁参数化 —— novelMaterial 按 NOV.runId/NOV.name 判定 (非 CHAT),
+   与抽屉入口的 foreAvailable() 语义一致 */
+function foreAvailableFor(runId, name){
+  var run = foreRunFor(runId, name);
   return String((run && run.novel) || "") === FORE_NOVEL;
+}
+function foreAvailable(){
+  return foreAvailableFor(CHAT.runId, CHAT.name);
 }
 /* 抽屉入口 (单聊/群聊共用): 非红楼梦世界返回空串, 按钮不渲染 */
 function foreEntryHTML(){
@@ -4489,7 +4494,9 @@ const h = getHistSafe(novelChatId()).slice(-40);
 const hist = h.map(m=>`${m.role === "user" ? "我" : name}: ${m.content}`).join("\n");
 let cal = "";
 try{
-if(typeof RP_FORE !== "undefined"){
+/* B20 同名导入卡串味修复: foreshadow_cal 是纯《红楼梦》蒸馏产物, 非红楼世界
+   不注入"故事大事记"(空 = buildMaterial 不拼该段, 不编造) */
+if(typeof RP_FORE !== "undefined" && foreAvailableFor(runId, name)){
 cal = RP_FORE.all().filter(e=>e.k !== "foreshadowing" && (e.c || []).indexOf(name) >= 0)
 .slice(0, 40).map(e=>`第${e.ch}回: ${e.s}`).join("\n");
 }
