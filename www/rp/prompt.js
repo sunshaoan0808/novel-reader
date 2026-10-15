@@ -26,6 +26,13 @@ var LABELS = {
   signature_items:"随身物品", reputation:"外界评价",
   action_pattern:"行动模式", stress_response:"压力反应",
   fear_triggers:"恐惧触发", taboo_topics:"禁忌话题",
+  /* P0-3 人物弧光 (B17)。这张表是卡片编辑器(app.js editCard/saveCardEdit)唯一的字段清单,
+     arc_* 不登记就等于"字段无法表示" —— 用户手填了保存时也会被丢弃。
+     RP_ARC 只读 card.fields 的这几个键(timeline_stage 另有一条阶段覆盖存储)。
+     刻意不进 LAYERS: renderFields 只渲染 LAYERS 里列的键, 弧光不重复进 prompt,
+     注入由 RP_ARC.renderArcPrompt 单独负责(见本文件 add("arc", ...) 那一行)。 */
+  arc_type:"弧光类型", arc_start:"弧光·起", arc_mid:"弧光·转",
+  arc_end:"弧光·合", timeline_stage:"当前阶段",
 };
 
 var LAYERS = {

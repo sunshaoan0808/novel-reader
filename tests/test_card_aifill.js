@@ -28,13 +28,20 @@ return m[0];
 const {ctx} = mkCtx();
 vm.runInContext(fs.readFileSync(WWW + "/rp/cardimport.js", "utf8"), ctx, {filename: "cardimport.js"});
 const CI = vm.runInContext("RP_CARDIMPORT", ctx);
-const full = {fields: {ooc_redline: "a", soul_goal: "b", hidden_desire: "c", inner_need: "d"}};
+/* B17: GAPFILL_KEYS 从 4 个(核心层)扩到 8 个(加弧光四键), 断言跟着走真实契约而不是写死 4 */
+const GK = CI.GAPFILL_KEYS;
+const full = {fields: {ooc_redline: "a", soul_goal: "b", hidden_desire: "c", inner_need: "d",
+  arc_type: "rise", arc_start: "e", arc_mid: "f", arc_end: "g"}};
 const empty = {fields: {}};
 const half = {fields: {ooc_redline: "不杀人", soul_goal: "复仇"}};
-t("全缺返回4个键", CI.missingGapfillKeys(empty).length === 4);
+t("补完键共8个且含弧光四键", GK.length === 8 &&
+  ["arc_type","arc_start","arc_mid","arc_end"].every(k => GK.indexOf(k) >= 0));
+t("全缺返回全部补完键", CI.missingGapfillKeys(empty).length === GK.length);
 t("全有返回空", CI.missingGapfillKeys(full).length === 0);
-t("缺2个返回2个", JSON.stringify(CI.missingGapfillKeys(half)) === JSON.stringify(["hidden_desire","inner_need"]));
-t("null卡返回4个", CI.missingGapfillKeys(null).length === 4);
+/* half 只有核心层两个 -> 缺失项 = 剩下两个核心层 + 全部弧光键, 顺序跟 GAPFILL_KEYS 一致 */
+t("缺核心层2个时返回剩余核心层+全部弧光键",
+  JSON.stringify(CI.missingGapfillKeys(half)) === JSON.stringify(GK.filter(k => k !== "ooc_redline" && k !== "soul_goal")));
+t("null卡返回全部补完键", CI.missingGapfillKeys(null).length === GK.length);
 t("空白字符串算缺失", CI.missingGapfillKeys({fields:{ooc_redline:"  "}}).indexOf("ooc_redline") >= 0);
 const card = {name: "美琴", scenario: "学园都市", systemPrompt: "你是御坂美琴",
   fields: {core_identity: "常盘台王牌", core_traits: "傲娇"}};

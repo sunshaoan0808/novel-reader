@@ -359,7 +359,13 @@ async function fromFile(file){
 /* ---- AI 补完缺失层 ----
  * 只做"缺啥补啥": 检测关键层缺失 -> 用户确认 -> 模型推断 -> 可编辑预览 -> 写回。
  * 原卡一字不动; 补进的字段记到 card.aiFilled, 编辑页打"AI 补完"标注。 */
-var GAPFILL_KEYS = ["ooc_redline", "soul_goal", "hidden_desire", "inner_need"];
+var GAPFILL_KEYS = ["ooc_redline", "soul_goal", "hidden_desire", "inner_need",
+  /* B17: 弧光四键纳入补完。ST 卡本身没有弧光字段(normalizeTavern 不产生这些键),
+     但这是现成的、最便宜的补数通道 —— 走同一套"缺啥补啥"流程, 结果标 AI 生成,
+     用户可在卡片编辑器里改。arc_type 必须落在 RP_ARC.TYPE_LABEL 的四个键上
+     (fall/awakening/rise/flat), 否则详情页显示不出类型名。
+     timeline_stage 故意不补: 它的候选表 RP_ARC.STAGES 是红楼梦专属的九项,
+     让模型猜一个阶段等于凭空造时间坐标 —— 该字段由用户自己填。 */ "arc_type", "arc_start", "arc_mid", "arc_end"];
 function missingGapfillKeys(card){
   var f = (card && card.fields) || {}, out = [];
   GAPFILL_KEYS.forEach(function(k){
@@ -375,6 +381,7 @@ function gapfillPrompt(card, keys){
     "【身份】" + (f.core_identity || "（未写）"),
     "【性格】" + (f.core_traits || "（未写）"),
     "【世界设定】" + ((card && card.scenario) || "（未写）"),
+    (card && card.greeting) ? "【开场白】" + String(card.greeting).slice(0, 400) : "",
     card && card.systemPrompt ? "【系统提示词】" + card.systemPrompt : "",
     f.appearance_feature ? "【外貌】" + f.appearance_feature : "",
     f.values ? "【价值观】" + f.values : "",
@@ -386,7 +393,13 @@ function gapfillPrompt(card, keys){
     "2. 每个值 1-2 句话, 简洁具体, 贴合角色的说话风格, 禁止八股词(非常/极其/深深地)。\n" +
     "3. 必须能从原文推断出来; 原文没依据的就写贴合人设的合理推断, 但绝不能与原文矛盾。\n" +
     "4. ooc_redline 写 2-3 条这个角色绝不会做的事(结合性格与底线)。\n" +
-    "只输出 JSON, 不要解释。\n\n" + src;
+    /* B17: arc_* 的约束和别的不一样 —— arc_type 是封闭枚举(RP_ARC.TYPE_LABEL),
+       模型随手写"成长型"渲染不出类型名, 所以把四个键名原样列给它。 */
+    (keys.indexOf("arc_type") >= 0 ? ("5. arc_type 只能取这四个值之一: "
+      + (typeof RP_ARC !== "undefined" ? Object.keys(RP_ARC.TYPE_LABEL).join(" / ") : "fall / awakening / rise / flat")
+      + "(不要翻译, 原样输出英文)。arc_start/arc_end 各 1 句写清弧光的起点与落点; "
+        + "arc_mid 写 1-3 个转折点, 多个之间用「；」分隔。\n") : "")
+    + "只输出 JSON, 不要解释。\n\n" + src;
 }
 function parseGapfillJson(text, keys){
   var t = String(text || "").replace(/```json|```/g, "");

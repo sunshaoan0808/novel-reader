@@ -225,13 +225,25 @@ const q = `<div class="searchwrap"><input id="q" placeholder="搜索人物…" o
 view.innerHTML = `<div class="btnrow" style="margin-bottom:10px"><button class="btn ghost" onclick="groupPicker()">${icon("users")} 发起群聊</button></div>`
 + q + `<div id="clist">` + charList(RUN.profiles) + `</div>`;
 }
+/* B8 群聊成员来源。蒸馏 run 走 RUN.profiles; 导入卡组队走 allChars() 里的 imported 卡。
+ * 两个入口共用 GROUP_CTX + startGroupChat, 所以 CHAT.runId 不再硬取 RUN.run_id ——
+ * 导入卡群聊压根没有 run, CHAT.runId 恒为 "imported", 而 RP.findCard("imported", name)
+ * 有专门分支(rp/chat.js), 群聊 prompt / soul / 世界书都能照常解析到卡, 不需要真 run。
+ * allChars() 里的其它 runId(蒸馏 runId / custom)不混进来: 群聊只有一个 CHAT.runId,
+ * 混编会让 findCard 用错源去查名字。 */
+let GROUP_CTX = {runId:null, members:[], label:"", back:null};
+/* 群聊可选成员卡片(两个入口共用渲染): pool 已是 {name, novel} 列表 */
+function groupPickCards(pool){
+  return pool.map(p=>`<label class="pickcard"><input type="checkbox" value="${esc(p.name)}">
+<div class="avatar sm">${esc(p.name[0])}</div><div class="name">${esc(p.name)}</div>
+${p.novel?`<div class="meta">${esc(p.novel)}</div>`:""}</label>`).join("");
+}
 window.groupPicker = ()=>{
 __backAction = ()=>setTab("chars");
+GROUP_CTX = {runId: RUN.run_id, members: RUN.profiles.map(p=>p.name), label: RUN.novel, back: ()=>setTab("chars")};
 titleEl.textContent = "选择群聊成员"; subEl.textContent = RUN.novel + " · 至少选 2 人";
 view.innerHTML = `<button class="back" onclick="setTab('chars')">${icon("back")} 返回人物</button>
-<div id="gpick">` + RUN.profiles.map(p=>`
-<label class="pickcard"><input type="checkbox" value="${esc(p.name)}">
-<div class="avatar sm">${esc(p.name[0])}</div><div class="name">${esc(p.name)}</div></label>`).join("") + `</div>
+<div id="gpick">` + groupPickCards(RUN.profiles.map(p=>({name:p.name, novel:""}))) + `</div>
 <div class="field"><label>角色关系（可选，每行一条，格式：A是B的C）${RP_AIFILL.btn("grel_in","群聊角色关系","每行一条，格式：A是B的C，3~6条","群聊成员："+RUN.profiles.map(p=>p.name).join("、")+"；小说《"+RUN.novel+"》")}</label>
 <textarea id="grel_in" rows="2" placeholder="林黛玉是贾宝玉的表妹"></textarea></div>
 <div class="hint" style="margin:0 0 6px">关系会注入每轮群聊 prompt；建群后也可在群聊抽屉 → 角色关系里增删。</div>
@@ -239,16 +251,48 @@ view.innerHTML = `<button class="back" onclick="setTab('chars')">${icon("back")}
 <div style="height:76px"></div>`;
 window.scrollTo(0,0);
 };
+/* 与其它导入卡组队 (B8): 成员来自 allChars() 里的导入卡, 不依赖任何蒸馏 run。
+ * 导入卡之间没有共用的原著产物(静态关系/章节/世界卡), 这里直说 —— 不编造, 也不假装是故障。 */
+window.importedGroupPicker = ()=>{
+const pool = (allChars() || []).filter(c => c.runId === "imported");
+if(pool.length < 2){
+__backAction = ()=>showChatPicker();
+titleEl.textContent = "与其它导入卡组队"; subEl.textContent = "";
+view.innerHTML = `<button class="back" onclick="showChatPicker()">${icon("back")} 返回</button>
+<div class="empty">导入卡还不足 2 张<br>
+<span style="font-size:calc(12px * var(--fs))">群聊至少需要 2 个角色。去「写卡 / 导入」再加一张。</span>
+<br><button class="btn" style="margin-top:10px" onclick="setNav('writer')">去写卡</button></div>`;
+window.scrollTo(0,0);
+return;
+}
+__backAction = ()=>showChatPicker();
+GROUP_CTX = {runId: "imported", members: pool.map(c=>c.name), label: "导入卡", back: ()=>showChatPicker()};
+titleEl.textContent = "与其它导入卡组队"; subEl.textContent = "导入卡 · 至少选 2 张";
+view.innerHTML = `<button class="back" onclick="showChatPicker()">${icon("back")} 返回</button>
+<div id="gpick">` + groupPickCards(pool) + `</div>
+<div class="field"><label>角色关系（可选，每行一条，格式：A是B的C）${RP_AIFILL.btn("grel_in","群聊角色关系","每行一条，格式：A是B的C，3~6条","群聊成员："+pool.map(c=>c.name).join("、")+"；均为导入卡，没有共同原著")}</label>
+<textarea id="grel_in" rows="2" placeholder="A是B的师兄"></textarea></div>
+<div class="hint" style="margin:0 0 6px">关系会注入每轮群聊 prompt；建群后也可在群聊抽屉 → 角色关系里增删。导入卡之间没有共用的静态人物关系，这里写什么就是什么，AI 不会替你补。</div>
+<div class="actionbar"><button class="btn" style="flex:1" onclick="startGroupChat()">开始群聊</button></div>
+<div style="height:76px"></div>`;
+window.scrollTo(0,0);
+};
 window.startGroupChat = ()=>{
 const sel = Array.from(document.querySelectorAll("#gpick input:checked")).map(i=>i.value);
+/* 只认 GROUP_CTX.members 里有的名字: 页面上的复选框就是这些, 但仍做一次交集,
+   避免 GROUP_CTX 与 DOM 不同步时把陌生名字写进群成员。 */
+const ok = sel.filter(n => GROUP_CTX.members.indexOf(n) >= 0);
 if(sel.length < 2){ alert("至少选 2 个人才能群聊"); return; }
-CHAT = {mode:"group", runId: RUN.run_id, name:null, members: sel, forcedSpeaker:null};
+if(ok.length !== sel.length){ alert("选中的成员已失效，请重新进入选择"); return; }
+if(!GROUP_CTX.runId){ alert("群聊成员来源已失效，请重新进入"); return; }
+/* runId 取自 GROUP_CTX（蒸馏 run 的 RUN.run_id, 或导入卡组的 "imported"），不再硬置 */
+CHAT = {mode:"group", runId: GROUP_CTX.runId, name:null, members: ok, forcedSpeaker:null};
 /* Tier3-22: 建群时可选设定角色关系（"A是B的C" 每行一条），注入群聊 prompt */
 try{
-const gkey = sel.slice().sort().join("_");
+const gkey = ok.slice().sort().join("_");
 const relText = ((document.getElementById("grel_in")||{}).value || "").trim();
 if(relText && typeof RP_GROUP!=="undefined"){
-const pr = RP_GROUP.parseRelLines(relText, sel);
+const pr = RP_GROUP.parseRelLines(relText, ok);
 pr.ok.forEach(r=>RP_GROUP.addRel(CHAT.runId, gkey, r.a, r.b, r.rel));
 if(pr.bad) alert("已设定 " + pr.ok.length + " 条角色关系，" + pr.bad + " 行格式不对被跳过（正确格式：A是B的C）。");
 }
@@ -1841,8 +1885,12 @@ const ms = CHAT.members||[];
 const opt = (sel)=> ms.map(n=>`<option value="${esc(n)}"${n===sel?" selected":""}>${esc(n)}</option>`).join("");
 box.innerHTML = (rels.length
 ? rels.map((r,i)=>`<div class="grelrow"><span>${esc(r.a)} 是 ${esc(r.b)} 的 ${esc(r.rel)}</span><button class="btn ghost" onclick="gRelDel(${i})">删</button></div>`).join("")
-: `<div class="hint" style="margin:0 0 6px">还没设定关系，如"林黛玉是贾宝玉的表妹"，会注入每轮群聊 prompt。</div>`)
-+ `<div class="greladd"><select id="grel_a">${opt(ms[0])}</select><span>是</span><select id="grel_b">${opt(ms[1]||ms[0])}</select><span>的</span><input id="grel_r" placeholder="表妹/师徒…"><button class="btn" onclick="gRelAdd()">＋</button></div>`;
+/* B8: 导入卡群聊没有 run, 也就不存在"蒸馏出的静态人物关系"可继承。
+   这时候编辑器不假装有关系表可读, 老实说明: 关系得自己写, 写什么就是什么, AI 不补。 */
+: `<div class="hint" style="margin:0 0 6px">${CHAT.runId === "imported"
+? "导入卡之间没有共用的静态人物关系。这里写什么就是什么，会注入每轮群聊 prompt，AI 不会替你补。"
+: '还没设定关系，如"林黛玉是贾宝玉的表妹"，会注入每轮群聊 prompt。'}</div>`)
+ + `<div class="greladd"><select id="grel_a">${opt(ms[0])}</select><span>是</span><select id="grel_b">${opt(ms[1]||ms[0])}</select><span>的</span><input id="grel_r" placeholder="表妹/师徒…"><button class="btn" onclick="gRelAdd()">＋</button></div>`;
 }
 window.gRelAdd = ()=>{
 const a = ($("#grel_a")||{}).value, b = ($("#grel_b")||{}).value, r = (($("#grel_r")||{}).value||"").trim();
@@ -1878,7 +1926,13 @@ const shuffled = shuffle(cs.slice()).slice(0, 8);
 const counts = tagCountsOf(cs);
 const active = window.PICKER_TAG || "";
 const list = active ? cs.filter(c=>charTagsOf(c.runId, c.name).indexOf(active) >= 0) : cs;
-view.innerHTML = keyBanner + dailyStripHTML() +
+/* B8: 导入卡组队入口。蒸馏 run 的群聊在 run 人物页里(发起群聊按钮), 导入卡没有 run,
+   入口只能落在这个选人页 —— allChars() 里 runId==="imported" 的卡 ≥2 张才显示。 */
+const _impCnt = (allChars() || []).filter(c => c.runId === "imported").length;
+const groupEntry = _impCnt >= 2
+  ? `<div class="btnrow" style="margin-bottom:10px"><button class="btn ghost" onclick="importedGroupPicker()">${icon("users")} 与其它导入卡组队 · ${_impCnt} 张</button></div>`
+  : `<div class="hint hint-tight" style="margin:0 0 10px">导入卡还不满 2 张，暂时组不了群（导入 1 张就能开）。</div>`;
+view.innerHTML = keyBanner + dailyStripHTML() + groupEntry +
 (recent.length ? railHTML("🕘 最近玩过", recent) : "")
 + (favs.length ? railHTML("⭐ 我的收藏", favs) : "")
 + albumRailHTML()
@@ -5310,8 +5364,11 @@ function cardLandingHTML(runId, nm, card, run){
     + `</details>`;
   /* 7. 标签 */
   if(tags.length) h += `<h2 class="sec">标签</h2><div class="tagrow">` + tags.map(t=>`<span class="tagchip">${esc(t)}</span>`).join("") + `</div>`;
-  /* P2 开源卡入口 */
-  h += `<button class="btn ghost srcbtn" onclick="viewCardSource('${jq(runId)}','${jq(nm)}')">📖 查看设定源码（只读学习）</button>`;
+  /* B7 卡片档案入口: 聚合页(worldbook/多开场/卡面字段/示例对话/标签/AI 补完标注),
+     外加一份「蒸馏产物 · 导入卡天然没有」的缺席说明。蒸馏卡也能进, 只是那节会说明
+     六大产物页在 run 侧、这里只看卡自带的东西。 */
+  h += `<div class="btnrow" style="margin-top:8px"><button class="btn ghost" onclick="openCardArchive('${jq(runId)}','${jq(nm)}')">📁 卡片档案</button>`
+    + `<button class="btn ghost srcbtn" onclick="viewCardSource('${jq(runId)}','${jq(nm)}')">📖 查看设定源码（只读学习）</button></div>`;
   /* 8. 档案（原有字段分组） */
   const groups = [["identity","身份"],["core","内核"],["speech","说话方式"],["background","背景"]];
   const arch = groups.map(g=>{
@@ -5325,6 +5382,135 @@ function cardLandingHTML(runId, nm, card, run){
   h += `<div class="ctadock"><button class="btn landcta" onclick="chatWith('${jq(runId)}','${jq(nm)}')">▶ 立即开始游玩</button></div>`;
   return h;
 }
+/* ============ B7 卡片档案聚合页 ============
+ * 蒸馏剧本的六大产物页(人物/大纲/关系/剧情线/世界/更多)全部挂在 openRun() 之后的 RUN 上,
+ * 导入卡没有 RUN.__DATA__.runs["imported"] 恒为 undefined, 所以那一整排 tab 结构上不可达。
+ * 退一步把 openRun 分流到 charDetail 只是换个入口, 产品上仍然是"导入卡看不到自己的资料"。
+ *
+ * 这里做的是真的聚合: 把这张卡自带的东西(worldbook 条目 / 多开场白 / 示例对话 /
+ * 场景·系统提示 / 标签 / aiFilled 标注)汇进一个可浏览面板, 世界书那节复用现成的
+ * loreRowsHTML(与 renderLoreList 同款渲染器), 开场白那节复用 cardOpenings。
+ *
+ * 铁律: 只渲染卡上真实有的字段。蒸馏产物(profiles / sections / outline_md / 静态关系 /
+ * 伏笔 / 冲突 / 判词脂批)导入卡天然没有, 这里逐条给 honest 空态 —— 说清"这是什么、
+ * 为什么没有、可以怎么补", 绝不拿别处的数据凑数, 也不编一条静态关系出来。
+ */
+const ARC_PROD = [
+  ["人物档案 profiles", "导入卡只带一个角色自己的设定，没有同书其他角色的档案表。"],
+  ["分段大纲 sections", "ST 卡不含分段大纲。导入时若有大纲正文，会出现在下面的「场景 · 系统提示」里。"],
+  ["静态人物关系 relations", "ST 卡没有关系表。群聊时可以在「角色关系」里手写；单聊里聊天满 6 轮后，AI 抽取的动态关系会自动积累到「关系管理」。"],
+  ["剧情线 event_dag", "因果事件 DAG 是蒸馏管线的产物，导入卡没有。卡片自带的 worldbook 条目已经列在下面。"],
+  ["世界卡 worldcard", "世界卡只随蒸馏剧本生成，导入卡没有。卡片自带的世界书（若有）就是这里全部的世界设定。"],
+  ["伏笔 / 冲突 / 修正", "伏笔、冲突点、反 OOC 纠错都是管线产物，导入卡没有。"],
+  ["判词 / 脂批 / 方法论", "红楼专属的呈现层，导入卡没有。"],
+];
+window.archiveBack = ()=>{
+  __backAction = null;
+  try{ document.body.classList.remove("chatmode","immersive"); }catch(e){}
+  renderDetail();
+};
+/* 世界书条目行: 与 renderLoreList 用同一套 normLore + 行样式, 不另写一份渲染器 */
+function loreRowsHTML(arr){
+  if(!arr.length) return "";
+  return arr.map((e,i)=>{
+    const n = normLore(e,i);
+    return `<div class="card"><div class="row"><div style="flex:1">
+<div class="name">${esc(n.name||"无标题")} ${n.constant?'<span class="badge warn">常驻</span>':""} ${!n.enabled?'<span class="badge">停用</span>':""}</div>
+<div class="meta">触发词：${esc((n.key||[]).join("、")||"无")} · P${n.priority} · 约 ${RP_PROMPT.estTokens(n.content||"")} tok</div>
+</div></div>${n.content?`<div class="kvline">${esc(String(n.content).slice(0,220))}${String(n.content).length>220?"…":""}</div>`:""}</div>`;
+  }).join("");
+}
+window.openCardArchive = (runId, nm)=>{
+  const card = fullCardOf(runId, nm);
+  __backAction = ()=>archiveBack();
+  try{ document.body.classList.remove("chatmode","immersive"); }catch(e){}
+  titleEl.textContent = (nm || "角色") + " · 卡片档案";
+  subEl.textContent = "导入卡与自创卡自带的全部资料";
+  if(!card){
+    view.innerHTML = `<button class="back" onclick="archiveBack()">${icon("back")} 返回</button>
+<div class="empty">找不到这张卡<br><span style="font-size:calc(12px * var(--fs))">它可能已被删除。</span></div>`;
+    window.scrollTo(0,0);
+    return;
+  }
+  const f = card.fields || {};
+  let h = `<button class="back" onclick="archiveBack()">${icon("back")} 返回</button>`;
+
+  /* 1. 设定正文: 复用 RP_PROMPT.renderFields + LAYERS(与落地页「档案」同一套渲染器) */
+  const groups = [["identity","身份"],["core","内核"],["speech","说话方式"],["background","背景"]];
+  const arch = groups.map(g=>{
+    const txt = RP_PROMPT.renderFields(card, RP_PROMPT.LAYERS[g[0]]);
+    return txt ? `<h2 class="sec">${g[1]}</h2><div class="card">`
+      + txt.split("\n").map(l=>`<div class="kvline">${esc(l)}</div>`).join("") + `</div>` : "";
+  }).join("");
+  h += arch ? `<h2 class="sec">角色字段</h2>` + arch.replace(/<h2 class="sec">[^<]*<\/h2>/g, "")
+           : `<div class="empty">这张卡没有填角色字段<br><span style="font-size:calc(12px * var(--fs))">去卡片编辑器补上，prompt 立刻就能用。</span>
+<br><button class="btn" style="margin-top:10px" onclick="editCard('${jq(runId === "imported" ? "imported" : "custom")}','${jq(card.id || "")}')">去编辑器</button></div>`;
+
+  /* 2. 世界书: 卡自带条目(只读) + 本机自建条目(走现成的 loreEditor 渲染与编辑) */
+  const wb = Array.isArray(card.worldbook) ? card.worldbook : [];
+  h += `<h2 class="sec">世界书 · ${wb.length} 条（卡片自带）</h2>`;
+  h += wb.length ? loreRowsHTML(wb)
+    : `<div class="empty">这张卡没有自带世界书<br><span style="font-size:calc(12px * var(--fs))">ST 卡只有携带 character_book 才会带。想要世界设定，去聊天抽屉 → 世界书管理自己写。</span></div>`;
+  const mine = getLore(runId, nm);
+  h += `<h2 class="sec">我写的世界书 · ${mine.length} 条</h2>`;
+  h += mine.length ? loreRowsHTML(mine)
+    : `<div class="empty">还没写条目<br><span style="font-size:calc(12px * var(--fs))">自建条目和卡片自带的世界书一起参与关键词触发。</span></div>`;
+  h += `<button class="btn ghost" style="margin-top:8px" onclick="loreEditor('${jq(runId)}')">打开世界书管理</button>`;
+
+  /* 3. 开场白: 复用 cardOpenings(与落地页同一份抽取逻辑) */
+  const ops = cardOpenings(runId, nm);
+  h += `<h2 class="sec">开场白 · ${ops.length} 个</h2>`;
+  h += ops.length ? ops.map((g,i)=>{
+    const txt = String((g && g.text) || "");
+    const prev = txt.length > 90 ? txt.slice(0,90)+"…" : txt;
+    return `<div class="card card--tap" onclick="chatWithOpening('${jq(runId)}','${jq(nm)}',${jq(i)})">`
+      + `<div class="kv">${g && g.label ? esc(g.label) : "开场"+(["一","二","三","四","五","六","七","八"][i]||(i+1))}</div>`
+      + `<div class="opn-text">${esc(prev)}</div><div class="opn-go">用这个开场开聊 ›</div></div>`;
+  }).join("") : `<div class="empty">这张卡没有固定开场白<br><span style="font-size:calc(12px * var(--fs))">开聊后 AI 会根据人设现场生成。</span></div>`;
+
+  /* 4. ST 一等字段 */
+  const st = [["scenario","场景设定"],["systemPrompt","系统提示词"],
+              ["postHistoryInstructions","历史后指令"],["creatorNotes","作者注"],
+              ["depthPrompt","深度提示"],["creator","作者"]];
+  const stRows = st.filter(x=>String((card[x[0]]||"")).trim())
+    .map(x=>`<div class="kvline"><b>${x[1]}</b>：${esc(String(card[x[0]]).slice(0,300))}</div>`).join("");
+  h += `<h2 class="sec">卡面字段</h2>`;
+  h += stRows ? `<div class="card">${stRows}</div>`
+    : `<div class="empty">这张卡没有额外的卡面字段<br><span style="font-size:calc(12px * var(--fs))">都是可选的，去卡片编辑器补。</span></div>`;
+
+  /* 5. 示例对话 */
+  h += `<h2 class="sec">示例对话</h2>`;
+  h += String(card.exampleDialogue||"").trim()
+    ? `<div class="card md">${md(card.exampleDialogue)}</div>`
+    : `<div class="empty">没有示例对话<br><span style="font-size:calc(12px * var(--fs))">补几条 few-shot，角色口吻会稳很多。</span></div>`;
+
+  /* 6. 标签 */
+  const tags = cardTags(card);
+  h += `<h2 class="sec">标签</h2>`;
+  h += tags.length ? `<div class="tagrow">`+tags.map(t=>`<span class="tagchip">${esc(t)}</span>`).join("")+`</div>`
+    : `<div class="empty">暂无标签</div>`;
+
+  /* 7. AI 补完标注: 告诉用户哪些字段是模型补的, 不是原卡自带 */
+  const af = card.aiFilled && typeof card.aiFilled === "object" ? card.aiFilled : {};
+  const afKeys = Object.keys(af).filter(k=>af[k]);
+  h += `<h2 class="sec">AI 补完</h2>`;
+  h += afKeys.length
+    ? `<div class="card"><div class="hint" style="margin:0 0 6px">这些字段是 AI 基于卡片原文推断补上的，原卡没有，请自行核对：</div>`
+      + afKeys.map(k=>`<div class="kvline">${esc(RP_PROMPT.LABELS[k]||k)} <span class="dim">${esc(k)}</span> <span class="badge">AI 补完</span></div>`).join("")
+      + `</div>`
+    : `<div class="empty">这张卡没有任何 AI 补完字段<br><span style="font-size:calc(12px * var(--fs))">导入时可点「AI 补完缺失层」，补完的内容会在这里列出。</span></div>`;
+
+  /* 8. 蒸馏产物缺席清单: 逐条解释为什么没有 + 怎么补 —— 这是聚合页存在的意义 */
+  h += `<h2 class="sec">蒸馏产物 · 导入卡天然没有</h2>`
+    + `<div class="card"><div class="hint" style="margin:0 0 8px">下面这些是蒸馏管线产物，导入卡不带。列出来是为了说明"为什么这里看不到"，不是占位。</div>`
+    + ARC_PROD.map(x=>`<div class="kvline"><b>${x[0]}</b>：${esc(x[1])}</div>`).join("")
+    + `</div>`;
+
+  h += `<div style="height:76px"></div>`;
+  view.innerHTML = h;
+  window.scrollTo(0,0);
+};
+
 /* 取卡片全量对象（RP.findCard 对导入/自创卡会裁剪字段，只读视图/导出用全量） */
 function fullCardOf(runId, name){
 try{
@@ -7563,7 +7749,10 @@ window.travImportFile = async (inp)=>{
   }catch(e){ alert("导入失败："+e.message); }
 };
 /* ---- 功能一: 角色卡 AI 补完缺失层 ---- */
-const GAPFILL_LABEL = {ooc_redline: "绝不做的事", soul_goal: "自觉目标", hidden_desire: "隐秘欲望", inner_need: "深层需求"};
+const GAPFILL_LABEL = {ooc_redline: "绝不做的事", soul_goal: "自觉目标", hidden_desire: "隐秘欲望", inner_need: "深层需求",
+  /* B17: 弧光四键的中文名, 与 RP_PROMPT.LABELS / RP_CARDIMPORT.GAPFILL_KEYS 一一对应。
+     缺了会退回显示裸 key 名(app.js 用的是 GAPFILL_LABEL[k]||k), 不影响功能但界面难看。 */
+  arc_type: "弧光类型", arc_start: "弧光·起", arc_mid: "弧光·转", arc_end: "弧光·合"};
 /* 导入成功页: 提示缺失层, 用户确认才调模型。queue: 看图写卡批量导入时的待补完队列 */
 window.cardGapfillPrompt = (cardId, keys, queue)=>{
   const card = RP_CARDIMPORT.findById(cardId);
