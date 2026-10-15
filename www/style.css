@@ -206,7 +206,9 @@ body{
   padding:12px; margin-top:10px; max-height:60vh; overflow-y:auto;}
 /* ST 任意组合: 条目排序小按钮 + 右侧按钮列 */
 .sbtncol{flex:none; display:flex; align-items:center; gap:6px;}
-.sbtn{flex:none; width:34px; height:34px; border-radius:8px; border:1px solid var(--line);
+/* 触控目标 ≥44px：原来 34×34，低于 iOS/Material 的 44px 建议值。
+   .sbtncol 是 flex:none 的竖排按钮列，按钮长高 10px 不改变条目本身的排布。 */
+.sbtn{flex:none; width:44px; height:44px; border-radius:8px; border:1px solid var(--line);
   background:#2a241d; color:var(--ink); font-size:calc(15px * var(--fs)); line-height:1; cursor:pointer; padding:0;}
 .sbtn:active{background:rgba(212,162,78,.25);}
 .spgrp{font-size:calc(13px * var(--fs)); color:var(--gold-soft); margin:18px 0 8px; font-weight:700;}
@@ -324,8 +326,11 @@ body{
   border-radius:999px; padding:10px 16px; font-size:calc(14px * var(--fs)); outline:none;}
 .back{background:none; border:0; color:var(--gold); font-size:calc(14px * var(--fs)); padding:6px 0; cursor:pointer; min-height:44px;}
 .swipe{display:flex; align-items:center; gap:8px; margin-top:6px;}
+/* 触控目标 ≥44px：‹ › 原本 padding:3px 12px + 12px 字，盒高约 24px、宽约 36px，
+   是全站最小的可点目标。min-* 只撑命中区，字号与胶囊观感不变。 */
 .swipe button{background:rgba(212,162,78,.10); border:1px solid var(--line); color:var(--gold-soft);
-  border-radius:999px; padding:3px 12px; font-size:calc(12px * var(--fs)); cursor:pointer;}
+  border-radius:999px; padding:3px 12px; font-size:calc(12px * var(--fs)); cursor:pointer;
+  min-width:44px; min-height:44px; display:inline-flex; align-items:center; justify-content:center;}
 .swipe button:active{transform:scale(.94);}
 .swipe span{font-size:calc(11px * var(--fs)); color:var(--ink-faint);}
 
@@ -629,9 +634,11 @@ mark{ background:rgba(212,162,78,.45); color:inherit; border-radius:2px; padding
 .searchwrap input:focus{ border-color:var(--gold-deep); }
 .tagline{ font-size:calc(12.5px * var(--fs)); color:var(--ink-dim); margin-top:3px;
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+/* 触控目标 ≥44px：原来 padding:7px 14px + 13px 字，盒高约 32px。 */
 .gochat{
   flex:none; font-size:calc(13px * var(--fs)); color:var(--gold-soft); border:1px solid var(--gold-deep);
   border-radius:999px; padding:7px 14px; background:rgba(212,162,78,.08); cursor:pointer;
+  min-width:44px; min-height:44px; display:inline-flex; align-items:center; justify-content:center;
 }
 .gochat:active{ transform:scale(.94); }
 .actionbar{
@@ -800,7 +807,8 @@ min-height:44px; display:inline-flex; align-items:center;}
 .povrow{display:flex; gap:8px; flex-wrap:wrap;}
 .povchip{background:rgba(212,162,78,.07); border:1px solid var(--line);
 color:var(--ink-dim); border-radius:999px; padding:6px 14px; font-size:calc(13px * var(--fs)); cursor:pointer;
-min-height:40px; display:inline-flex; align-items:center;}
+/* 触控目标 ≥44px：原来 min-height:40px，差 4px。.povrow 是 flex-wrap，chip 变高只多占一行。 */
+min-height:44px; min-width:44px; display:inline-flex; align-items:center; justify-content:center;}
 .povchip.on{background:var(--gold); border-color:var(--gold); color:#1c1407; font-weight:600;}
 
 /* ===== v21: 记忆事件簿 ===== */
@@ -976,9 +984,12 @@ button.charcard-hit:active{transform:none !important;}
 .msitem.opitem{display:flex; gap:10px; align-items:baseline; text-align:left;}
 .opn{flex:0 0 auto; font-size:calc(12px * var(--fs)); color:var(--gold);}
 .opp{font-size:calc(13px * var(--fs)); color:var(--ink); overflow-wrap:anywhere;}
-.charbody .ops{display:flex; gap:6px; margin-top:8px; position:relative; z-index:var(--z-float);}
+/* 触控目标 ≥44px：原来 padding:6px 0 + 12px 字，盒高约 28px。
+   ops 是一行 flex:1 的按钮，min-width 生效后仍可能挤到卡片宽度上限，补 flex-wrap 兜底。 */
+.charbody .ops{display:flex; gap:6px; margin-top:8px; position:relative; z-index:var(--z-float); flex-wrap:wrap;}
 .charbody .ops button{flex:1; font-size:calc(12px * var(--fs)); padding:6px 0; border-radius:8px;
-  border:1px solid var(--line); background:rgba(212,162,78,.07); color:var(--ink-dim); cursor:pointer;}
+  border:1px solid var(--line); background:rgba(212,162,78,.07); color:var(--ink-dim); cursor:pointer;
+  min-width:44px; min-height:44px;}
 .charbody .ops button.go{background:linear-gradient(180deg,#e0b45e,#c9973f); color:#1c1407;
   border-color:var(--gold-deep); font-weight:700;}
 .charbody .ops button:active{transform:scale(.94);}
@@ -1328,12 +1339,18 @@ padding:6px 10px;margin:6px 12px;line-height:1.6}
 .cfbody .cfpre{white-space:pre-wrap; overflow-wrap:anywhere; color:var(--ink-dim);}
 /* #10/#14 事件库：永久 badge + 分型 chips */
 .kindchips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+/* 触控目标 ≥44px：原来 padding:4px 12px + 12px 字，盒高约 26px。
+   .kindchips 是 flex + flex-wrap，5 个筛选 chip 变高后仍排得下一行（5×48+4×6=264 ≤ 332）。 */
 .kindchip{background:#241d12;border:1px solid var(--line);color:var(--muted);font-size:calc(12px * var(--fs));
-border-radius:999px;padding:4px 12px;cursor:pointer}
+border-radius:999px;padding:4px 12px;cursor:pointer;min-width:44px;min-height:44px;
+display:inline-flex;align-items:center;justify-content:center}
 .kindchip.on{background:var(--gold);border-color:var(--gold);color:#1c1712}
 /* #18 模型能力标签 */
+/* 触控目标 ≥44px：落地页标签与模型能力标签，原盒高约 27px。
+   靠后这条是 .tagchip 的最终层叠结果（落地页那条早被它整体覆盖）。 */
 .tagchip{display:inline-flex;align-items:center;gap:6px;font-size:calc(13px * var(--fs));color:var(--ink);
-background:#241d12;border:1px solid var(--line);border-radius:var(--r-badge);padding:4px 12px;margin:0 6px 6px 0;cursor:pointer}
+background:#241d12;border:1px solid var(--line);border-radius:var(--r-badge);padding:4px 12px;margin:0 6px 6px 0;cursor:pointer;
+min-width:44px;min-height:44px;justify-content:center}
 .tagchip input{width:auto;accent-color:var(--gold)}
 /* #19 记忆快照状态行 */
 .memstatus{font-size:calc(12px * var(--fs));border-radius:8px;padding:6px 10px;margin:8px 0;line-height:1.6}
@@ -1341,14 +1358,22 @@ background:#241d12;border:1px solid var(--line);border-radius:var(--r-badge);pad
 .memstatus.done{color:#8fce8f;background:#142116;border:1px solid #2c5a34}
 .memstatus.fail{color:#e07a7a;background:#241414;border:1px solid #6b2c2c}
 /* AI 帮填按钮：所有手动填写的输入框旁的 ✨AI 徽标 */
-.aifillbtn{display:inline-block;margin-left:6px;padding:1px 9px;font-size:calc(11px * var(--fs));line-height:1.7;
+/* 触控目标 ≥44px：徽标视觉只有约 23px 高，但它是真按钮（点一下调大模型填内容）。
+   直接给 min-height:44px 会变成一颗实心 44px 药丸，垂在 12px 的标题行上、
+   盖住下面输入框的上边框 —— 世界书/记忆/替换规则几十处表单全被带歪。
+   改法：外观与行盒一像素不动，用透明的 ::after 把命中区向上下各撑 11px
+   （左右靠 min-width:44px），手指够得着，版面零变化。 */
+.aifillbtn{display:inline-block;position:relative;margin-left:6px;padding:1px 9px;
+font-size:calc(11px * var(--fs));line-height:1.7;min-width:44px;
 color:#e8c06a;background:rgba(232,192,106,.08);border:1px solid rgba(232,192,106,.35);
 border-radius:20px;cursor:pointer;vertical-align:1px;white-space:nowrap}
+.aifillbtn::after{content:"";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%)}
 .aifillbtn:disabled{opacity:.5;cursor:wait}
 .aifillbtn:active{transform:scale(.94)}
-/* 聊天输入栏里的 AI 代笔按钮：小方块，和 narrbtn 同尺寸 */
+/* 聊天输入栏里的 AI 代笔按钮：小方块，和 narrbtn 同尺寸。
+   命中区同样由 .aifillbtn::after 撑到 44px，输入栏高度不受影响。 */
 .chatbar .aifillbtn.chatfill{flex:0 0 auto;align-self:center;margin-left:0;padding:8px 10px;
-font-size:calc(14px * var(--fs));line-height:1;border-radius:10px}
+font-size:calc(14px * var(--fs));line-height:1;border-radius:10px;min-width:44px}
 
 /* S-7 高权重场景输入框: scenbar 改两行布局——chips 横滑一行, 输入框独占第二行.
  * min-height 预留高度: 避免 scenbar 从空到 98px 的晚布局把 chatlog 顶缩、
