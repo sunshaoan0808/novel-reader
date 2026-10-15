@@ -184,7 +184,8 @@ return pm ? pm[0] : cut;
 /* Janitor 式角色卡片网格 (v24) */
 function charCoverCls(name){ let h=0; const s2=String(name||"?"); for(let i=0;i<s2.length;i++) h=(h*31+s2.charCodeAt(i))>>>0; return "cc"+(h%4); }
 function charCardHTML(o){
-return `<div class="charcard" onclick="${o.oncard}">`
+return `<div class="charcard">`
++ (o.oncard?`<button type="button" class="charcard-hit" aria-label="${esc(o.name)}" onclick="${o.oncard}"></button>`:"")
 + `<div class="charcover ${charCoverCls(o.name)}">`
 + (o.tag?`<div class="tag">${esc(o.tag)}</div>`:"")
 + (o.img?`<img class="charimg" src="${esc(o.img)}" alt="" loading="lazy" onerror="this.src='bg/avatar_default.jpg'">`:`<img class="charimg" src="bg/avatar_default.jpg" alt="">`)
@@ -5505,11 +5506,11 @@ window.showChatSettings = ()=>{
     ${typeof RP_SOUL_CFG!=="undefined" ? `<div class="card" style="margin-bottom:8px"><div style="font-weight:600;font-size:calc(13px * var(--fs));margin-bottom:8px">🔌 Soul 模型（本次聊天覆盖）</div>
       <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint);margin-bottom:6px">覆盖角色卡上的绑定，仅本次聊天有效</div>
       <div style="display:flex;gap:8px;align-items:center">
-        <select id="cs_soul_profile" style="flex:1;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:inherit">
+        <select id="cs_soul_profile" class="soulctl" style="flex:1;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:inherit">
           <option value="">不覆盖（用角色绑定）</option>
           ${RP_SOUL_CFG.list().map(p=>`<option value="${esc(p.name)}" ${RP_SOUL_CFG.getChatOverride(chatId)===p.name?"selected":""}>${esc(p.name)} · ${esc(p.model||"")}</option>`).join("")}
         </select>
-        <button class="btn" style="font-size:calc(12px * var(--fs))" onclick="saveChatSoulProfile()">保存</button>
+        <button class="btn soulctl" onclick="saveChatSoulProfile()">保存</button>
       </div></div>` : ""}
 
     ${wsHtml}
@@ -7558,10 +7559,10 @@ function soulPickTarget(){
   const cs = allChars();
   view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
   <div class="chargrid">${cs.map(c=>`
-    <div class="charcard" onclick="soulAnchors('${jq(c.runId)}','${jq(c.name)}')">
+    <button type="button" class="charcard" onclick="soulAnchors('${jq(c.runId)}','${jq(c.name)}')">
       <div class="avatar ${charCoverCls(c.name)}">${esc(c.name[0])}</div>
       <div class="ccname">${esc(c.name)}</div><div class="ccnovel">${esc(c.novel)}</div>
-    </div>`).join("")}</div><div style="height:40px"></div>`;
+    </button>`).join("")}</div><div style="height:40px"></div>`;
   window.scrollTo(0,0);
 }
 function soulOutlineFor(runId, name){
@@ -8183,10 +8184,10 @@ window.isekaiPickSrc = ()=>{
   view.innerHTML = `<button class="back" onclick="showTraverse()">${icon("back")} 返回</button>
   <div class="hint">把这个角色送进另一部作品的世界。</div>
   <div class="chargrid">${cs.map(c=>`
-    <div class="charcard" onclick="isekaiPickDst('${jq(c.runId)}','${jq(c.name)}')">
+    <button type="button" class="charcard" onclick="isekaiPickDst('${jq(c.runId)}','${jq(c.name)}')">
       <div class="avatar ${charCoverCls(c.name)}">${esc(c.name[0])}</div>
       <div class="ccname">${esc(c.name)}</div><div class="ccnovel">${esc(c.novel)}</div>
-    </div>`).join("")}</div><div style="height:40px"></div>`;
+    </button>`).join("")}</div><div style="height:40px"></div>`;
   window.scrollTo(0,0);
 };
 window.isekaiPickDst = (srcRunId, srcName)=>{
@@ -8275,10 +8276,10 @@ window.partyPickMainSoul = (kind, id)=>{
   window._partyCands = cs;
   view.innerHTML = `<button class="back" onclick="partyPickMain('${jq(kind)}','${jq(id)}')">${icon("back")} 返回</button>
   <div class="chargrid">${cs.map((c,ix)=>`
-    <div class="charcard" onclick="partyPickMainSoulGo('${jq(kind)}','${jq(id)}',${jq(ix)})">
+    <button type="button" class="charcard" onclick="partyPickMainSoulGo('${jq(kind)}','${jq(id)}',${jq(ix)})">
       <div class="avatar ${charCoverCls(c.name)}">${esc(c.name[0])}</div>
       <div class="ccname">${esc(c.name)}</div><div class="ccnovel">${esc(c.novel)}</div>
-    </div>`).join("")}</div><div style="height:40px"></div>`;
+    </button>`).join("")}</div><div style="height:40px"></div>`;
   window.scrollTo(0,0);
 };
 window.partyPickMainSoulGo = (kind, id, ix)=>{
@@ -8310,10 +8311,10 @@ window.partyPickComps = (kind, id, main)=>{
   view.innerHTML = `<button class="back" onclick="partyPickMain('${jq(kind)}','${jq(id)}')">${icon("back")} 返回</button>
   <div class="hint">主身份：${esc(main.mode==="soul"?main.name:((main.wish||"")+"（肉身）")||"肉身")}</div>
   <div class="chargrid">${cs.map((c,ix)=>`
-    <div class="charcard" id="pc_${ix}" onclick="partyToggleComp(${jq(ix)})">
+    <button type="button" class="charcard" id="pc_${ix}" onclick="partyToggleComp(${jq(ix)})">
       <div class="avatar ${charCoverCls(c.name)}">${esc(c.name[0])}</div>
       <div class="ccname">${esc(c.name)}</div><div class="ccnovel">${esc(c.novel)}</div>
-    </div>`).join("")}</div>
+    </button>`).join("")}</div>
   <div class="btnrow" style="position:sticky;bottom:70px"><button class="btn" style="flex:1" onclick="partyStart('${jq(kind)}','${jq(id)}')">出发！</button></div>
   <div style="height:40px"></div>`;
   window.scrollTo(0,0);

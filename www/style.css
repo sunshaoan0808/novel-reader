@@ -80,8 +80,7 @@ body{
 }
 #title{font-family:var(--serif); font-size:calc(21px * var(--fs)); letter-spacing:.14em; color:var(--gold-soft); font-weight:700;}
 #sub{display:block; font-size:calc(11px * var(--fs)); color:var(--ink-faint); letter-spacing:.06em; margin-top:2px;}
-#view{flex:1; padding:14px 14px 90px; animation:fadein .25s ease;}
-@keyframes fadein{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:none;}}
+#view{flex:1; padding:14px 14px 90px;}
 
 /* 底部导航 */
 #mainnav{
@@ -205,13 +204,20 @@ body{
   transition:border-color .15s, box-shadow .15s;
 }
 .field input:focus, .field select:focus, .field textarea:focus{
-  border-color:var(--gold-deep); box-shadow:0 0 0 3px rgba(212,162,78,.15);
+  border-color:var(--gold-deep);
+  /* P1-34/P2-34：原先只有 border-color + 一圈 15% 的柔光，没有任何 outline。
+     柔光换成实描边，键盘聚焦时才真的看得见当前焦点在哪。 */
+  outline:2px solid var(--gold-deep); outline-offset:1px;
 }
 .field select{appearance:none;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23d4a24e' fill='none' stroke-width='1.5'/%3E%3C/svg%3E");
   background-repeat:no-repeat; background-position:right 14px center; padding-right:36px;}
 .modelrow{display:flex; gap:8px;}
 .modelrow select{flex:1.2;} .modelrow input{flex:1;}
+/* P1-41：Soul 模型覆盖行（聊天设置抽屉）里的下拉与「保存」。两个控件原先靠
+   内联 padding:6px / font-size:12px 撑，高约 31/43px，触控目标不达标。
+   触控尺寸交给类，内联只留外观。 */
+.soulctl{min-height:44px;}
 .hint{font-size:calc(12.5px * var(--fs)); color:var(--ink-faint); background:rgba(212,162,78,.06);
   border:1px dashed var(--line); border-radius:var(--r-s); padding:10px 12px; margin:10px 0; line-height:1.7;}
 .sec{font-family:var(--serif); font-size:calc(16px * var(--fs)); color:var(--gold-soft); letter-spacing:.1em;
@@ -298,7 +304,7 @@ body{
 .search{position:sticky; top:0; margin-bottom:10px;}
 .search input{width:100%; background:#100e0b; border:1px solid var(--line); color:var(--ink);
   border-radius:999px; padding:10px 16px; font-size:calc(14px * var(--fs)); outline:none;}
-.back{background:none; border:0; color:var(--gold); font-size:calc(14px * var(--fs)); padding:6px 0; cursor:pointer;}
+.back{background:none; border:0; color:var(--gold); font-size:calc(14px * var(--fs)); padding:6px 0; cursor:pointer; min-height:44px;}
 .swipe{display:flex; align-items:center; gap:8px; margin-top:6px;}
 .swipe button{background:rgba(212,162,78,.10); border:1px solid var(--line); color:var(--gold-soft);
   border-radius:999px; padding:3px 12px; font-size:calc(12px * var(--fs)); cursor:pointer;}
@@ -314,7 +320,9 @@ body.chatmode #app{ background:var(--bg); }
 .chathead{
   z-index:30;
   display:flex; align-items:center; gap:10px;
-  padding:10px 12px;
+  /* P1-5：index.html 声明了 viewport-fit=cover，刘海屏/P 屏上顶部没有安全区，
+     顶栏会被状态栏压住（底部已有 7 处 env() 覆盖，唯独顶部零覆盖）。 */
+  padding:calc(10px + env(safe-area-inset-top)) 12px 10px;
   background:var(--nav-bg); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
   border-bottom:1px solid var(--line-soft);
   /* 沉浸式显隐：布局变化(marginTop)由 JS 即时切换+同步补偿 scrollTop；
@@ -572,7 +580,7 @@ body.pinlocked #tabs{ display:none !important; }
 .cs-num{ font-size:calc(12px * var(--fs)); color:var(--ink-faint); white-space:nowrap; }
 .csbar button{
   background:rgba(212,162,78,.10); border:1px solid var(--line); color:var(--ink-dim);
-  border-radius:999px; min-width:28px; height:28px; font-size:calc(15px * var(--fs)); cursor:pointer;
+  border-radius:999px; min-width:44px; min-height:44px; font-size:calc(15px * var(--fs)); cursor:pointer;
 }
 mark{ background:rgba(212,162,78,.45); color:inherit; border-radius:2px; padding:0 1px; }
 .msg.curhit{ background:rgba(212,162,78,.10); border-radius:10px; }
@@ -582,6 +590,7 @@ mark{ background:rgba(212,162,78,.45); color:inherit; border-radius:2px; padding
   display:inline-flex; align-items:center; gap:8px;
   background:rgba(212,162,78,.10); border:1px solid var(--line); color:var(--ink-dim);
   border-radius:999px; padding:4px 12px; font-size:calc(12px * var(--fs)); cursor:pointer;
+  min-height:44px;
 }
 .voicebub .vb-ico{ display:inline-flex; color:var(--gold); }
 .voicebub .vb-bar{ width:64px; height:4px; border-radius:2px; background:rgba(255,255,255,.12); overflow:hidden; }
@@ -755,14 +764,14 @@ padding:6px 0; border-bottom:1px solid var(--line-soft);}
 .ctxlore{margin-top:4px; color:var(--gold-soft); font-size:calc(12px * var(--fs));
   max-height:200px; overflow:hidden; transition:max-height .35s ease, opacity .35s ease, margin .35s ease;}
 .ctxlore.folded{max-height:0; opacity:0; margin-top:0;}
-.ctxfold{display:inline-block; margin-left:6px; font-size:calc(11px * var(--fs)); color:var(--gold);
-  border:1px solid var(--line-soft); border-radius:999px; padding:1px 8px; cursor:pointer;}
+.ctxfold{display:inline-flex; align-items:center; margin-left:6px; font-size:calc(12px * var(--fs)); color:var(--gold);
+  border:1px solid var(--line-soft); border-radius:999px; padding:0 14px; cursor:pointer; min-height:44px;}
 
 /* ===== v21: 情景预设 chips ===== */
 .scenbar{display:flex; gap:8px; padding:6px 10px 2px; overflow-x:auto;}
 .scenchip{flex:0 0 auto; background:rgba(212,162,78,.07); border:1px solid var(--line);
 color:var(--ink-dim); border-radius:999px; padding:5px 12px; font-size:calc(12.5px * var(--fs)); cursor:pointer;
-min-height:40px; display:inline-flex; align-items:center;}
+min-height:44px; display:inline-flex; align-items:center;}
 .scenchip.on{background:rgba(212,162,78,.22); border-color:var(--gold-deep); color:var(--gold);}
 .scenchip.off{padding:5px 9px;}
 
@@ -859,11 +868,24 @@ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow
 /* --- Janitor 式角色卡片网格 --- */
 .chargrid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;}
 .charcard{
+  position:relative;
   border:1px solid var(--line); border-radius:16px; overflow:hidden; cursor:pointer;
   background:var(--card); box-shadow:var(--shadow);
   transition:transform .12s ease, border-color .12s;
 }
 .charcard:active{transform:scale(.97); border-color:var(--gold-deep);}
+/* P1-14：整卡可点却不可聚焦 —— div[onclick] 对键盘和读屏都是死的。
+   两种改法按"卡里有没有别的控件"分：卡内无控件的（灵魂锚点 / 穿越选人 /
+   队伍选人）直接换成真 <button>；charCardHTML 里有 ops 按钮，嵌套按钮是
+   非法的，改成整卡铺一层透明按钮 —— 命中区与 ops 是兄弟节点而非父子，
+   读屏也只播报一次。 */
+button.charcard{padding:0; font:inherit; color:inherit; text-align:left; width:100%;}
+.charcard:focus-visible{outline:2px solid var(--gold-deep); outline-offset:2px;}
+.charcard-hit{position:absolute; inset:0; z-index:1; border:0; padding:0; background:none;
+  border-radius:0; cursor:pointer;}
+.charcard-hit:focus-visible{outline:2px solid var(--gold-deep); outline-offset:-2px; border-radius:14px;}
+/* 按下时压的是卡片本身，命中层不能再跟着缩一次（全局 button:active 有 scale） */
+button.charcard-hit:active{transform:none !important;}
 .charcover{height:104px; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;}
 .charcover .charimg{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center 30%;}
 /* 详情页画像: 完整展示画作, 不裁切 */
@@ -871,16 +893,16 @@ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow
   border-radius:14px; margin-bottom:12px; border:1px solid rgba(255,255,255,.08);}
 .charcover .big{font-family:var(--serif); font-size:calc(44px * var(--fs)); color:rgba(255,248,235,.92);
   text-shadow:0 2px 12px rgba(0,0,0,.5);}
-.charcover .tag{position:absolute; top:8px; left:8px; font-size:calc(10.5px * var(--fs)); color:#f5ecd8;
+.charcover .tag{position:absolute; top:8px; left:8px; font-size:calc(12px * var(--fs)); color:#f5ecd8;
   background:rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.18);
   border-radius:999px; padding:2px 9px; backdrop-filter:blur(4px);
   max-width:calc(100% - 16px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 .charbody{padding:10px 12px 12px;}
 .charbody .n{font-size:calc(16px * var(--fs)); font-weight:700; font-family:var(--serif);}
-.charbody .s{font-size:calc(11.5px * var(--fs)); color:var(--ink-faint); margin-top:3px; line-height:1.5;
+.charbody .s{font-size:calc(12px * var(--fs)); color:var(--ink-faint); margin-top:3px; line-height:1.5;
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; min-height:34px;}
 /* 游玩统计行：开局次数·平均轮数（单行，金色） */
-.charbody .statline{font-size:calc(11px * var(--fs)); color:var(--gold); margin-top:3px; line-height:1.4;
+.charbody .statline{font-size:calc(12px * var(--fs)); color:var(--gold); margin-top:3px; line-height:1.4;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 /* 卡片详情落地页（P0） */
 .tagchip{display:inline-block; font-size:calc(11px * var(--fs)); color:var(--gold-soft); border:1px solid var(--gold-deep);
@@ -902,14 +924,18 @@ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow
 .railcard:active{transform:scale(.96);}
 .railcard .avatar{width:56px; height:56px; font-size:calc(22px * var(--fs)); margin:0 auto;}
 .railcard .rn{font-size:calc(12px * var(--fs)); margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-.railcard .rk{font-size:calc(10px * var(--fs)); color:var(--ink-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.railcard .rk{font-size:calc(12px * var(--fs)); color:var(--ink-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 /* P1 分类 chips */
 .chiprow{display:flex; gap:8px; overflow-x:auto; padding:6px 2px 10px; -webkit-overflow-scrolling:touch;
   scrollbar-width:none;}
 .chiprow::-webkit-scrollbar{display:none;}
 .pickchip{flex:0 0 auto; font-size:calc(12px * var(--fs)); padding:7px 13px; border-radius:999px;
-  border:1px solid var(--line); background:var(--card); color:var(--ink-dim);}
+  border:1px solid var(--line); background:var(--card); color:var(--ink-dim);
+  min-height:44px; display:inline-flex; align-items:center;}
 .pickchip.on{border-color:var(--gold-deep); color:var(--gold-soft); background:rgba(212,162,78,.12);}
+/* P2-34：全局 button:focus-visible 给的是 8px 圆角描边，落到 999px 胶囊上
+   描边变成方框，和控件形状对不上。这里按控件自己的圆角重画。 */
+.pickchip:focus-visible{outline:2px solid var(--gold-deep); outline-offset:2px; border-radius:999px;}
 /* P2 命名主题卡片 */
 .themerow{display:flex; gap:10px;}
 .themecard{flex:1; border:1px solid var(--line); border-radius:12px; padding:10px 6px;
@@ -918,7 +944,7 @@ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow
 .themecard .dots{display:flex; gap:5px; justify-content:center; margin-bottom:6px;}
 .themecard .dot{width:16px; height:16px; border-radius:50%; border:1px solid rgba(0,0,0,.35);}
 .themecard .tname{font-size:calc(13px * var(--fs)); font-weight:700;}
-.themecard .tdesc{font-size:calc(10px * var(--fs)); color:var(--ink-faint); margin-top:2px; line-height:1.4;}
+.themecard .tdesc{font-size:calc(12px * var(--fs)); color:var(--ink-faint); margin-top:2px; line-height:1.4;}
 /* P2 签到日历 */
 .calhead{display:flex; align-items:center; justify-content:space-between; margin:10px 0 6px;}
 .calgrid{display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-bottom:4px;}
@@ -930,9 +956,9 @@ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow
 .calcell.today{border:1px solid var(--gold-deep);}
 /* P1 开场选择器条目 */
 .msitem.opitem{display:flex; gap:10px; align-items:baseline; text-align:left;}
-.opn{flex:0 0 auto; font-size:calc(11px * var(--fs)); color:var(--gold);}
+.opn{flex:0 0 auto; font-size:calc(12px * var(--fs)); color:var(--gold);}
 .opp{font-size:calc(13px * var(--fs)); color:var(--ink);}
-.charbody .ops{display:flex; gap:6px; margin-top:8px;}
+.charbody .ops{display:flex; gap:6px; margin-top:8px; position:relative; z-index:2;}
 .charbody .ops button{flex:1; font-size:calc(12px * var(--fs)); padding:6px 0; border-radius:8px;
   border:1px solid var(--line); background:rgba(212,162,78,.07); color:var(--ink-dim); cursor:pointer;}
 .charbody .ops button.go{background:linear-gradient(180deg,#e0b45e,#c9973f); color:#1c1407;
@@ -1000,7 +1026,7 @@ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow
 .cb-tool{flex:none; display:inline-flex; align-items:center; gap:6px;
   border:1px solid var(--line-soft); background:rgba(255,255,255,.04);
   color:var(--ink); border-radius:999px; padding:8px 14px; font-size:calc(13px * var(--fs));
-  cursor:pointer; white-space:nowrap;}
+  cursor:pointer; white-space:nowrap; min-height:44px;}
 .cb-tool:active{transform:scale(.95);}
 .cb-tool.on{border-color:var(--gold-deep); background:rgba(212,162,78,.14); color:var(--gold);}
 .cb-ico{font-size:calc(15px * var(--fs)); line-height:1;}
@@ -1063,6 +1089,7 @@ button:focus-visible{outline:2px solid var(--gold-deep); outline-offset:2px; bor
   display:block; margin:8px auto 0; border:1px solid rgba(212,162,78,.3);
   background:none; color:var(--gold-soft); font-size:calc(12px * var(--fs)); border-radius:999px;
   padding:4px 14px; cursor:pointer;
+  min-height:44px;
 }
 /* M3: 回到底部悬浮按钮（Talkie 式：偏离底部时浮现） */
 #tobottom{
@@ -1139,7 +1166,7 @@ input::-webkit-input-placeholder, textarea::-webkit-input-placeholder{color:#9a9
 .alb-stats .ic, .ctxlore .ic{color:var(--gold-soft);}
 .povlabel .ic{color:var(--gold-soft);}
 .field label .ic{color:var(--gold-soft);}
-.msgtools button{display:inline-flex; align-items:center; justify-content:center; padding:4px 10px; min-height:26px;}
+.msgtools button{display:inline-flex; align-items:center; justify-content:center; padding:4px 10px; min-height:44px;}
 .msgtools button .ic{vertical-align:0;}
 .chatbar .narrbtn{display:inline-flex; align-items:center; justify-content:center;}
 .chatbar .sendbtn{width:48px; height:48px; padding:0; border-radius:999px;
@@ -1172,12 +1199,6 @@ input::-webkit-input-placeholder, textarea::-webkit-input-placeholder{color:#9a9
   animation:shimmer 1.4s infinite;}
 @keyframes shimmer{to{transform:translateX(100%);}}
 
-/* ============ 动效降级 ============ */
-@media (prefers-reduced-motion:reduce){
-  #view > *:not(.drawer):not(.scrim){animation:none;}
-  .chargrid .charcard{animation:none;}
-  .skel::after{animation:none;}
-}
 
 /* ================= 穿越 P0 ================= */
 .travmodes{display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:6px}
@@ -1369,7 +1390,7 @@ body.chatmode.immersive #scenbar{ min-height:0; }
 /* ===== 产物页：状态徽章降调（人物名是主信息） ===== */
 .badge.stat{color:var(--ink-faint);border-color:var(--line);background:transparent}
 /* 分类 chips 数量弱化 */
-.pickchip .n{opacity:.5;font-size:calc(10.5px * var(--fs));margin-left:2px}
+.pickchip .n{opacity:.5;font-size:calc(12px * var(--fs));margin-left:2px}
 /* 选人页：签到/成就快捷条 */
 .dailystrip{display:flex;gap:8px;margin-bottom:10px}
 .dailystrip .ds{flex:1;border:1px solid var(--line);background:var(--card);color:var(--ink);
@@ -1540,3 +1561,24 @@ body.chatmode.immersive #asst_fab{ bottom:calc(16px + env(safe-area-inset-bottom
 .dropzone:focus-within, .dropzone.has-file{ border-style:solid; border-color:var(--gold-deep); }
 .dropzone.has-file{ background:rgba(212,162,78,.06); }
 .dropzone:focus-within .dz-ico, .dropzone.has-file .dz-ico{ background:rgba(212,162,78,.18); }
+
+/* ============ 动效降级（P2-53/P2-54）============
+   放在整表末尾：这一段要压过前面同特异度的入场/按压规则，靠的是源码顺序。
+   之前放在"骨架屏"那节里，.travmode 定义在它之后 → cardin 又赢了。
+
+   覆盖三类：视图入场、交错入场、按压缩放。原来只有前两类的一部分
+   （#view > * 与 .chargrid .charcard），穿越模式卡复用同一条 cardin
+   却漏在外面；按压的 scale 缩放一条都没覆盖。
+
+   刻意不用 "* { animation: none !important }" 通配：.immguide 的 reduce
+   分支靠 4.4s 的淡出把引导语留在屏上，通配会让它一闪即逝。 */
+@media (prefers-reduced-motion:reduce){
+  #view > *:not(.drawer):not(.scrim){animation:none;}
+  .chargrid .charcard{animation:none;}
+  .travmode{animation:none;}
+  .skel::after{animation:none;}
+  button:not(:disabled):not(.off):active,
+  .card--tap:active, .bubble:active, .charcard:active, .travmode:active,
+  .optbtn:active, .bw-card:active, .go-enter:active, .railcard:active,
+  .drawer .ditem:not(.danger):active{transform:none;}
+}
