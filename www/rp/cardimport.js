@@ -99,21 +99,63 @@ function exampleLines(mesExample, charName){
 
 function escRe(s){ return String(s == null ? "" : s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
-/* mes_example 多轮结构保留: 每个 <START> 块 -> {user, char}, few-shot 用真实对话, 不再配假 opener */
+/* mes_example 多轮结构保留: 每个 <START> 块 -> {turns:[{who, text}]}, few-shot 用真实对话, 不再配假 opener。
+ *
+ * 必须保留原始发言顺序: ST 卡里 {{char}} 常在 {{user}} 之前开口(承接上一轮的补充、抢话,
+ * 或角色先调侃一句), 2026-10-15 之前按说话人分桶成 {user, char} 且 user 恒在前, 那类块会被
+ * 重排成"角色在回答自己还没听到的话"——few-shot 一旦这样, 模型学到的问答配对就是错位的,
+ * 回复里我/你的指代随之翻转(回归: tests/test_imported_pronoun.js)。 */
 function exampleBlocks(mesExample, charName){
   var blocks = [];
   String(mesExample || "").split(/<START>/i).forEach(function(blk){
-    var users = [], chars = [];
+    var turns = [];
+    /* 一条发言 = 一个说话人标签行 + 其后所有无标签续行。
+     * ST 卡(实测 /home/hatch/workspace/rp-test/misaka_card.json)的角色回复常是多段:
+     * 只有第一行带 {{char}}: 标签, 后面的台词段与动作段全是裸行。此前解析只收标签行,
+     * 于是 few-shot 里角色只剩一个动作描写, 真正的台词全丢了。 */
+    function append(who, s){
+      s = String(s == null ? "" : s).replace(/\s+$/, "");
+      if(!s.trim()){
+        /* 空行 = 段间距, 挂在当前发言末尾 */
+        if(turns.length && !/\n$/.test(turns[turns.length - 1].text)) turns[turns.length - 1].text += "\n";
+        return;
+      }
+      if(!who) return;               /* 首个说话人标签之前的裸行(前言/空行), 丢弃 */
+      if(turns.length && turns[turns.length - 1].who === who){
+        var cur = turns[turns.length - 1];
+        cur.text = cur.text.replace(/\n+$/, "") + "\n" + s.trim();
+        return;
+      }
+      turns.push({who: who, text: s.trim()});
+    }
     blk.split("\n").forEach(function(line){
       var um = line.match(/^\s*\{\{\s*user\s*\}\}\s*:\s*(.+)$/i);
-      if(um && um[1].trim()){ users.push(um[1].trim()); return; }
+      if(um){ append("user", um[1]); return; }
       var cm = line.match(/^\s*\{\{\s*char\s*\}\}\s*:\s*(.+)$/i) ||
                (charName && line.match(new RegExp("^\\s*" + escRe(charName) + "\\s*[:：]\\s*(.+)$", "i")));
-      if(cm && cm[1].trim()) chars.push(cm[1].trim());
+      if(cm){ append("char", cm[1]); return; }
+      append(turns.length ? turns[turns.length - 1].who : null, line);
     });
-    if(chars.length) blocks.push({user: users.join("\n"), char: chars.join("\n")});
+    turns.forEach(function(t){ t.text = t.text.replace(/\n+$/, ""); });
+    /* 只有用户说话的块不成对(角色没接话), 丢掉, 否则 few-shot 教出"玩家说了没人应" */
+    if(turns.some(function(t){ return t.who === "char"; })) blocks.push({turns: turns});
   });
   return blocks;
+}
+
+/* 块形状判定: 有序 turns。旧卡(2026-10-15 前入库)只有 {user, char} 分桶, 顺序已在导入时丢失。 */
+function hasTurns(b){ return !!(b && Array.isArray(b.turns) && b.turns.length); }
+
+/* 无 raw.mes_example 可重解析时的兜底: 旧形状本就只记录了 user->char 的先后, 按原样补 turns。 */
+function upgradeBlocks(blocks){
+  return (blocks || []).map(function(b){
+    if(hasTurns(b)) return b;
+    b = b || {};
+    var turns = [];
+    if(b.user) turns.push({who:"user", text:String(b.user)});
+    if(b.char) turns.push({who:"char", text:String(b.char)});
+    return {turns: turns};
+  });
 }
 
 /* Tavern 卡 -> 内部卡片 */
@@ -270,9 +312,13 @@ function ensureGreeting(card){
 function ensureCompat(card){
   if(!card) return card;
   ensureGreeting(card);
-  if(!Array.isArray(card.exampleBlocks)){
+  /* 示例块轮次顺序: 旧卡(2026-10-15 前入库)的 exampleBlocks 是 {user, char} 分桶, 顺序已丢。
+     raw.mes_example 是原始文本, 重解析可得真序(这是修复对已导入卡生效的唯一途径);
+     没有原文可解析时才按旧形状的 user->char 兜底。 */
+  if(!Array.isArray(card.exampleBlocks) || !card.exampleBlocks.every(hasTurns)){
     var raw = (card.raw && typeof card.raw === "object") ? card.raw : {};
-    card.exampleBlocks = exampleBlocks(raw.mes_example, card.name);
+    var reparsed = exampleBlocks(raw.mes_example, card.name);
+    card.exampleBlocks = reparsed.length ? reparsed : upgradeBlocks(card.exampleBlocks);
   }
   if(card.systemPrompt == null){
     var raw2 = (card.raw && typeof card.raw === "object") ? card.raw : {};

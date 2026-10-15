@@ -50,13 +50,14 @@ t("v2 creator_notes 保留为一等字段", !!misaka.creatorNotes);
 t("v2 alternate_greetings 数量一致", misaka.altGreetings.length === misakaRaw.alternate_greetings.length);
 t("v2 character_book 条目数一致", misaka.worldbook.length === misakaRaw.character_book.entries.length);
 t("v2 worldbook 主键透传", (misaka.worldbook[0].key || []).length === 3);
-t("v2 mes_example 多轮结构保留", Array.isArray(misaka.exampleBlocks) && misaka.exampleBlocks.length > 0 &&
-  misaka.exampleBlocks.every(b => b.user !== undefined && b.char !== undefined));
+t("v2 mes_example 多轮结构保留(有序 turns)", Array.isArray(misaka.exampleBlocks) && misaka.exampleBlocks.length > 0 &&
+  misaka.exampleBlocks.every(b => Array.isArray(b.turns) && b.turns.length));
 const mMsg = PM.buildMessages(misaka, {history: [], worldbook: misaka.worldbook}, {}).messages;
 const sysAll = mMsg.filter(m => m.role === "system").map(m => m.content).join("\n");
 t("v2 system_prompt 进入 system prompt", sysAll.includes(misakaRaw.system_prompt.slice(0, 30)));
 t("v2 few-shot 无假 opener", !sysAll.includes("在园子里迎面碰见你"));
-t("v2 few-shot 用真实对话块", misaka.exampleBlocks.some(b => b.user && sysAll.includes(b.user.slice(0, 12))));
+t("v2 few-shot 用真实对话块", misaka.exampleBlocks.some(b =>
+  (b.turns || []).some(x => x.who === "char" && sysAll.includes(x.text.slice(0, 12)))));
 
 /* ---- 迟归人真实 PNG ---- */
 if(fs.existsSync(JXY)){

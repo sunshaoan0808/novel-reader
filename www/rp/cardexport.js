@@ -35,11 +35,16 @@ function buildTavernCard(c){
   }catch(e){}
   if(c && c.exampleDialogue) ext.example_dialogue = c.exampleDialogue;
   else delete ext.example_dialogue;
-  /* P0 卡兼容: 导入卡再导出时, 原卡字段 roundtrip 不丢 */
+  /* P0 卡兼容: 导入卡再导出时, 原卡字段 roundtrip 不丢。
+   * 由 exampleBlocks 的有序 turns 按原序重建——旧版固定拼成 user 在前, 导出即二次重排,
+   * "角色先开口"的块来回导出会被永久改写成错位问答。 */
   var mesEx;
   if(c && Array.isArray(c.exampleBlocks) && c.exampleBlocks.length){
     mesEx = c.exampleBlocks.map(function(b){
-      return "<START>\n{{user}}: " + (b.user || "...") + "\n{{char}}: " + (b.char || "");
+      var turns = (b && b.turns) || [];
+      return "<START>\n" + turns.map(function(t){
+        return "{{" + (t.who === "char" ? "char" : "user") + "}}: " + String(t.text == null ? "" : t.text);
+      }).join("\n");
     }).join("\n");
   }else{
     mesEx = lines.slice(1).map(function(q){

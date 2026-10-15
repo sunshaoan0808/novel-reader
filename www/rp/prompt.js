@@ -100,10 +100,27 @@ function itemsOf(card, name){
   return out;
 }
 
+/* 卡片示例文本的说话人标签归一化: 行首 {{user}}/{{char}} 直接换成"用户："/"<角色名>："。
+ * 绝不能把 {{user}} 原样丢进 prompt——后面的 subMacros 会把它展开成"你", 而 system 开头
+ * 就是"你是<角色名>", 于是"你："读起来就是模型自己在说话, 玩家的台词被算到角色头上。 */
+function exampleLabels(text, name){
+  return String(text == null ? "" : text)
+    .replace(/^([ \t]*)\{\{\s*user\s*\}\}\s*[:：]/gim, "$1用户：")
+    .replace(/^([ \t]*)\{\{\s*char\s*\}\}\s*[:：]/gim, "$1" + name + "：");
+}
+
 /* P0-4: few-shot 对话示例。优先用卡片 mes_example 的真实多轮结构 (exampleBlocks);
- * 旧卡(只有 typical_lines)退化为"台词示例", 不再配三个写死的假问题 (问答错位是实测确认的 bug)。 */
+ * 旧卡(只有 typical_lines)退化为"台词示例", 不再配三个写死的假问题 (问答错位是实测确认的 bug)。
+ *
+ * 说话人标签是这一段的命门, 2026-10-15 连修三处(回归见 tests/test_imported_pronoun.js):
+ *  1) 逐轮给标签。旧实现把一个 <START> 块里所有角色台词 join 成一串只挂一个"角色名：",
+ *     轮次一多标签就落在错的句子上; 现在按 turns 原序逐条标注;
+ *  2) 轮次顺序原样保留(exampleBlocks 侧修复, 旧解析按说话人分桶会把"角色先开口"的块重排成
+ *     "角色在回答自己还没听到的话");
+ *  3) 段头给图例, 钉死"用户"=玩家、"角色名"=角色, 免得与正文第二人称"你"抢指代。 */
 function buildExamples(card, name, budgetTokens){
-  var parts = ["【对话示例（学她的语气，不要复读句子）】"];
+  var parts = ["【对话示例】「用户：」是玩家说的话，「" + name + "：」是" + name + "说的话；" +
+               "按卡片原文的轮次展示，学语气，不要复读句子。"];
   var used = estTokens(parts[0]);
   function pushBlk(text){
     var t = estTokens(text);
@@ -115,10 +132,13 @@ function buildExamples(card, name, budgetTokens){
   var blocks = (card && card.exampleBlocks) || [];
   var i;
   for(i = 0; i < blocks.length && parts.length < 5; i++){
-    var b = blocks[i] || {};
-    var blk = (b.user ? "用户：" + String(b.user).slice(0, 200) + "\n" : "") +
-              name + "：" + String(b.char || "").slice(0, 300);
-    if(!pushBlk(blk)) break;
+    var turns = (blocks[i] && blocks[i].turns) || [];
+    var blk = turns.map(function(t){
+      var txt = String((t && t.text) || "").trim();
+      if(!txt) return "";
+      return (t.who === "char" ? name : "用户") + "：" + txt.slice(0, t.who === "char" ? 300 : 200);
+    }).filter(Boolean).join("\n");
+    if(blk && !pushBlk(blk)) break;
   }
   if(parts.length === 1){
     /* 旧卡回退: typical_lines 是孤立台词, 不虚构用户问句 */
@@ -133,10 +153,15 @@ function buildExamples(card, name, budgetTokens){
       pushBlk(tl);
     }
   }
+  /* 卡片自带示例对话: 原文照进(顺序天然正确), 只把说话人标签换成与上文同一套; 与 mes_example
+     常是同一段, 同文去重 */
   var extra = String((card && card.exampleDialogue) || "").trim();
   if(extra){
-    var xt = estTokens(extra);
-    if(used + xt <= budgetTokens) parts.push("【卡片自带对话示例】\n" + extra.slice(0, 800));
+    var labeled = exampleLabels(extra, name).slice(0, 800);
+    if(labeled && parts.join("\n").indexOf(labeled) < 0){
+      var xt = estTokens(labeled);
+      if(used + xt <= budgetTokens) parts.push("【卡片自带对话示例】\n" + labeled);
+    }
   }
   return parts.length > 1 ? parts.join("\n") : "";
 }
@@ -255,12 +280,17 @@ function postInstructions(name, pov, person){
   return s;
 }
 
-/* 叙事者模式: 主叙事(第二人称感官)+平行叙事(第三人称暗线)+角色主动推进剧情 */
-var NARRATOR_INSTR = "【叙事者模式】你同时承担叙事与扮演双重任务：\n" +
-"1. 主叙事：以第二人称（\"你\"）描写用户当前能通过感官感知到的剧情，用小说笔法推进；用户无法感知的事一律留白，不写。\n" +
-"2. 平行叙事：对用户不知情、但正在发生的关键事件（如其他角色的行动、暗处的决定），用第三人称客观叙述，穿插在合适位置。\n" +
-"3. 主动推进：即使用户没有明确指示，也要按角色设定让在场角色主动说话、行动，让剧情自己走下去，不要等用户推，不要原地打转。\n" +
-"4. 方向：保持剧情张力，稳步向前推进；如有【当前剧情目标】，一切为它服务。";
+/* 叙事者模式: 主叙事(第二人称感官)+平行叙事(第三人称暗线)+角色主动推进剧情。
+ * 人称约定写在最前: 旧版第一句"你同时承担..."里的"你"指模型, 第二句"以第二人称(你)描写用户"
+ * 里的"你"指玩家, 同一个词隔一行换一次指代, 模型只能靠猜——这正是导入卡聊天里我/你翻转的
+ * 另一半来源(另一半是 few-shot 的说话人标签, 见 buildExamples)。 */
+var NARRATOR_INSTR = "【叙事者模式】你同时承担叙事与扮演双重任务。\n" +
+"人称约定(先读这条)：本指令里凡是直接称呼叙事者的“你”, 都指你自己；下面说的叙事第二人称“你”, 指玩家本人。两处含义不同, 不要混用。\n" +
+"1. 主叙事：叙事部分一律用第二人称“你”指代玩家, 写玩家能通过感官感知到的剧情, 用小说笔法推进；玩家无法感知的事一律留白, 不写。叙事里绝不出现玩家的第一人称“我”。\n" +
+"2. 平行叙事：对玩家不知情、但正在发生的关键事件（如其他角色的行动、暗处的决定），用第三人称客观叙述，穿插在合适位置。\n" +
+"3. 角色台词：角色开口时自称“我”, 称呼玩家用“你”；无论叙事还是台词, “你”永远是玩家, 角色永远用“我”或自己的名字自称。\n" +
+"4. 主动推进：即使用户没有明确指示，也要按角色设定让在场角色主动说话、行动，让剧情自己走下去，不要等用户推，不要原地打转。\n" +
+"5. 方向：保持剧情张力，稳步向前推进；如有【当前剧情目标】，一切为它服务。";
 
 /* P1-1 预设: 分段顺序/开关/预算比例可配置 (Risu 式预设, 不做 ST 拖拽) */
 var PRESETS = {

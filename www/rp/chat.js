@@ -371,9 +371,13 @@ function findCard(runId, name){
   }
   if(runId === "imported" && typeof RP_CARDIMPORT !== "undefined"){
     var ic = RP_CARDIMPORT.find(name);
-    if(ic) return {name: ic.name, fields: ic.fields || {},
+    /* exampleBlocks 必须透传: 少了它, 导入卡的 few-shot 就只剩 exampleDialogue 原文,
+       而那段原文带 {{user}} 标签, 进 prompt 后 subMacros 把它展开成"你", 撞上开头
+       "你是<角色名>" —— 导入卡聊天人称翻转的主因(回归见 tests/test_imported_pronoun.js) */
+    if(ic) return {name: ic.name, novel: ic.novel, fields: ic.fields || {},
       greeting: (typeof RP_CARDIMPORT.greetingOf === "function" ? RP_CARDIMPORT.greetingOf(ic) : null) || ic.greeting || "",
-      altGreetings: ic.altGreetings || [], exampleDialogue: ic.exampleDialogue || ""};
+      altGreetings: ic.altGreetings || [], exampleDialogue: ic.exampleDialogue || "",
+      exampleBlocks: ic.exampleBlocks || []};
   }
   var cards = (window.__DATA__ && window.__DATA__.rp_cards || {})[runId] || [];
   for(var i = 0; i < cards.length; i++) if(cards[i].name === name){

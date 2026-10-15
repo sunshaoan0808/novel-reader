@@ -121,7 +121,7 @@ speech_style: "口是心非",
 signature_phrases: "哼，才不是呢",
 life_timeline: "幼年被研究",
 },
-exampleBlocks: [{user: "在吗", char: "干嘛啦！"}],
+exampleBlocks: [{turns: [{who: "user", text: "在吗"}, {who: "char", text: "干嘛啦！"}]}],
 };
 ctx.RP_CARDIMPORT = {findById: id => (id === "c1"? card: null)};
 vm.runInContext(fs.readFileSync(WWW + "/rp/traverse.js", "utf8"), ctx, {filename: "traverse.js"});
