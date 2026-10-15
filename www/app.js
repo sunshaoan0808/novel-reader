@@ -192,7 +192,7 @@ return `<div class="charcard">`
 + `</div>`
 + `<div class="charbody"><div class="n">${esc(o.name)}</div>`
 + (o.stat?`<div class="statline">${esc(o.stat)}</div>`:"")
-+ `<div class="s">${esc(o.sum||"")}</div>`
++ `<div class="s"${o.sum ? ` title="${esc(o.sum)}"` : ""}>${esc(o.sum||"")}</div>`
 + (o.ops?`<div class="ops">${o.ops}</div>`:"")
 + `</div></div>`;
 }
@@ -2823,7 +2823,7 @@ window.setFontScale = (v)=>{
 function fontScaleCardsHTML(){
   const fs = getFontScale();
   const opts = [[1,"标准"],[1.15,"大"],[1.3,"特大"]];   /* 与 FONT_SCALES 同档 */
-  return `<div class="chiprow" style="margin-top:8px">` + opts.map(o=>
+  return `<div class="chiprow" data-xfade style="margin-top:8px">` + opts.map(o=>
     `<button class="pickchip${fs===o[0]?" on":""}" onclick="setFontScale(${jq(o[0])})">${o[1]}</button>`).join("") + `</div>`;
 }
 /* 选人页快捷条：签到 + 成就（把藏在设置里的游玩入口浮上来） */
@@ -3608,7 +3608,7 @@ const spk = CHAT.mode==="group"
 /* Tier3-22: 群聊输入区点头像 @ 指定角色（@ 后本轮点名该角色先回） */
 const atb = CHAT.mode==="group"
 ? `<button id="atbtn" class="cb-tool" onclick="toggleAtMenu(event)" title="＠ 指定角色：本轮点名 TA 先回"><span class="cb-ico">＠</span><span class="cb-tx">点名</span></button>` : "";
-return `<div class="cb-tools">`
+return `<div class="cb-tools" data-xfade>`
 + `<button id="pushbtn" class="cb-tool${CHAT.pushStory?" on":""}" onclick="togglePushStory(event)" title="推剧情：下一条回复自动推进"><span class="cb-ico">${icon("clapperboard",15)}</span><span class="cb-tx">推剧情</span></button>`
 + `<button id="narrbtn" class="cb-tool${CHAT.narrMode?" on":""}" onclick="toggleNarr()" title="旁白模式：发送场景/动作描写"><span class="cb-ico">${icon("scroll",15)}</span><span class="cb-tx">旁白</span></button>`
 + `${atb}${spk}`
@@ -3961,7 +3961,7 @@ if(!el) return;
 /* 输入框聚焦时不重建, 避免打字被打断 */
 const ae = document.activeElement;
 if(ae && ae.id === "scenetext" && el.contains(ae)) return;
-el.innerHTML = `<div class="scenrow">` + SCENARIOS.map(s=>
+el.innerHTML = `<div class="scenrow" data-xfade>` + SCENARIOS.map(s=>
 `<button class="scenchip ${CHAT.scenario===s.id?"on":""}" onclick="toggleScenario('${jq(s.id)}')">${s.icon}${s.name}</button>`).join("")
 + (CHAT.scenario ? `<button class="scenchip off" onclick="toggleScenario('')">✕</button>` : "")
 + `</div>`
@@ -5098,11 +5098,9 @@ function cardLandingHTML(runId, nm, card, run){
       + `<button class="btn" onclick="toggleLikeUI()">${st.like ? "👍 已点赞" : "👍 点赞"}</button>`
       + `</div></div>`;
   }
-  /* 3. CTA */
-  h += `<button class="btn landcta" onclick="chatWith('${jq(runId)}','${jq(nm)}')">▶ 立即开始游玩</button>`;
-  /* 4. 简介 */
+  /* 3. 简介 */
   if(brief) h += `<h2 class="sec">简介</h2><div class="card"><div style="font-size:calc(13.5px * var(--fs));line-height:1.7">${esc(brief)}</div></div>`;
-  /* 5. 规格网格 */
+  /* 4. 规格网格 */
   const avgW = (st && st.s) ? (st.t / st.s).toFixed(0) + "轮/局" : "—";
   h += `<h2 class="sec">规格</h2><div class="specgrid">`
     + `<div class="spec"><div class="v">${openings.length ? openings.length + "个" : "AI生成"}</div><div class="k">开场</div></div>`
@@ -5110,7 +5108,7 @@ function cardLandingHTML(runId, nm, card, run){
     + `<div class="spec"><div class="v">${memN}条</div><div class="k">记忆</div></div>`
     + `<div class="spec"><div class="v">${avgW}</div><div class="k">平均轮数</div></div>`
     + `</div>`;
-  /* 6. 开场列表 */
+  /* 5. 开场列表 */
   if(openings.length){
     h += `<h2 class="sec">开场 · ${openings.length} 个</h2>`;
     h += openings.map((g, i)=>{
@@ -5123,17 +5121,18 @@ function cardLandingHTML(runId, nm, card, run){
   } else {
     h += `<div class="hint" style="margin:6px 2px">这张卡没有固定开场白，开聊后 AI 会根据人设现场生成开场。</div>`;
   }
-  /* 7. 玩法说明（由本地数据自动生成，不编造） */
-  h += `<h2 class="sec">玩法说明</h2><div class="card">`
+  /* 6. 玩法说明（由本地数据自动生成，不编造）。P1-19：说明性文字默认折起来，
+     详情页首屏要留给「这人是谁 / 怎么开聊」，不是三段使用手册。 */
+  h += `<details class="card"><summary class="t">玩法说明</summary>`
     + `<div class="kvline"><b>怎么开始</b>：点"立即开始游玩"${openings.length ? "，或挑一个开场进入" : ""}——${esc(nm)}会先和你打招呼，之后你说一句、它回一句。</div>`
     + `<div class="kvline"><b>它记得什么</b>：${memN ? "已经有 " + memN + " 条记忆，聊过的关键事不会忘" : "聊天中提到的关键信息会自动记下来，越聊越记得你们的事"}。</div>`
     + `<div class="kvline"><b>小贴士</b>：想换走向直接说；某句不满意可以重抽；重要的设定可以写进世界书长期生效。</div>`
-    + `</div>`;
-  /* 8. 标签 */
+    + `</details>`;
+  /* 7. 标签 */
   if(tags.length) h += `<h2 class="sec">标签</h2><div style="margin:2px 0 10px">` + tags.map(t=>`<span class="tagchip">${esc(t)}</span>`).join("") + `</div>`;
   /* P2 开源卡入口 */
   h += `<button class="btn ghost" style="width:100%;margin:4px 0" onclick="viewCardSource('${jq(runId)}','${jq(nm)}')">📖 查看设定源码（只读学习）</button>`;
-  /* 9. 档案（原有字段分组） */
+  /* 8. 档案（原有字段分组） */
   const groups = [["identity","身份"],["core","内核"],["speech","说话方式"],["background","背景"]];
   const arch = groups.map(g=>{
     const txt = RP_PROMPT.renderFields(card, RP_PROMPT.LAYERS[g[0]]);
@@ -5141,8 +5140,9 @@ function cardLandingHTML(runId, nm, card, run){
       + txt.split("\n").map(l=>`<div class="kvline">${esc(l)}</div>`).join("") + `</div>` : "";
   }).join("");
   if(arch) h += `<h2 class="sec">档案</h2>` + arch.replace(/<h2 class="sec">[^<]*<\/h2>/g, "");
-  /* 10. 底部 CTA */
-  h += `<button class="btn landcta" style="margin:14px 0 8px" onclick="chatWith('${jq(runId)}','${jq(nm)}')">▶ 立即开始游玩</button>`;
+  /* 9. CTA（P1-19：原先顶部、底部各渲染一次巨型胶囊，把近 1/4 屏高吃掉，
+     而这一页真正能做的动作只有一个。收成 sticky 底部单条，随滚动常驻。） */
+  h += `<div class="ctadock"><button class="btn landcta" onclick="chatWith('${jq(runId)}','${jq(nm)}')">▶ 立即开始游玩</button></div>`;
   return h;
 }
 /* 取卡片全量对象（RP.findCard 对导入/自创卡会裁剪字段，只读视图/导出用全量） */
