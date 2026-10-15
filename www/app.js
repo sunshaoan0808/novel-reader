@@ -1678,7 +1678,7 @@ ${chapterEntryHTML(true)}
 <h3>⚙️ 本次聊天设置</h3>
 <button class="ditem" onclick="toggleDrawer(false);showChatSettings()">🎛️ 聊天设置（Agent/参数/世界）</button>
 <button class="ditem" onclick="toggleDrawer(false);exportChat()">&#x1F4E4; 复制聊天记录</button>
-<button class="ditem" onclick="toggleDrawer(false);showForeshadow()">${icon("book-open")} 伏笔面板</button>
+${foreEntryHTML()}
 <button class="ditem" onclick="toggleDrawer(false);exportChatTxt()">${icon("download")} 导出聊天 TXT</button>
 <button class="ditem" onclick="toggleDrawer(false);exportChatJsonl()">${icon("download")} 导出 ST JSONL</button>
 <button class="ditem" onclick="toggleDrawer(false);importStChat()">${icon("upload")} 导入 ST 聊天记录</button>
@@ -1778,7 +1778,7 @@ ${chapterEntryHTML(false)}
 <button class="ditem" onclick="toggleDrawer(false);loreEditor(CHAT.runId,'chat')">${icon("book-open")} 世界书管理</button>
 <button class="ditem" onclick="toggleDrawer(false);regexEditor(CHAT.runId,null,'chat')">🔤 正则替换</button>
 <button class="ditem" onclick="toggleDrawer(false);exportChat()">&#x1F4E4; 复制聊天记录</button>
-<button class="ditem" onclick="toggleDrawer(false);showForeshadow()">${icon("book-open")} 伏笔面板</button>
+${foreEntryHTML()}
 <button class="ditem" onclick="toggleDrawer(false);exportChatTxt()">${icon("download")} 导出聊天 TXT</button>
 <button class="ditem" onclick="toggleDrawer(false);exportChatJsonl()">${icon("download")} 导出 ST JSONL</button>
 <button class="ditem danger" onclick="toggleDrawer(false);clearChat()">&#x1F5D1; 清空聊天记录</button>
@@ -2223,14 +2223,33 @@ alert(`已复制 ${h.length} 条消息到剪贴板`);
 /* ============ 伏笔面板 + 剧情导出 (对标 Talkie 剧情 "Foreshadowing Panel · EPUB Export") ============ */
 /* 数据: RP_FORE (www/data/foreshadow_cal.js 蒸馏管线事件日历, 897 条伏笔) */
 let FS_TAB = "unresolved";
+/* B19 伏笔数据源是 www/data/foreshadow_cal.js: 纯《红楼梦》蒸馏产物, 无 runId 隔离
+   (rp/foreshadow.js 直读 window.__CAL__)。非红楼聊天(导入卡/水浒/清安录…)打开面板
+   看到的是别的书的伏笔 = 串味, 故按当前聊天所属小说的世界门禁。
+   run 取法同 relRunFor: 蒸馏 run 走 __DATA__.runs[runId], 导入卡/custom 走
+   RP.synthRunFor(runId,name) 的合成 run(带 novel)。 */
+const FORE_NOVEL = "红楼梦";
+function foreRunFor(runId, name){
+  return relRunFor(runId, name);
+}
+function foreAvailable(){
+  var run = foreRunFor(CHAT.runId, CHAT.name);
+  return String((run && run.novel) || "") === FORE_NOVEL;
+}
+/* 抽屉入口 (单聊/群聊共用): 非红楼梦世界返回空串, 按钮不渲染 */
+function foreEntryHTML(){
+  if(!foreAvailable()) return "";
+  return `<button class="ditem" onclick="toggleDrawer(false);showForeshadow()">${icon("book-open")} 伏笔面板</button>`;
+}
 window.showForeshadow = ()=>{
+if(!foreAvailable()){ rpToast("伏笔面板仅支持《红楼梦》蒸馏剧本"); return; }
 if(typeof RP_FORE === "undefined" || !RP_FORE.items().length){ rpToast("伏笔数据未加载"); return; }
 FS_TAB = "unresolved";
 renderForeshadow();
 };
 window.fsTab = (t)=>{ FS_TAB = t; renderForeshadow(); };
 function renderForeshadow(){
-const run = ((window.__DATA__||{}).runs||{})["honglou_full"] || {};
+const run = foreRunFor(CHAT.runId, CHAT.name); /* 门禁已保证是《红楼梦》世界; 副标题按当前 run 取书名 */
 __backAction = ()=>showChat();
 document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
 titleEl.innerHTML = icon("book-open") + " 伏笔面板";
