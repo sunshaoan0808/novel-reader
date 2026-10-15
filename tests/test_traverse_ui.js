@@ -48,7 +48,7 @@ scrollTo(){}, devicePixelRatio: 2,
 /* P1-12: paintChatBg 用 new Image() 预载壁纸，沙箱补桩 */
 Image: function(){ const el = mkEl(); el.src = ""; return el; }};
 ctx.window = ctx; ctx.globalThis = ctx; ctx.__DATA__ = DATA;
-ctx.CHAR_PLOTS = {"林黛玉": "\n· 黛玉进贾府：初见宝玉\n· 葬花吟：与宝钗夜话"};
+/* char_plots.js 按 runId 分层, 且下面会载入真数据; 本用例的夹具在载入之后注入 */
 vm.createContext(ctx);
 for(const f of ["data.js", "icons.js", "data/char_plots.js", "rp/escutil.js", "rp/prompt.js", "rp/persona.js",
 "rp/memory.js", "rp/tasks.js", "rp/cardwriter.js", "rp/ooc.js", "rp/chat.js", "rp/aifill.js",
@@ -58,6 +58,7 @@ vm.runInContext(fs.readFileSync(WWW+"/" + f, "utf8"), ctx, {filename: f});
 // data.js 会覆盖 __DATA__; 加载完再注入测试数据, 并同步重置 INDEX
 vm.runInContext("window.__DATA__=" + JSON.stringify(DATA), ctx);
 vm.runInContext("INDEX = window.__DATA__.index;", ctx);
+vm.runInContext('window.CHAR_PLOTS = {"r1":{"林黛玉":"\\n· 黛玉进府：初见宝玉\\n· 葬花吟：与宝钗夜话"}};', ctx);
 const viewHTML = () => els["view"].innerHTML;
 
 let pass = 0, fail = 0;

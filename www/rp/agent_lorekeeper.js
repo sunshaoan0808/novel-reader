@@ -9,14 +9,15 @@
 var AGENT_LOREKEEPER = (function(){
 "use strict";
 
-function loreKey(runId){ return "nd_lore_" + runId; }
+/* 导入卡全部共用 runId="imported", 键必须再挂卡 id, 否则所有导入卡共用一个世界书池
+   (A 卡写的条目会泄漏进 B 卡的 prompt)。老池 nd_lore_imported 兼容读见 RP_SCOPE。 */
+function loreKey(runId, name){ return RP_SCOPE.key("nd_lore_", runId, name); }
 
-function getLore(runId){
-  try{ return JSON.parse(localStorage.getItem(loreKey(runId)) || "[]"); }
-  catch(e){ return []; }
+function getLore(runId, name){
+  return RP_SCOPE.read(loreKey(runId, name), RP_SCOPE.legacyKey("nd_lore_", runId));
 }
-function setLore(runId, arr){
-  try{ localStorage.setItem(loreKey(runId), JSON.stringify(arr)); }
+function setLore(runId, name, arr){
+  try{ RP_SCOPE.write(loreKey(runId, name), arr); }
   catch(e){ typeof RP_WARN!=="undefined"&&RP_WARN.saveFail("世界书保存失败", e); }
 }
 
@@ -27,7 +28,7 @@ async function extractFacts(runId, name, history, callChat, cfg){
     return (m.role === "user" ? "用户" : name) + ": " + (m.content || "").slice(0, 500);
   }).join("\n");
 
-  var existing = getLore(runId).map(function(e){ return e.title; }).join("、");
+  var existing = getLore(runId, name).map(function(e){ return e.title; }).join("、");
 
   try{
     var r = await callChat(cfg, [
@@ -62,7 +63,7 @@ async function onReply(runId, name, history, callChat, cfg){
   var facts = await extractFacts(runId, name, history, callChat, cfg);
   if(!facts.length) return {added: 0};
 
-  var lore = getLore(runId);
+  var lore = getLore(runId, name);
   var added = 0;
   facts.forEach(function(f){
     if(!f.title || !f.content) return;
@@ -83,7 +84,7 @@ async function onReply(runId, name, history, callChat, cfg){
     });
     added++;
   });
-  if(added) setLore(runId, lore);
+  if(added) setLore(runId, name, lore);
   return {added: added, facts: facts};
 }
 
@@ -101,6 +102,11 @@ function isEnabled(){
 return {
   onReply: onReply,
   setEnabled: setEnabled,
-  isEnabled: isEnabled
+  isEnabled: isEnabled,
+  /* 用户世界书的存储原语也对外暴露: App 的世界书管理器与 chat.js 的 prompt 组装
+     要读同一个池子, 键规则只有这一处。 */
+  loreKey: loreKey,
+  getLore: getLore,
+  setLore: setLore
 };
 })();

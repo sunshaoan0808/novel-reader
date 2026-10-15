@@ -2,13 +2,16 @@
 """从 novel-distill 红楼梦 plot 产物生成 App 用的角色原著剧情大纲.
 
 输入: runs/honglou_full/plot/sections.json (+ outline.json 的 book_summary)
-输出: assets/www/data/char_plots.js  (window.CHAR_PLOTS = {人物名: 大纲文本, ...})
+输出: www/data/char_plots.js
+      (window.CHAR_PLOTS = {runId: {人物名: 大纲文本, ...}, ...})
+按 runId 分层是必须的: 不同书里有同名角色时, App 只按名字取会串味泄露别的书的剧情。
 arcs.json 落地后重新跑本脚本即可刷新.
 """
 import json, os, sys
 
-RUN = os.path.expanduser("~/workspace/novel-distill/runs/honglou_full/plot")
-OUT = os.path.expanduser("~/workspace/apk-work/app/assets/www/data/char_plots.js")
+RUN_ID = "honglou_full"
+RUN = os.path.expanduser("~/workspace/novel-distill/runs/%s/plot" % RUN_ID)
+OUT = os.path.expanduser("~/workspace/github/novel-reader/www/data/char_plots.js")
 
 CHARS = ["贾宝玉","林黛玉","薛宝钗","王熙凤","贾母","王夫人","袭人","晴雯","刘姥姥","秦钟"]
 # 摘要里常用简称, 补全匹配(全名优先, 简称只补漏)
@@ -36,8 +39,8 @@ def main():
             + body
         )
     # JS 文件: file:// 下无 fetch 风险, script 标签直接引入
-    js = "// 自动生成: tools/gen_char_plots.py, 数据源 runs/honglou_full/plot/sections.json\n"
-    js += "window.CHAR_PLOTS = " + json.dumps(plots, ensure_ascii=False, indent=1) + ";\n"
+    js = "// 自动生成: tools/gen_char_plots.py, 数据源 runs/%s/plot/sections.json\n" % RUN_ID
+    js += "window.CHAR_PLOTS = " + json.dumps({RUN_ID: plots}, ensure_ascii=False, indent=1) + ";\n"
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     open(OUT, "w").write(js)
     for name in CHARS:

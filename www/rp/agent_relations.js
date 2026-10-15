@@ -3,24 +3,26 @@
  * - 后台从对话检测关系变化，更新动态关系层
  * - 用户可锁定某条关系，锁了 AI 就不再动它
  * - 动态层优先于蒸馏静态层
- * 存储：localStorage["nd_rel_dyn_<runId>"] = [{a, b, summary, type, locked, updated}]
+ * 存储：localStorage["nd_rel_dyn_<runId>[_<卡id>]"] = [{a, b, summary, type, locked, updated}]
  */
 var AGENT_RELATIONS = (function(){
 "use strict";
 
-function keyOf(runId){ return "nd_rel_dyn_" + runId; }
+/* 导入卡全部共用 runId="imported", 键必须再挂卡 id, 否则所有导入卡共用一个动态关系池
+   (A 卡的演变会污染 B 卡的关系表)。老池 nd_rel_dyn_imported 兼容读见 RP_SCOPE。
+   cardName 是「当前聊天那张卡」的名字: 蒸馏 run 不需要(后缀恒空), imported 用它定位卡 id。 */
+function keyOf(runId, cardName){ return RP_SCOPE.key("nd_rel_dyn_", runId, cardName); }
 
-function getDyn(runId){
-  try{ return JSON.parse(localStorage.getItem(keyOf(runId)) || "[]"); }
-  catch(e){ return []; }
+function getDyn(runId, cardName){
+  return RP_SCOPE.read(keyOf(runId, cardName), RP_SCOPE.legacyKey("nd_rel_dyn_", runId));
 }
-function setDyn(runId, arr){
-  try{ localStorage.setItem(keyOf(runId), JSON.stringify(arr)); }catch(e){}
+function setDyn(runId, cardName, arr){
+  try{ RP_SCOPE.write(keyOf(runId, cardName), arr); }catch(e){}
 }
 
 /* 合并：动态层覆盖静态层 */
-function merged(runId, staticRels){
-  var dyn = getDyn(runId);
+function merged(runId, staticRels, cardName){
+  var dyn = getDyn(runId, cardName);
   if(!dyn.length) return staticRels || [];
   var map = {};
   (staticRels || []).forEach(function(r){
@@ -56,7 +58,7 @@ async function detectChanges(runId, name, history, callChat, cfg){
   try{ localStorage.setItem("nd_reldyn_count_" + runId, String(count)); }catch(e){}
   if(count % 6 !== 0) return {updated: 0};
 
-  var dyn = getDyn(runId);
+  var dyn = getDyn(runId, name);
   var lockedPairs = dyn.filter(function(d){ return d.locked; })
     .map(function(d){ return d.a + "-" + d.b; }).join("、");
 
@@ -97,24 +99,23 @@ async function detectChanges(runId, name, history, callChat, cfg){
       }
       updated++;
     });
-    if(updated) setDyn(runId, dyn);
+    if(updated) setDyn(runId, name, dyn);
     return {updated: updated};
   }catch(e){ return {updated: 0}; }
 }
-
 /* 用户锁定/解锁 */
-function setLock(runId, a, b, locked){
-  var dyn = getDyn(runId);
+function setLock(runId, a, b, locked, cardName){
+  var dyn = getDyn(runId, cardName);
   var k = relKey(a, b);
   var ex = dyn.find(function(d){ return relKey(d.a, d.b) === k; });
   if(ex){ ex.locked = !!locked; }
   else if(locked){
     dyn.push({a: a, b: b, summary: "", type: "neutral", locked: true, updated: Date.now()});
   }
-  setDyn(runId, dyn);
+  setDyn(runId, cardName, dyn);
 }
-function isLocked(runId, a, b){
-  var dyn = getDyn(runId);
+function isLocked(runId, a, b, cardName){
+  var dyn = getDyn(runId, cardName);
   var k = relKey(a, b);
   var ex = dyn.find(function(d){ return relKey(d.a, d.b) === k; });
   return !!(ex && ex.locked);

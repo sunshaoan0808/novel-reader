@@ -222,16 +222,23 @@ return {listModels: listModels, generateImage: generateImage, tts: tts, complete
 
 /* 对话运行时 */
 
-/* 用户自建世界书条目 (App 内编辑, localStorage) */
-function userLore(runId){
+/* 用户自建世界书条目 (App 内编辑, localStorage)。键规则与 LoreKeeper / 世界书管理器共用
+   RP_SCOPE: 导入卡按卡 id 隔离, 老池 nd_lore_imported 兼容读。 */
+function userLore(runId, name){
   try{
-    var arr = JSON.parse(localStorage.getItem("nd_lore_" + runId)) || [];
+    var arr = RP_SCOPE.readKeyed("nd_lore_", runId, name);
     return arr.filter(function(e){ return e.enabled !== false; }).map(function(e){
       return {title: e.title, trigger_keywords: e.keys || [], rules: e.content,
               priority: e.priority != null ? e.priority : 60, budget: 300,
               constant: !!e.constant};
     });
   }catch(e){ return []; }
+}
+/* prompt 的世界书数组, 三处 buildMessages 共用:
+   蒸馏 run 的 run.worldbook → 导入卡自带的 character_book 条目 → 用户自建条目。
+   导入卡 run 恒为 {} (runs["imported"] 不存在), 卡自带世界书只在这里进得来。 */
+function promptWorldbook(run, runId, card, name){
+  return (run.worldbook || []).concat((card && card.worldbook) || [], userLore(runId, name));
 }
 /* 声明式正则替换 (ST Regex 简化版: 只做 find/replace, 不执行代码) */
 function getRegex(runId, name){
@@ -374,10 +381,14 @@ function findCard(runId, name){
     /* exampleBlocks 必须透传: 少了它, 导入卡的 few-shot 就只剩 exampleDialogue 原文,
        而那段原文带 {{user}} 标签, 进 prompt 后 subMacros 把它展开成"你", 撞上开头
        "你是<角色名>" —— 导入卡聊天人称翻转的主因(回归见 tests/test_imported_pronoun.js) */
-    if(ic) return {name: ic.name, novel: ic.novel, fields: ic.fields || {},
+    if(ic) return {id: ic.id, name: ic.name, novel: ic.novel, fields: ic.fields || {},
       greeting: (typeof RP_CARDIMPORT.greetingOf === "function" ? RP_CARDIMPORT.greetingOf(ic) : null) || ic.greeting || "",
       altGreetings: ic.altGreetings || [], exampleDialogue: ic.exampleDialogue || "",
-      exampleBlocks: ic.exampleBlocks || []};
+      exampleBlocks: ic.exampleBlocks || [],
+      /* worldbook 必须透传: character_book 在导入时已解析成条目存好(cardimport.js
+         normalizeTavern), 少了这个字段, 用户写在卡里的世界书一个字也进不了 prompt
+         (回归见 tests/test_imported_parity_phase1.js) */
+      worldbook: ic.worldbook || []};
   }
   var cards = (window.__DATA__ && window.__DATA__.rp_cards || {})[runId] || [];
   for(var i = 0; i < cards.length; i++) if(cards[i].name === name){
@@ -594,7 +605,7 @@ async function send(runId, name, text, opts){
   try{ if(typeof RP_PORTRAIT!=="undefined") portEnrich = RP_PORTRAIT.enrich(card, text, h); }catch(e){}
   try{ window.__lastPortrait = portEnrich; }catch(e){}
   var b = RP_PROMPT.buildMessages(card, {
-    novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: (typeof AGENT_RELATIONS !== "undefined" ? AGENT_RELATIONS.merged(runId, run.relations) : run.relations),
+    novel: run.novel, worldbook: promptWorldbook(run, runId, card, name), relations: (typeof AGENT_RELATIONS !== "undefined" ? AGENT_RELATIONS.merged(runId, run.relations, name) : run.relations),
     memory: memPrompt, memTasks: memTasks,
     memBudgeted: memCtxFor(runId, name, card, run.novel, temporal, text, apex),
     arc: arcText,
@@ -804,7 +815,7 @@ async function regenerate(runId, name, opts){
     function(c, ms, t){ return RP_NET.complete(c, ms, t); });
   var arcTextRe = arcTextFor(runId, name, card);
   var b = RP_PROMPT.buildMessages(card, {
-    novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: (typeof AGENT_RELATIONS !== "undefined" ? AGENT_RELATIONS.merged(runId, run.relations) : run.relations),
+    novel: run.novel, worldbook: promptWorldbook(run, runId, card, name), relations: (typeof AGENT_RELATIONS !== "undefined" ? AGENT_RELATIONS.merged(runId, run.relations, name) : run.relations),
     memory: RP_MEM.renderBudgeted ? "" : RP_MEM.renderPrompt(mem),
     memTasks: RP_TASKS.renderPrompt(runId, name, lastUserText),
     memBudgeted: memCtxFor(runId, name, card, run.novel, temporalRe, lastUserText, apexRe),
@@ -956,7 +967,7 @@ async function genOneSpeaker(runId, run, members, speaker, text, h, opts, budget
     function(c, ms, t){ return RP_NET.complete(c, ms, t); });
   var arcTextSpk = arcTextFor(runId, speaker, activeCard);
   var b = RP_PROMPT.buildMessages(activeCard, {
-    novel: run.novel, worldbook: (run.worldbook || []).concat(userLore(runId)), relations: (typeof AGENT_RELATIONS !== "undefined" ? AGENT_RELATIONS.merged(runId, run.relations) : run.relations),
+    novel: run.novel, worldbook: promptWorldbook(run, runId, activeCard, speaker), relations: (typeof AGENT_RELATIONS !== "undefined" ? AGENT_RELATIONS.merged(runId, run.relations, speaker) : run.relations),
     memory: RP_MEM.renderBudgeted ? "" : RP_MEM.renderPrompt(RP_MEM.get(runId, speaker)),
     memTasks: RP_TASKS.renderPrompt(runId, speaker, text),
     memBudgeted: memCtxFor(runId, speaker, activeCard, run.novel, temporalSpk, text, apexSpk),

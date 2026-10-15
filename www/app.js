@@ -777,11 +777,18 @@ const cls = pct >= 100 ? "over" : (pct >= 80 ? "warn" : "");
 out.innerHTML = `<div class="tokbar"><div class="tokbar-fg ${cls}" style="width:${pct}%"></div></div>`
 + `<span class="toknum ${cls}">约 ${n} / ${max} tokens${pct >= 100 ? " · 已超上下文窗口！" : (pct >= 80 ? " · 接近上限" : "")}</span>`;
 };
-const loreKey = (runId)=> `nd_lore_${runId}`;
-const getLore = (runId)=>{ try{return JSON.parse(localStorage.getItem(loreKey(runId)))||[]}catch(e){return[]}} ;
+/* 世界书管理器的存储键。导入卡全部共用 runId="imported", 必须按卡隔离, 否则 A 卡
+   写的条目会串进 B 卡的 prompt(键规则见 rp/scope.js)。name 省略时退回当前聊天那张卡
+   (loreEditor 的调用链上, 聊天抽屉传 CHAT.runId; 产物页传的是蒸馏 RUN.run_id, 天然按书隔离)。 */
+const loreNameOf = (runId, name)=> name || ((typeof CHAT !== "undefined" && CHAT && CHAT.runId === runId) ? CHAT.name : null);
+const loreKey = (runId, name)=> RP_SCOPE.key("nd_lore_", runId, loreNameOf(runId, name));
+const getLore = (runId, name)=>{
+  try{ return RP_SCOPE.read(loreKey(runId, name), RP_SCOPE.legacyKey("nd_lore_", runId)); }
+  catch(e){ return []; }
+};
 const saveLore = (runId, arr)=>{
   /* P1-8: 世界书增删改在 inline onclick 里调 saveLore，原先裸抛无提示且中断 renderLoreList */
-  try{ localStorage.setItem(loreKey(runId), JSON.stringify(arr)); }
+  try{ RP_SCOPE.write(loreKey(runId), arr); }
   catch(e){ rpToastOnce(isQuotaErr(e) ? "存储空间已满，世界书保存失败" : "世界书保存失败"); }
 };
 const loreBack = {to:null};
@@ -3438,12 +3445,21 @@ const plotKey = ()=> CHAT.mode==="group"
   : `nd_plot_${CHAT.runId}_${CHAT.name}`;
 const getPlot = ()=>{ try{ return JSON.parse(localStorage.getItem(plotKey()))||null; }catch(e){ return null; } };
 const savePlot = (p)=> localStorage.setItem(plotKey(), JSON.stringify(p||{}));
-/* 剧情线 v27: 原著剧情大纲(读者可编辑)。数据源自蒸馏管线(assets/www/data/char_plots.js),
-   按角色名匹配; 用户保存过则以用户版为准(含清空); 群聊拼接各成员大纲 */
+/* 剧情线 v27: 原著剧情大纲(读者可编辑)。数据源自蒸馏管线(www/data/char_plots.js)。
+   char_plots.js 按 runId 分层: CHAR_PLOTS[runId][角色名]。分层是必须的 —— 不同书里
+   同名角色只按名字取会泄露别的书的剧情。旧版本 char_plots.js 是扁平的
+   CHAR_PLOTS[角色名], 这里保留兜底以兼容旧数据。
+   用户保存过则以用户版为准(含清空); 群聊拼接各成员大纲。 */
+const bundledPlotFor = (runId, name)=>{
+  const all = window.CHAR_PLOTS || {};
+  const layer = all[runId];
+  if(layer && layer[name]) return layer[name];
+  return all[name] || "";
+};
 const bundledPlot = ()=>{
   const names = CHAT.mode==="group" ? (CHAT.members||[]) : [CHAT.name];
   const parts = [];
-  for(const n of names||[]){ const o = (window.CHAR_PLOTS||{})[n]; if(o) parts.push(o); }
+  for(const n of names||[]){ const o = bundledPlotFor(CHAT.runId, n); if(o) parts.push(o); }
   return parts.join("\n\n");
 };
 const activePlotOutline = ()=>{
@@ -5374,7 +5390,7 @@ window.showRelManager = ()=>{
   var runId = CHAT.runId, name = CHAT.name;
   var run = (window.__DATA__.runs || {})[runId] || {};
   var rels = (typeof AGENT_RELATIONS !== "undefined")
-    ? AGENT_RELATIONS.merged(runId, run.relations) : (run.relations || []);
+    ? AGENT_RELATIONS.merged(runId, run.relations, name) : (run.relations || []);
   var myRels = rels.filter(function(r){
     return r.source_character === name || r.target_character === name;
   });
@@ -5391,7 +5407,7 @@ window.showRelManager = ()=>{
         <div><b>${esc(other)}</b>${dyn}<br>
         <span style="font-size:calc(13px * var(--fs));color:var(--ink-faint)">${esc(r.relationship_summary || r.type || "")}</span></div>
         <button class="btn${locked ? " primary" : ""}" style="font-size:calc(12px * var(--fs));padding:4px 10px"
-          onclick="AGENT_RELATIONS.setLock('${jq(runId)}','${jq(name)}','${jq(other)}',${!locked});showRelManager();">
+          onclick="AGENT_RELATIONS.setLock('${jq(runId)}','${jq(name)}','${jq(other)}',${!locked},'${jq(name)}');showRelManager();">
           ${locked ? "🔒 已锁定" : "🔓 锁定"}</button>
       </div></div>`;
   });
@@ -7649,7 +7665,7 @@ function soulOutlineFor(runId, name){
     const p = JSON.parse(localStorage.getItem(`nd_plot_${runId}_${name}`));
     if(p && p.updatedAt && p.outline) return p.outline;
   }catch(e){}
-  return (window.CHAR_PLOTS||{})[name] || "";
+  return bundledPlotFor(runId, name);
 }
 window.soulAnchors = (runId, name)=>{
   __backAction = ()=>soulPickTarget();

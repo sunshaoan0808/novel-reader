@@ -3,9 +3,8 @@ const WWW = fs.existsSync("assets/www") ? "assets/www" : "www";
 let pass=0, fail=0; const t=(n,c)=>{c?pass++:(fail++,console.log("FAIL:",n));};
 
 function takeDecl(src, name){
-let i = src.indexOf("const "+name);
-if(i<0) i = src.indexOf("var "+name);
-if(i<0) throw new Error("no decl "+name);
+let i = src.indexOf("const "+name+" ");
+if(i<0) i = src.indexOf("var "+name+" ");
 let d=0, instr=null;
 for(let k=i;k<src.length;k++){
 const ch=src[k];
@@ -31,7 +30,8 @@ const dsrc = fs.readFileSync(WWW+"/data/char_plots.js","utf8");
 const dctx = {console, window:{}};
 vm.createContext(dctx);
 vm.runInContext(dsrc, dctx);
-const PLOTS = dctx.window.CHAR_PLOTS;
+/* char_plots.js 按 runId 分层: CHAR_PLOTS[runId][人物名] */
+const PLOTS = dctx.window.CHAR_PLOTS.honglou_full;
 const CHARS = ["贾宝玉","林黛玉","薛宝钗","王熙凤","贾母","王夫人","袭人","晴雯","刘姥姥","秦钟"];
 t("10 个人物全有", CHARS.every(n=>typeof PLOTS[n]==="string" && PLOTS[n].length>50));
 t("每份含人物名", CHARS.every(n=>PLOTS[n].includes(n)));
@@ -55,10 +55,10 @@ t("无 plotGoal 残留",!csrc.includes("plotGoal"));
 const asrc = fs.readFileSync(WWW+"/app.js","utf8");
 const store = {};
 const actx = {console, CHAT:{mode:"single",runId:"r1",name:"林黛玉",members:[]},
-window:{CHAR_PLOTS:PLOTS},
+window:{CHAR_PLOTS:{"r1":PLOTS}},
 localStorage:{getItem:k=>store[k]??null, setItem:(k,v)=>{store[k]=String(v);}}};
 vm.createContext(actx);
-for(const f of ["plotKey","getPlot","savePlot","bundledPlot","activePlotOutline"]) vm.runInContext(takeDecl(asrc,f), actx);
+for(const f of ["bundledPlotFor","plotKey","getPlot","savePlot","bundledPlot","activePlotOutline"]) vm.runInContext(takeDecl(asrc,f), actx);
 const E=c=>vm.runInContext(c,actx);
 t("单聊 key 不变", E("plotKey()")==="nd_plot_r1_林黛玉");
 t("未保存时用捆绑大纲", E("activePlotOutline()")===PLOTS["林黛玉"]);
