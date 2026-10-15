@@ -471,7 +471,10 @@ let _wcFailed = {}; /* P2-5: 加载失败标记——区分"加载失败"与"确
 /* 世界卡懒加载（file:// 下用 script 标签），世界 tab 与导演系统共用 */
 function loadWorldcard(runId){
   if(!runId) return Promise.resolve(null);
-  if(_wcCache[runId]) return Promise.resolve(_wcCache[runId]);
+  /* 导入卡共用 runId="imported", 蒸馏管线只给 __DATA__.runs 里的 run 出 worldcard_*.js,
+     这里发请求必然 404。导演与世界 tab 已经走"无蓝图"分支(rp/director.js worldcardBrief),
+     短路掉这一次注定失败的 script 加载; 调用点(聊天预热/世界 tab/魂穿开局)一并覆盖。 */
+  if(runId === "imported") return Promise.resolve(null);
   var gk = "__WORLDCARD_" + runId;
   if(window[gk]){ _wcCache[runId] = window[gk]; return Promise.resolve(window[gk]); }
   return new Promise(function(res){
@@ -492,6 +495,18 @@ window.retryWorldcard = ()=>{
 function getWorldcard(runId){
   if(!runId) return null;
   return _wcCache[runId] || window["__WORLDCARD_" + runId] || null;
+}
+/* 导演"无蓝图"提示 (B14): 原著因果蓝图(worldcard)只随蒸馏剧本自带, 导入卡/自创卡没有。
+   rp/director.js 的 worldcardBrief 此时返回空串, 导演照常按通用模式编排 —— 这不是故障,
+   界面上说清楚, 免得用户以为导演坏了。 */
+function noBlueprintNote(runId){
+  try{
+    if(runId && getWorldcard(runId) &&
+       ((getWorldcard(runId).directorDefinitions||[]).length)) return "";
+    const idx = (((window.__DATA__||{}).index)||[]).find(r=>r && r.run_id===runId);
+    if(idx && idx.has_worldcard) return "";
+  }catch(e){}
+  return "当前无原著因果蓝图（仅蒸馏剧本自带）：导演按通用模式编排剧情节奏，不引用原著事件。";
 }
 /* 骨架屏占位：n 个 shimmer 条，替换纯文字"加载中…" */
 function skeletonHTML(n){
@@ -620,16 +635,40 @@ const cfHtml = `<h2 class="sec">冲突点 · ${RUN.conflicts.length}</h2>` +
 /* P0 红学三项: 方法论声明置顶, 判词曲紧随伏笔(应验链接), 脂批殿后 */
 view.innerHTML = methodologyCard() + wbHtml + arcHtml + fsHtml + foretellHtml() + cfHtml + zhipiHtml();
 }
-
-
-/* ================= 生图立绘 ================= */
+/* 立绘取卡 (B11): 蒸馏 run 从 __DATA__.rp_cards[runId] 取; 导入卡在 rp_cards 里没有这个键,
+   恒 f={} —— 回落卡片库(判 RP_CARDIMPORT 在场)。外貌相关字段名取自 rp/prompt.js 的 LABELS:
+   appearance_feature(外貌) / visual_identity(视觉识别) / physical_marks(身体印记) /
+   voice_dressing(声音着装)。ST 卡导入不写这些字段, 此时该段留空, 绝不编造。 */
+function portraitCardFor(runId, name){
+  try{
+    const cards = ((window.__DATA__||{}).rp_cards||{})[runId]||[];
+    const c = cards.find(x=>x.name===(name||"")) || null;
+    /* 蒸馏 run 已有真 run 时, rp_cards 里查不到就是真没有, 不拿同名导入卡串味 */
+    if(c || (((window.__DATA__||{}).runs||{})[runId])) return c;
+  }catch(e){}
+  try{
+    if(typeof RP_CARDIMPORT!=="undefined") return RP_CARDIMPORT.find(name||"") || null;
+  }catch(e){}
+  return null;
+}
+/* 卡片里到底有没有外貌可用文本 (genPortrait 的提示门禁) */
+function hasAppearanceFor(runId, name){
+  const f = ((portraitCardFor(runId, name)||{}).fields)||{};
+  return [f.appearance_feature, f.visual_identity, f.physical_marks]
+    .some(v=>String(v==null?"":v).trim()!=="");
+}
+/* 卡上没有外貌文本时, 生图浮层里的一行引导 (B11)。prompt 那一段留空, 不编造长相。 */
+function portraitNoAppHint(runId, name){
+  if(hasAppearanceFor(runId, name)) return "";
+  return `<div class="hint" style="margin:6px 0">这张卡没有外貌描述，prompt 的「外貌」一栏留空（不编造长相）。
+    可到「穿越 › 我的卡」点该卡的「编辑」，在角色字段的「外貌（appearance_feature）」补一句再生成。</div>`;
+}
 function portraitPrompt(runId, name){
-const cards = ((window.__DATA__||{}).rp_cards||{})[runId]||[];
-const c = cards.find(x=>x.name===name);
+const c = portraitCardFor(runId, name);
 const f = (c&&c.fields)||{};
 const novel = ((window.__DATA__||{}).runs||{})[runId];
-const nv = (novel&&novel.novel)||"";
-return `中国古典小说人物立绘，${name}，《${nv}》中的人物。外貌：${f.visual_identity||""}。气质服饰：${f.voice_dressing||""}。工笔国风插画风格，半身像，纯色背景，高质量。`;
+const nv = (novel&&novel.novel)||((c&&c.novel)||"");
+return `中国古典小说人物立绘，${name}，《${nv}》中的人物。外貌：${f.appearance_feature||f.visual_identity||""}。气质服饰：${f.voice_dressing||""}。工笔国风插画风格，半身像，纯色背景，高质量。`;
 }
 window.genPortrait = (runId, name)=>{
 const cfg = getCfg();
@@ -640,6 +679,7 @@ ov.className = "viewer";
 ov.innerHTML = `<div class="vbox">
 <div class="vhead"><span>${esc(name)} · 立绘</span><button onclick="this.closest('.viewer').remove()">✕</button></div>
 <textarea id="v_prompt">${esc(prompt)}</textarea>
+${portraitNoAppHint(runId, name)}
 <div class="vimg" id="v_img"><div class="empty">点「生成」开始画</div></div>
 <div class="btnrow">
 <button class="btn" id="v_gen">${icon("palette")} 生成</button>
@@ -1627,7 +1667,7 @@ ${povChipsHTML()}
 <button class="ditem" onclick="toggleDrawer(false);charDetail(CHAT.runId,CHAT.name)">${icon("user")} 角色详情</button>
 <button class="ditem" onclick="toggleDrawer(false);showATasks()">${icon("chart")} 分析任务</button>
 <button class="ditem" onclick="toggleDrawer(false);plotEditor()">${icon("book-open")} 剧情线</button>
-<button class="ditem" onclick="toggleDrawer(false);chapterPicker()">${icon("bookmark")} 章节进度<span id="chapter_badge" style="margin-left:auto;font-size:calc(11px * var(--fs));color:var(--gold)"></span></button>
+${chapterEntryHTML(true)}
 <button class="ditem" onclick="toggleDrawer(false);loreEditor(CHAT.runId,'chat')">${icon("book-open")} 世界书管理</button>
 <button class="ditem" onclick="toggleDrawer(false);regexEditor(CHAT.runId,CHAT.name,'chat')">🔤 正则替换</button>
 <button class="ditem" onclick="toggleDrawer(false);showSystem()">${icon("settings")} 人设 prompt 预览</button>
@@ -1731,7 +1771,7 @@ ${povChipsHTML()}
 <button class="ditem" onclick="toggleDrawer(false);showSystem()">${icon("settings")} 人设 prompt 预览</button>
 <button class="ditem" onclick="toggleDrawer(false);showATasks()">${icon("chart")} 分析任务</button>
 <button class="ditem" onclick="toggleDrawer(false);plotEditor()">${icon("book-open")} 剧情线</button>
-<button class="ditem" onclick="toggleDrawer(false);chapterPicker()">${icon("bookmark")} 章节进度</button>
+${chapterEntryHTML(false)}
 <button class="ditem" onclick="toggleDrawer(false);openSaves()">${icon("save")} 平行存档</button>
 <button class="ditem" onclick="toggleDrawer(false);wallpaperEditor()">🖼️ 聊天壁纸</button>
 <button class="ditem" onclick="toggleDrawer(false);personaEditor(null,'chat')">${icon("user")} 我的人设（全局）</button>
@@ -3269,6 +3309,20 @@ window.toggleCtxLore = (ev)=>{
 function simChatKey(){
   try{ return chatHistKey(); }catch(e){ return "misc"; }
 }
+/* 时序感知基准卡: 蒸馏 run 从 __DATA__.rp_cards[runId] 找; 找不到时 (imported/custom 等
+   非蒸馏 runId, rp_cards 里根本没有这个键) 回落导入卡库 —— 否则导入卡的 tc 恒为 null,
+   RP_TEMPORAL.defaultChapter 只能吃卡.fields.timeline_stage, 拿不到卡就永远走默认回目。 */
+function temporalCardFor(runId, name){
+  let tc = null;
+  try{
+    const rcards = ((window.__DATA__||{}).rp_cards||{})[runId]||[];
+    tc = rcards.find(c=>c.name===(name||"")) || null;
+  }catch(e){ tc = null; }
+  if(!tc && typeof RP_CARDIMPORT!=="undefined"){
+    try{ tc = RP_CARDIMPORT.find(name||"") || null; }catch(e){}
+  }
+  return tc;
+}
 function simHint(){
   var novel = "";
   try{ novel = (((window.__DATA__||{}).runs||{})[CHAT.runId]||{}).novel || ""; }catch(e){}
@@ -3334,11 +3388,7 @@ window.simEditor = ()=>{
   let storyCh = 25, storyManual = false;
   try{
     if(typeof RP_TEMPORAL !== "undefined"){
-      let tc = null;
-      try{
-        const rcards = ((window.__DATA__||{}).rp_cards||{})[CHAT.runId]||[];
-        tc = rcards.find(c=>c.name===(CHAT.name||"")) || null;
-      }catch(e){}
+      const tc = temporalCardFor(CHAT.runId, CHAT.name);
       const gs = RP_TEMPORAL.getS(key, tc);
       storyCh = gs.chapter; storyManual = gs.manual;
     }
@@ -3889,9 +3939,18 @@ function updateChapterBadge(){
     }
   }catch(e){}
 }
-window.chapterPicker = ()=>{
-  var secs = getSections();
-  if(!secs.length){ rpToast("该作品暂无章节数据"); return; }
+ /* 章节入口 HTML (B9): 导入卡/custom 卡在 __DATA__.runs 里没有 run, getSections() 恒空 ——
+    抽屉里就不该留一个必点空的入口(徽章 #chapter_badge 随按钮一起消失)。
+    getSections 本体不动(无 run 就是无章节), 这里只判"这个作品有没有章节可展示"。 */
+ function chapterEntryHTML(withBadge){
+   if(!getSections().length) return "";
+   return `<button class="ditem" onclick="toggleDrawer(false);chapterPicker()">${icon("bookmark")} 章节进度` +
+     (withBadge ? `<span id="chapter_badge" style="margin-left:auto;font-size:calc(11px * var(--fs));color:var(--gold)"></span>` : "") +
+     `</button>`;
+ }
+ window.chapterPicker = ()=>{
+   var secs = getSections();
+   if(!secs.length){ return; } /* 无章节: 入口已隐藏(B9), 静默返回, 不再弹误导 toast */
   var cur = getChapterIdx();
   var v = document.getElementById("view");
   var html = `<button class="back" onclick="setTab('chat');showChat()">${icon("back")} 返回聊天</button>
@@ -5385,19 +5444,36 @@ const card = (typeof RP !== "undefined" && RP.findCard(runId, nm)) || {name:nm, 
 RP_ARC.setStage(card, runId, sel.value);
 renderDetail();
 };
-/* 关系管理页：查看动态关系 + 锁定/解锁 */
-window.showRelManager = ()=>{
-  var runId = CHAT.runId, name = CHAT.name;
-  var run = (window.__DATA__.runs || {})[runId] || {};
-  var rels = (typeof AGENT_RELATIONS !== "undefined")
-    ? AGENT_RELATIONS.merged(runId, run.relations, name) : (run.relations || []);
-  var myRels = rels.filter(function(r){
-    return r.source_character === name || r.target_character === name;
-  });
-  var v = document.getElementById("view");
-  var html = `<h2 class="sec">🔗 关系管理</h2>
-    <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint);margin-bottom:12px">聊天中关系会自动演变，锁定的关系 AI 不会再动</div>`;
-  if(!myRels.length) html += `<div class="card"><div style="font-size:calc(13px * var(--fs));color:var(--ink-faint)">暂无关系数据</div></div>`;
+ /* 关系管理页：查看动态关系 + 锁定/解锁 */
+ /* 关系静态层的 run 兜底 (B10): 导入卡/custom 没有真 run (__DATA__.runs 里没这个键),
+    静态关系恒空。取不到真 run 时回落 Phase 2 的 RP.synthRunFor 合成 run (novel/worldbook/
+    relations), 蒸馏 runId 一律走真 run, 原逻辑不变; RP 未加载时也保持原来的 run={}。 */
+ function relRunFor(runId, name){
+   var run = ((window.__DATA__||{}).runs||{})[runId] || null;
+   if(run) return run;
+   try{
+     if(typeof RP!=="undefined" && typeof RP.synthRunFor==="function")
+       return RP.synthRunFor(runId, name) || {};
+   }catch(e){}
+   return {};
+ }
+ /* 非蒸馏 run(导入卡/自创卡)又没有静态关系时的空态: 说清"为什么空"和"怎么变出来" */
+ function relEmptyText(runId){
+   if((((window.__DATA__||{}).runs||{})[runId])) return "暂无关系数据";
+   return "本卡没有蒸馏出的静态关系：聊天中 AI 会自动抽取人物关系并积累到这里，锁定后 AI 不会再改动。";
+ }
+ window.showRelManager = ()=>{
+   var runId = CHAT.runId, name = CHAT.name;
+   var run = relRunFor(runId, name);
+   var rels = (typeof AGENT_RELATIONS !== "undefined")
+     ? AGENT_RELATIONS.merged(runId, run.relations, name) : (run.relations || []);
+   var myRels = rels.filter(function(r){
+     return r.source_character === name || r.target_character === name;
+   });
+   var v = document.getElementById("view");
+   var html = `<h2 class="sec">🔗 关系管理</h2>
+     <div style="font-size:calc(12px * var(--fs));color:var(--ink-faint);margin-bottom:12px">聊天中关系会自动演变，锁定的关系 AI 不会再动</div>`;
+   if(!myRels.length) html += `<div class="card"><div style="font-size:calc(13px * var(--fs));color:var(--ink-faint)">${esc(relEmptyText(runId))}</div></div>`;
   myRels.forEach(function(r){
     var other = r.source_character === name ? r.target_character : r.source_character;
     var locked = r._locked;
@@ -6146,6 +6222,7 @@ ${fontScaleCardsHTML()}</div>` + `\n<div class="setcard"><h3>${icon("image",15)}
 <div class="field"><label>导演用模型（留空则与主模型一致；建议填便宜小模型省 token）</label>
 <input id="r_dir_model" type="text" placeholder="留空 = 与主模型一致" value=""></div>
 <div class="hint">导演只规划剧情（节奏/事件/转场），永远不写正文、不替你做决定；指令注入 prompt 后从正文剥离，你看不到导演的存在。节奏哨兵约增加 1/5 token 消耗。</div>
+<div class="hint">${noBlueprintNote((typeof CHAT!=="undefined" && CHAT) ? CHAT.runId : null)}</div>
 <div class="btnrow"><button class="btn" onclick="saveRpCfgUI()">保存 RP 设置</button></div>
 </div>
 
@@ -7667,7 +7744,21 @@ function soulOutlineFor(runId, name){
   }catch(e){}
   return bundledPlotFor(runId, name);
 }
-window.soulAnchors = (runId, name)=>{
+/* 锚点选项区 (B15): 导入卡没有剧情大纲, RP_TRAVERSE.anchorsFor 只会兜底给出 traverse.js 自带的
+   那一条"从头开始"(id="start") —— 等于没有预设锚点, 页面不该只剩这一条无意义选项。
+   空列表 / 只剩这条内置兜底项时, 渲染一个默认选中的"自由开局"选项(走 soulStart 的 custom 分支:
+   下面那句自定为空时用"故事开端")。有真锚点时按原样列出、第一条默认选中, 行为不变
+   (value 仍是 anchors 的原下标, soulStart 按下标回查不受影响)。 */
+function anchorOptionsHTML(anchors){
+  const list = anchors || [];
+  const real = list.filter(a=>a && a.id !== "start");
+  if(real.length)
+    return list.map((a,i)=>`
+    <label class="kvline" style="display:block"><input type="radio" name="anchor" value="${i}"${i===0?" checked":""}> ${esc(a.title)}</label>`).join("");
+  return `<label class="kvline" style="display:block"><input type="radio" name="anchor" value="custom" checked>
+    无预设剧情锚点：从当前剧情自由开局（可在下面补一句切入点）</label>`;
+}
+ window.soulAnchors = (runId, name)=>{
   __backAction = ()=>soulPickTarget();
   document.body.classList.remove("chatmode","immersive"); /* P2-1: 切页同时清 immersive, 不留残 */
   titleEl.innerHTML = icon("user")+" 魂穿 · "+esc(name); subEl.textContent = "选择进入的剧情锚点";
@@ -7695,8 +7786,7 @@ window.soulAnchors = (runId, name)=>{
   }catch(e){}
   view.innerHTML = `<button class="back" onclick="soulPickTarget()">${icon("back")} 返回</button>
   <h2 class="sec">你想从哪里开始成为${esc(name)}？</h2>
-  <div class="card">${anchors.map((a,i)=>`
-    <label class="kvline" style="display:block"><input type="radio" name="anchor" value="${i}"${i===0?" checked":""}> ${esc(a.title)}</label>`).join("")}
+  <div class="card">${anchorOptionsHTML(anchors)}
     <label class="kvline" style="display:block"><input type="radio" name="anchor" value="custom"> 自定：<input id="anchorCustom" style="width:55%;background:#100e0b;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px" placeholder="比如：黛玉初进贾府那天">${RP_AIFILL.btn("anchorCustom","魂穿锚点","一句话描述想切入的剧情时间点，如：黛玉初进贾府那天","魂穿进"+(_anchNovel?("小说《"+_anchNovel+"》"):"异世界")+"成为"+name)}</label>
   </div>
   ${secs.length?`<h2 class="sec">📖 时间线（可选）</h2>

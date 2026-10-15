@@ -236,9 +236,36 @@ function userLore(runId, name){
 }
 /* prompt 的世界书数组, 三处 buildMessages 共用:
    蒸馏 run 的 run.worldbook → 导入卡自带的 character_book 条目 → 用户自建条目。
-   导入卡 run 恒为 {} (runs["imported"] 不存在), 卡自带世界书只在这里进得来。 */
+   去重按 title+content (同 traverse.js:386 的做法): synthRunFor 给导入卡合成的
+   run.worldbook 就是卡自带世界书, 与 card.worldbook 是同一批条目, 不去重会双份进 prompt。 */
 function promptWorldbook(run, runId, card, name){
-  return (run.worldbook || []).concat((card && card.worldbook) || [], userLore(runId, name));
+  var all = (run.worldbook || []).concat((card && card.worldbook) || [], userLore(runId, name));
+  var seen = {}, out = [];
+  all.forEach(function(e){
+    var k = (e && (e.title || "") + "￨" + (e.content || e.rules || "")).slice(0, 200);
+    if(!seen[k]){ seen[k] = 1; out.push(e); }
+  });
+  return out;
+}
+/* prompt 的 run 兜底 (B4): 非蒸馏 runId (imported/custom 等) 在 window.__DATA__.runs 里
+   没有对应条目, 下游拿到的 run 恒是 {} —— novel/worldbook/relations 三个 prompt 装配输入全空。
+   这里按卡合成一个最小 run: custom 用卡片自己的 novel + 绑定的世界 run 世界书,
+   其它非蒸馏 runId 从导入卡库取卡 (novel/卡自带世界书), 与 custom 同构。
+   蒸馏 runId (__DATA__.runs 里有键) 一律不合成: 真 run 优先。找不到卡则返回 null,
+   调用方保持原行为 (run = {})。 */
+function synthRunFor(runId, name){
+  if(!runId) return null;
+  var RUNS = (window.__DATA__ && window.__DATA__.runs) || {};
+  if(runId === "custom" && typeof RP_WRITER !== "undefined"){
+    var _cc = RP_WRITER.findCustom(name) || {};
+    var _wr = _cc.worldRunId ? (RUNS[_cc.worldRunId] || {}) : {};
+    return {novel: _cc.novel || "自定义", worldbook: _wr.worldbook || [], relations: []};
+  }
+  if(RUNS[runId]) return null;
+  if(typeof RP_CARDIMPORT === "undefined") return null;
+  var _ic = RP_CARDIMPORT.find(name);
+  if(!_ic) return null;
+  return {novel: _ic.novel || "", worldbook: _ic.worldbook || [], relations: []};
 }
 /* 声明式正则替换 (ST Regex 简化版: 只做 find/replace, 不执行代码) */
 function getRegex(runId, name){
@@ -344,7 +371,43 @@ function tagUserMsg(um, opts){
 const RP = (function(){
 "use strict";
 
+/* 2026-10-07: 管线反 OOC 纠错条目 (run.corrections 按人物过滤)。
+   提到所有 runId 分支之前算一次: 以前它挂在 rp_cards 循环体内, 而 imported/custom
+   分支提前 return, 这两类卡拿不到这个字段, 反 OOC 段对它们恒空。 */
+function oocCorrectionsFor(runId, name){
+  try{
+    var run = (window.__DATA__ && window.__DATA__.runs || {})[runId] || {};
+    var corrs = run.corrections || [];
+    return corrs.filter(function(c){ return c && c.character === name && c.prompt_injection_rule; });
+  }catch(e){ return []; }
+}
+
+/* 非蒸馏 run 的卡片字段透传形状。normalizeTavern (cardimport.js:229-255) 归一化出
+   scenario/systemPrompt/postHistoryInstructions/creatorNotes/characterVersion/creator/
+   bookMeta/depthPrompt/sysNote/groupOnlyGreetings, imported/custom 分支以前一个都没回,
+   下游 (prompt.js:369-370, 409, 495-499 的组装; app.js 的设定视图) 只能见 {}。
+   规则: 源卡里有的原样透传, 没有的给空串/空数组/null —— 不编造, 也不静默丢字段。 */
+function passthroughFields(src){
+  var c = src || {};
+  return {
+    id: c.id || "",
+    novel: c.novel || "",
+    scenario: c.scenario || "",
+    systemPrompt: c.systemPrompt || "",
+    postHistoryInstructions: c.postHistoryInstructions || "",
+    creatorNotes: c.creatorNotes || "",
+    characterVersion: c.characterVersion || "",
+    creator: c.creator || "",
+    bookMeta: c.bookMeta || null,
+    depthPrompt: c.depthPrompt || null,
+    sysNote: c.sysNote || "",
+    groupOnlyGreetings: Array.isArray(c.groupOnlyGreetings) ? c.groupOnlyGreetings : [],
+    worldbook: Array.isArray(c.worldbook) ? c.worldbook : []
+  };
+}
+
 function findCard(runId, name){
+  var corrs = oocCorrectionsFor(runId, name);
   // 蒸馏包: runId 为 "distill_<pkgId>"
   if(runId && runId.indexOf("distill_") === 0 && typeof DISTILL_PACKAGE !== "undefined"){
     try{
@@ -364,41 +427,58 @@ function findCard(runId, name){
           greeting: (openings[0] && openings[0].text) || card.first_mes || "",
           altGreetings: openings.slice(1).map(function(o){ return o.text; }),
           scenario: "",
-          exampleDialogue: ""
+          exampleDialogue: "",
+          oocCorrections: corrs
         };
       }
     }catch(e){}
     return null;
   }
+  /* custom 卡字段形状与 imported 同构 (卡片编辑器产出的卡: cardwriter.js:162-164, 199-204)。
+     自创卡本来就没有 scenario/systemPrompt 这类 P0 字段, 这里给空串而不是省略,
+     下游的读法与导入卡一致, 不用到处判 undefined。 */
   if(runId === "custom" && typeof RP_WRITER !== "undefined"){
     var cc = RP_WRITER.findCustom(name);
-    if(cc) return {name: cc.name, fields: cc.fields || {},
-      greeting: cc.greeting || "",
-      altGreetings: cc.altGreetings || [], exampleDialogue: cc.exampleDialogue || ""};
+    if(cc){
+      var cf = passthroughFields(cc);
+      return {id: cf.id, name: cc.name, novel: cf.novel, worldRunId: cc.worldRunId || "",
+        fields: cc.fields || {}, greeting: cc.greeting || "",
+        altGreetings: cc.altGreetings || [], exampleDialogue: cc.exampleDialogue || "",
+        exampleBlocks: cc.exampleBlocks || [], scenario: cf.scenario,
+        systemPrompt: cf.systemPrompt, postHistoryInstructions: cf.postHistoryInstructions,
+        creatorNotes: cf.creatorNotes, characterVersion: cf.characterVersion,
+        creator: cf.creator, bookMeta: cf.bookMeta, depthPrompt: cf.depthPrompt,
+        sysNote: cf.sysNote, groupOnlyGreetings: cf.groupOnlyGreetings,
+        worldbook: cf.worldbook, oocCorrections: corrs};
+    }
   }
   if(runId === "imported" && typeof RP_CARDIMPORT !== "undefined"){
     var ic = RP_CARDIMPORT.find(name);
     /* exampleBlocks 必须透传: 少了它, 导入卡的 few-shot 就只剩 exampleDialogue 原文,
        而那段原文带 {{user}} 标签, 进 prompt 后 subMacros 把它展开成"你", 撞上开头
        "你是<角色名>" —— 导入卡聊天人称翻转的主因(回归见 tests/test_imported_pronoun.js) */
-    if(ic) return {id: ic.id, name: ic.name, novel: ic.novel, fields: ic.fields || {},
-      greeting: (typeof RP_CARDIMPORT.greetingOf === "function" ? RP_CARDIMPORT.greetingOf(ic) : null) || ic.greeting || "",
-      altGreetings: ic.altGreetings || [], exampleDialogue: ic.exampleDialogue || "",
-      exampleBlocks: ic.exampleBlocks || [],
-      /* worldbook 必须透传: character_book 在导入时已解析成条目存好(cardimport.js
-         normalizeTavern), 少了这个字段, 用户写在卡里的世界书一个字也进不了 prompt
-         (回归见 tests/test_imported_parity_phase1.js) */
-      worldbook: ic.worldbook || []};
+    if(ic){
+      var pf = passthroughFields(ic);
+      return {id: pf.id, name: ic.name, novel: pf.novel, fields: ic.fields || {},
+        greeting: (typeof RP_CARDIMPORT.greetingOf === "function" ? RP_CARDIMPORT.greetingOf(ic) : null) || ic.greeting || "",
+        altGreetings: ic.altGreetings || [], exampleDialogue: ic.exampleDialogue || "",
+        exampleBlocks: ic.exampleBlocks || [],
+        /* worldbook 必须透传: character_book 在导入时已解析成条目存好(cardimport.js
+           normalizeTavern), 少了这个字段, 用户写在卡里的世界书一个字也进不了 prompt
+           (回归见 tests/test_imported_parity_phase1.js) */
+        worldbook: pf.worldbook,
+        scenario: pf.scenario, systemPrompt: pf.systemPrompt,
+        postHistoryInstructions: pf.postHistoryInstructions, creatorNotes: pf.creatorNotes,
+        characterVersion: pf.characterVersion, creator: pf.creator, bookMeta: pf.bookMeta,
+        depthPrompt: pf.depthPrompt, sysNote: pf.sysNote,
+        groupOnlyGreetings: pf.groupOnlyGreetings,
+        oocCorrections: corrs};
+    }
   }
   var cards = (window.__DATA__ && window.__DATA__.rp_cards || {})[runId] || [];
   for(var i = 0; i < cards.length; i++) if(cards[i].name === name){
     var cd = cards[i];
-    /* 2026-10-07: 挂载管线反 OOC 纠错条目 (run.corrections 按人物过滤) */
-    try{
-      var run = (window.__DATA__ && window.__DATA__.runs || {})[runId] || {};
-      var corrs = run.corrections || [];
-      cd.oocCorrections = corrs.filter(function(c){ return c && c.character === name && c.prompt_injection_rule; });
-    }catch(e){ cd.oocCorrections = []; }
+    cd.oocCorrections = corrs;
     return cd;
   }
   return null;
@@ -538,11 +618,9 @@ async function send(runId, name, text, opts){
   var cfg = opts.cfg || {};
   var h = opts.history || [];
   var run = (window.__DATA__ && window.__DATA__.runs || {})[runId] || {};
-  if(runId === "custom" && typeof RP_WRITER !== "undefined"){
-    var _cc = RP_WRITER.findCustom(name) || {};
-    var _wr = _cc.worldRunId ? ((window.__DATA__ && window.__DATA__.runs || {})[_cc.worldRunId] || {}) : {};
-    run = {novel: _cc.novel || "自定义", worldbook: _wr.worldbook || [], relations: []};
-  }
+  /* 非蒸馏 runId (imported/custom/其它卡片库 runId) 没有真 run, 按卡合成最小 run */
+  var _syn = synthRunFor(runId, name);
+  if(_syn) run = _syn;
   var card = findCard(runId, name) || {name: name, fields: {}};
   /* 聊天设置 per-chat 参数覆盖 */
   try{
@@ -1223,5 +1301,6 @@ async function sendTraverse(travId, text, opts){
 
 return {send: send, regenerate: regenerate, swipe: swipe, sendGroup: sendGroup,
         sendTraverse: sendTraverse,
-        greeting: greeting, findCard: findCard, mapHistory: mapHistory, tagUserMsg: tagUserMsg};
+        greeting: greeting, findCard: findCard, mapHistory: mapHistory, tagUserMsg: tagUserMsg,
+        synthRunFor: synthRunFor};
 })();
